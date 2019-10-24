@@ -1,0 +1,928 @@
+---
+title: "West Davis Corridor - Impaired Stream Data"
+author: "T.Hooker"
+date: "16 February, 2018"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 10
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "xtable", "dplyr")
+#lapply(packge.set, library, character.only=T)
+#options(table_counter=FALSE)
+options(scipen = 999, digits = 4)
+#opts_chunk$set(tidy=TRUE)
+##
+# startwork.date <- "180216"
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+This notebook imports and reviews available data from AWQMS (through Q4-2016) for Impaired Stream sites and other available MLIDs within the WDC project area.
+
+### Data-Project Goal
+
+The goal for this data project are to identify whether, based on prior DWQ assessments that three water bodies within the West Davis Corridor project area are currently impaired (i.e. not meeting the water quality conditions for one or more of the water bodies designated uses) for metals (Copper) and fecal contaminants (E.coli), the WDC project would contribute to (further) significant degradation to waters of the state - or whether there may be assimilative capacity available under DWQs Antidegradation Review process.
+
+
+### 1.0 Data Import
+
+_These data are from AWQMS; export # 19907_
+
+```{r import01, eval=F}
+# file.dat0 <- choose.files(caption="Select _Working_ DATA file [*.xlsx]", multi = FALSE)
+#awqms0 <- openxlsx::read.xlsx(file.dat0, sheet = "awqms_dl19907", startRow = 1, colNames = T,
+#                              rowNames = F)
+path.0 <- dirname(file.dat0)
+filename.0 <- basename(file.dat0)
+```
+
+```{r fix.datetime.01, eval=F}
+## Fix Dates
+awqms0$Activity.Start.Date <- as.Date(awqms0$Activity.Start.Date, origin="1899-12-30")
+awqms0$Analysis.Start.Date <- as.Date(awqms0$Analysis.Start.Date, origin="1899-12-30")
+awqms0$Activity.Start.Time <- chron::times((awqms0$Activity.Start.Time - as.integer(awqms0$Activity.Start.Time)))
+```
+
++ Working datafile PATH :: `r path.0`
++ Source Datafiile :: `r filename.0`
++ Dataframe :: `awqms0`
+    + Contains `r nrow(awqms0)` records
+    + `r length(unique(awqms0$Monitoring.Location.ID))` unique MLIDs
+    + `r length(unique(awqms0$Monitoring.Location.Name))` unique Site Names
+    + Date Range :: `r min(awqms0$Activity.Start.Date)` to `r max(awqms0$Activity.Start.Date)`
+    + Number of parameters :: `r length(unique(awqms0$Characteristic.Name))`
+
+#### 1.1 Sites
+
++ Records per Site
+
+```{r site.recs.tab}
+((table(awqms1$Monitoring.Location.Name, awqms1$Organization.ID, useNA = "ifany")))
+```
+
+
+```{r sites, eval=F, echo=F}
+sites.awqms0 <- data.frame(MLID = sort(unique(awqms0$Monitoring.Location.ID)))
+for (j in sites.awqms0$MLID) {
+    sites.awqms0$Site.Name[sites.awqms0$MLID == j] <- paste(unique(
+        awqms0$Monitoring.Location.Name[awqms0$Monitoring.Location.ID == j]), sep="/")  }
+#
+sites.awqms0$Water.Body <- NA
+sites.awqms0$Water.Body[c(1,2,10:13,9)] <- "Kays Crk" # re-do these assignments by MLID
+# 4990020 is blind-dup for 4990130
+sites.awqms0$Water.Body[c(14,15)] <- "Holmes Crk"
+sites.awqms0$Water.Body[c(16:20)] <- "Farmington Crk"
+sites.awqms0$Water.Body[c(3:8)] <- "Wetlands"
+# re-order waters
+require(dplyr, quietly = TRUE, warn.conflicts = FALSE)
+sites.awqms0 <- arrange(sites.awqms0, Water.Body, MLID)
+# add site order (of stream flow)
+sites.awqms0$Water_order <- NA
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990352] <- 1
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990340] <- 2
+#sites.awqms0$Water_order[sites.awqms0$MLID == 4990335] <- 3 # no data
+#sites.awqms0$Water_order[sites.awqms0$MLID == 4990336] <- 3.1 # no data
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990350] <- 3
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990320] <- 4
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990330] <- 5 # end farmCrk
+#sites.awqms0$Water_order[sites.awqms0$MLID == 4990233] <- 1 # no data
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990220] <- 1
+#sites.awqms0$Water_order[sites.awqms0$MLID == 4990235] <- 3 # no data
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990190] <- 2 # end HolmesCk
+sites.awqms0$Water_order[sites.awqms0$MLID == 4915630] <- 1
+sites.awqms0$Water_order[sites.awqms0$MLID == 4915650] <- 1.5
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990135] <- 2
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990020] <- 3.1 # B-dup 4990130
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990131] <- 3
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990110] <- 4
+sites.awqms0$Water_order[sites.awqms0$MLID == 4990112] <- 5 # end KaysCk
+sites.awqms0$Water_order[sites.awqms0$MLID == 4985465] <- 1
+sites.awqms0$Water_order[sites.awqms0$MLID == 4985470] <- 1.5
+sites.awqms0$Water_order[sites.awqms0$MLID == c(4985800, 4985810,
+            4985820, 4985830)] <- seq(from = 3, to = 3.3, by = 0.1)
+# re-sort
+sites.awqms0 <- arrange(sites.awqms0, Water.Body, Water_order, MLID)
+# add stream region
+sites.awqms0$Stream_ecoR <- NA
+sites.awqms0$Stream_ecoR[c(1,2,8,9)] <- "Montane"
+sites.awqms0$Stream_ecoR[c(3,6,10)] <- "Upper Basin"
+sites.awqms0$Stream_ecoR[c(4,5,7,11,12,13,14)] <- "Lower Basin"
+sites.awqms0$Stream_ecoR[c(15,16)] <- "Impounded"
+sites.awqms0$Stream_ecoR[c(17:20)] <- "Fringe"
+## add Water.Body to AWQMS0
+awqms1 <- merge(x = awqms0, y = sites.awqms0[,c(1,3,4,5)], by.x = "Monitoring.Location.ID", 
+                by.y = "MLID", all.x=T)
+```
+
+```{r site.list, eval=F}
+for (j in sites.awqms0$MLID) {
+    sites.awqms0$nObs[sites.awqms0$MLID == j] <- nrow(awqms1[awqms1$Monitoring.Location.ID == j,])
+    sites.awqms0$Samp.Dates[sites.awqms0$MLID == j] <-
+        length(unique(awqms1$Activity.Start.Date[awqms1$Monitoring.Location.ID == j]))
+    sites.awqms0$Params[sites.awqms0$MLID == j] <- length(unique(awqms1$Characteristic.Name[awqms1$Monitoring.Location.ID == j]))
+}
+
+```
+
+
+```{r sites.tab01}
+htmlTable::htmlTable(sites.awqms0, caption = "Site Descriptions", css.cell = rbind(rep("padding-left: 0.6em; padding-right: 0.6em;font-size: 0.65em;", times=ncol(sites.awqms0)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.7em;",ncol=ncol(sites.awqms0), nrow=nrow(sites.awqms0))), rnames=FALSE, align=c("ll|ccc|c"), 
+    header = c("MLID", "Site", "Water", "order", "Type", "Records", "Dates", "Params"),
+    n.tspanner = c(5,2,7,6), tspanner=c("","","",""))
+```
+
+
+
+
+#### 1.2 Parameters
+
++ Parameter counts by  MLID (per Water Body)
+
+```{r tab01}
+FarmCk <- as.character(unique(sites.awqms0$MLID[sites.awqms0$Water.Body == "Farmington Crk"]))
+HolmCk <- as.character(unique(sites.awqms0$MLID[sites.awqms0$Water.Body == "Holmes Crk"]))
+KayCk <- as.character(unique(sites.awqms0$MLID[sites.awqms0$Water.Body == "Kays Crk"]))
+WetL <- as.character(unique(sites.awqms0$MLID[sites.awqms0$Water.Body == "Wetlands"]))
+#
+# FarmCk.tab
+require(dplyr, quietly = TRUE, warn.conflicts = FALSE)
+FarmCk.tab1 <- as.data.frame.matrix(addmargins(table(
+    awqms1$Characteristic.Name[awqms1$Water.Body == "Farmington Crk"],
+    awqms1$Monitoring.Location.ID[awqms1$Water.Body == "Farmington Crk"], 
+                     useNA = "ifany")))
+site.tab <- FarmCk.tab1
+htmlTable::htmlTable(site.tab, caption = "Parameter Records - Farmington Ck", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(site.tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(site.tab), nrow=nrow(site.tab))), align=c("|ccccc|c"), total=TRUE)
+# Holmes
+Holmes.tab1 <- as.data.frame.matrix(addmargins(table(
+    awqms1$Characteristic.Name[awqms1$Water.Body == "Holmes Crk"],
+    awqms1$Monitoring.Location.ID[awqms1$Water.Body == "Holmes Crk"], 
+                     useNA = "ifany")))
+site.tab <- Holmes.tab1
+htmlTable::htmlTable(site.tab, caption = "Parameter Records - Holmes Ck", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(site.tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(site.tab), nrow=nrow(site.tab))), align=c("|cc|c"), total=TRUE)
+# Kays
+Kays.tab1 <- as.data.frame.matrix(addmargins(table(
+    awqms1$Characteristic.Name[awqms1$Water.Body == "Kays Crk"],
+    awqms1$Monitoring.Location.ID[awqms1$Water.Body == "Kays Crk"], 
+                     useNA = "ifany")))
+site.tab <- Kays.tab1
+htmlTable::htmlTable(site.tab, caption = "Parameter Records - Kays Ck", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(site.tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(site.tab), nrow=nrow(site.tab))), align=c("|ccccccc|c"), total=TRUE)
+# Wetlands
+WetL.tab1 <- as.data.frame.matrix(addmargins(table(
+    awqms1$Characteristic.Name[awqms1$Water.Body == "Wetlands"],
+    awqms1$Monitoring.Location.ID[awqms1$Water.Body == "Wetlands"], 
+                     useNA = "ifany")))
+site.tab <- WetL.tab1
+htmlTable::htmlTable(site.tab, caption = "Parameter Records - Wetlands", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(site.tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(site.tab), nrow=nrow(site.tab))), align=c("|cccccc|c"), total=TRUE)
+```
+
++ Key sites for Farmington Creek
+    + 4990340 (_montane_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990340",])` records
+    + 4990350 (_upper basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990350",])` records
+    + 4990320 (_lower basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990320",])` records
+
++ Key sites for Holmes Creek
+    + 4990220 (_upper basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990220",])` records
+    + 4990190 (_lower basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990190",])` records
+
++ Key sites for Kays Creek
+    + 4915630 (_montane_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4915630",])` records
+    + 4915650 (_montane_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4915650",])` records
+    + 4990135 (_upper basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990135",])` records
+    + 4990020 (_lower basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990020",])` records
+    + 4990110 (_lower basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990110",])` records
+    + 4990112 (_lower basin_) :: `r nrow(awqms1[awqms1$Monitoring.Location.ID == "4990112",])` records
+
+_This dataset contains few records for metals in impounded and fringe wetlands, most results are for nutrients and field parameters (DO, pH, etc.).  Additional results for these wetland types can be obtained from the IW2012 and the FRNG1315 datasets_
+
+#### 1.3 Param / Result Cleanup
+
+1) Clean up Parameter Names
+2) Re-calculate Hardness (do this after data are `dcast`)
+3) Aggregate Result.Values
+4) Create Sample-Key (site x date)
+
+```{r clean01, eval=F}
+# parameter cleanup
+awqms1$ParamX <- plyr::revalue(awqms1$Characteristic.Name,
+        c("Alkalinity, total" = "T.Alk", "Aluminum" = "AL", "Ammonia-nitrogen" = "NH4-N",
+          "Cadmium" = "CD","Calcium" = "CA","Chloride" = "CL","Chromium" = "CR",
+          "Copper" = "CU", "Dissolved oxygen (DO)" = "DO.c", 
+          "Dissolved oxygen saturation" = "DO.p", "Flow" = "Flow",
+          "Hardness, Ca, Mg" = "HARD", "Inorganic nitrogen (nitrate and nitrite)" = "NO32",
+          "Iron" = "FE", "Lead" = "PB", "Magnesium" = "MG", "Manganese" = "MN",
+          "Nitrogen" = "TN", "Organic carbon" = "TOC", "pH" = "pH.f",
+          "Phosphate-phosphorus" = "TP", "Potassium" = "K","Sodium" = "NA",
+          "Sulfate" = "SO4", "Temperature, water" = "Temp.w", 
+          "Total dissolved solids" = "TDS", "Total suspended solids" = "TSS",
+          "Total volatile solids" = "TVS", "Velocity - stream" = "velocity",
+          "Zinc" = "ZN"))
+awqms1$Samp.frac <- plyr::revalue(awqms1$Sample.Fraction,
+                                  c("Total" = "TOT", "Dissolved" = "DIS", 
+                                    "Acid Soluble" = "TOT"))
+awqms1$Samp.frac <- ifelse(is.na(awqms1$Samp.frac), "TOT", awqms1$Samp.frac)
+awqms1$Par_frac <- paste(awqms1$ParamX, awqms1$Samp.frac, sep="_")
+```
+
++ Add Sample Key (MLID [.] Sample-Date)
+
+```{r clean02, eval=F}
+awqms1$SKey1 <- paste(awqms1$Monitoring.Location.ID, as.numeric(awqms1$Activity.Start.Date - as.Date("1899-12-30")), sep=".")
+#awqms1_w <- reshape2::dcast(awqms1, Monitoring.Location.ID + Activity.Start.Date ~ Par_frac, value.var = "Result.Value")
+```
+
+```{r param.tab01}
+addmargins(table(awqms1$Par_frac, awqms1$Water.Body, useNA = "ifany"))
+```
+
+#### 1.4 _Tidy_ Data
+
+1) Need to make sure that hardness calcs are correct
+2) Calculate Numeric Criteria for pollutants of concern
+3) Make sure that all results have appropriate data-flags
+
+```{r datachek01, eval=F}
+data.hard <- awqms1[(awqms1$ParamX == "CA" | awqms1$ParamX == "MG" | awqms1$ParamX == "HARD"),
+                    c("Monitoring.Location.ID", "Activity.ID", "Activity.Start.Date",
+                      "Result.Value", "Result.Unit", "Result.Value.Type",
+                      "Water.Body", "Water_order", "ParamX", "Samp.frac", "Par_frac",
+                      "SKey1")]
+# dcast
+data.hard$Result.Value <- as.numeric(data.hard$Result.Value)
+data.hard_w <- reshape2::dcast(data.hard, SKey1 + Water.Body ~ Par_frac,
+                value.var = "Result.Value", fun.aggregate=function(x) mean(x, na.rm=TRUE))
+data.hard_w$Hard_calc <- 2.5*data.hard_w$CA_DIS + 4.1*data.hard_w$MG_DIS
+
+data.hard_w$HARD_summ <- ifelse(is.nan(data.hard_w$HARD_DIS), data.hard_w$HARD_TOT,
+                            data.hard_w$HARD_DIS)
+data.hard_w$DIFF <- abs(round(data.hard_w$Hard_calc - data.hard_w$HARD_summ, digits=2))
+qplot(data.hard_w$HARD_summ, data.hard_w$Hard_calc)
+# go w/ the re-calculated values...
+# re-apply values to dataset
+for (j in data.hard_w$SKey1) {
+    awqms1$Result.Value[awqms1$SKey1 == j & awqms1$ParamX == "HARD"] <- data.hard_w$Hard_calc[data.hard_w$SKey1 == j]   }
+# make sure results are numeric
+awqms1$Result.Value <- as.numeric(awqms1$Result.Value)
+
+```
+
+
+
+### 2.0 Examine Data
+
+**Dataframe** :: `awqms1`
+
+#### 2.1 Spatial Pattern
+
+**Hardness**
+
+```{r fig01, fig.height=8, fig.width = 5}
+library(ggplot2); library(scales); library(EnvStats)
+hard01 <- awqms1[awqms1$Characteristic.Name == "Hardness, Ca, Mg",]
+hard01$Monitoring.Location.ID2 <- factor(hard01$Monitoring.Location.ID,
+                                         c(unique(as.character(sites.awqms0$MLID))))
+#
+#
+ggplot(data = hard01) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_x") +
+    geom_boxplot(aes(x = Monitoring.Location.ID2, y = as.numeric(Result.Value))) +
+    stat_n_text(aes(x = Monitoring.Location.ID2, y = length(!is.na(Result.Value))), y.pos=500,
+                size=3) +
+    ggtitle("Distribution of Hardness values by stream name\nand site order") +
+    ylab("Hardness (as CaCO3 equiv (mg/L)") + xlab(NULL) +
+    geom_hline(yintercept=400, lty=2, col="darkgreen")
+#
+ggsave(paste("WDC_HARD_fig01_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=8, width=5, dpi=500)
+```
+
+_Figure w/o the low-sample size sites_
+
+```{r fig01_b, fig.height=8, fig.width = 5}
+library(ggplot2); library(scales); library(EnvStats)
+hard01 <- awqms1[awqms1$Characteristic.Name == "Hardness, Ca, Mg",]
+hard.mlids <- c(4990340, 4990350, 4990320, 4990220, 4990190, 4915630, 4915650,
+                4990135, 4990020, 4990110, 4985465, 4985800, 4985810, 4985820)
+hard01 <- hard01[hard01$Monitoring.Location.ID %in% hard.mlids,]
+hard01$Monitoring.Location.ID2 <- factor(hard01$Monitoring.Location.ID,
+                                         c(unique(as.character(sites.awqms0$MLID))))
+hard01$MLID_ecoR <- (paste(hard01$Monitoring.Location.ID2, hard01$Stream_ecoR, sep=" \n "))
+hard01$MLID_ecoR <- factor(hard01$MLID_ecoR, 
+            c("4990340 \n Montane","4990350 \n Upper Basin", "4990320 \n Lower Basin",
+              "4990220 \n Upper Basin", "4990190 \n Lower Basin",
+              "4915630 \n Montane", "4915650 \n Montane", "4990135 \n Upper Basin",
+                "4990020 \n Lower Basin", "4990110 \n Lower Basin",
+              "4985465 \n Impounded", "4985800 \n Fringe", "4985810 \n Fringe",
+              "4985820 \n Fringe"))
+#
+ggplot(data = hard01) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_x") +
+    geom_boxplot(aes(x = MLID_ecoR, y = as.numeric(Result.Value))) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(Result.Value))), y.pos=500,
+                size=3) +
+    ggtitle("Distribution of Hardness values by stream name\nand site order") +
+    ylab("Hardness (as CaCO3 equiv (mg/L)") + xlab(NULL) +
+    geom_hline(yintercept=400, lty=2, col="darkgreen")
+#
+ggsave(paste("WDC_HARD_fig01b_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=8, width=5, dpi=500)
+```
+
+
+
+**Dissolved Copper**
+
+```{r fig02, fig.height=8, fig.width = 5}
+library(ggplot2); library(scales)
+CU.01 <- awqms1[awqms1$Characteristic.Name == "Copper" & awqms1$Sample.Fraction == "Dissolved",]
+CU.mlids <- c(4990340, 4990350, 4990320, 4990220, 4990190, 4915630, 4915650,
+                4990135, 4990020, 4990110, 4990112, 4985465, 4985800, 4985810, 4985820)
+CU.01 <- CU.01[CU.01$Monitoring.Location.ID %in% CU.mlids,]
+CU.01$Monitoring.Location.ID2 <- factor(CU.01$Monitoring.Location.ID,
+                                         c(unique(as.character(sites.awqms0$MLID))))
+CU.01$MLID_ecoR <- (paste(CU.01$Monitoring.Location.ID2, CU.01$Stream_ecoR, sep=" \n "))
+CU.01$MLID_ecoR <- factor(CU.01$MLID_ecoR, 
+            c("4990340 \n Montane","4990350 \n Upper Basin", "4990320 \n Lower Basin",
+              "4990220 \n Upper Basin", "4990190 \n Lower Basin",
+              "4915630 \n Montane", "4915650 \n Montane", "4990135 \n Upper Basin",
+                "4990020 \n Lower Basin", "4990110 \n Lower Basin", "4990112 \n Lower Basin",
+              "4985465 \n Impounded", "4985800 \n Fringe", "4985810 \n Fringe",
+              "4985820 \n Fringe"))
+CU.01$data.flag <- plyr::revalue(CU.01$Detection.Limit.Type1,
+                                 c("Method Detection Level" = "U",
+                                   "Lower Quantitation Limit" = "J",
+                                   "Lower Reporting Limit" = "J"))
+#
+ggplot(data = CU.01) + theme_bw() + facet_wrap(~Water.Body, ncol=1, scales="free_x") +
+    geom_boxplot(aes(x = MLID_ecoR, y = as.numeric(Result.Value)), 
+                 na.rm=T, outlier.alpha = 0.5, outlier.stroke = 0) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(Result.Value))),
+                y.pos = -5, size=3) +
+    scale_y_continuous(limits=c(-6, 60), oob=squish) +
+    ggtitle("Distribution of Copper by stream name and \nsite order") +
+    ylab("Copper (ug/L)") + xlab(NULL) +
+    geom_jitter(data = CU.01[!is.na(CU.01$Detection.Condition) & CU.01$data.flag == "U",], 
+                aes(x = MLID_ecoR, y = Detection.Limit.Value1), 
+                col="red", width = 0.25, height = 0.25, shape="U") +
+    geom_jitter(data = CU.01[!is.na(CU.01$Detection.Condition) & CU.01$data.flag == "J",],
+                aes(x = MLID_ecoR, y = Detection.Limit.Value1), 
+                col="blue", width = 0.25, height = 0.25, shape="J")
+#
+ggsave(paste("WDC_Cu_fig02b_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=8, width=5, dpi=500)
+```
+
+
+#### 2.2 Temporal Patterns
+
+**Q**:  _How does `HARDNESS` vary over time_ ?
+
+```{r time.hard, fig.height=5, fig.width = 7}
+hard01.date <- hard01[hard01$Water.Body != "Wetlands",]
+hard01.date$Stream_ecoR <- factor(hard01.date$Stream_ecoR, 
+                                  levels = c("Montane","Upper Basin","Lower Basin" ))
+hard01.date <- dplyr::arrange(hard01.date, Water.Body, MLID_ecoR, Activity.Start.Date)
+#
+ggplot(data = hard01.date) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=Activity.Start.Date, y = Result.Value,color = Stream_ecoR),size=1) + 
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    geom_hline(yintercept=400, lty=2, col="darkgreen") +
+    ylab("Hardness (as mg CaCO3/L)") +
+    ggtitle("Variation in water hardness over time") + xlab(NULL)
+#
+ggsave(paste("WDC_Hard_Date_fig03_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=5, width=7, dpi=500)
+```
+
++ Appears that there _may be_ a seasonal pattern in hardness, particularly in the basin reaches
+
+```{r time.hard_season, fig.height=7, fig.width = 7}
+#hard01.date$SDate <- as.Date(paste(2017, 
+#                        strftime(hard01.date$Activity.Start.Date,format="%m-%d"), sep="-"))
+
+ggplot(data = hard01.date) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=as.Date(paste(2017, 
+                    strftime(hard01.date$Activity.Start.Date,format="%m-%d"), sep="-")), 
+                   y = Result.Value, col=Stream_ecoR), size=1) + 
+    geom_smooth(aes(x=as.Date(paste(2017, 
+                    strftime(hard01.date$Activity.Start.Date,format="%m-%d"), sep="-")), 
+                   y = Result.Value, col=Stream_ecoR), 
+                se=F, method="loess") +
+    scale_x_date(limits = c(as.Date("2017-01-01"), as.Date("2017-12-31")),
+                 labels = date_format("%d %b")) +
+    geom_hline(yintercept=400, lty=2, col="darkgreen") +
+    ylab("Hardness (as mg CaCO3/L)") +
+    ggtitle("Seasonal Variation in water hardness") + xlab(NULL)
+#
+ggsave(paste("WDC_Hard_DateYear_fig04_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=7, width=7, dpi=500)
+```
+
+
+
+#### 2.3 CU Exceedences
+
+```{r Cu_exceed.dat01, eval=F}
+library(plyr); library(dplyr)
+data.CU <- awqms1[(awqms1$ParamX == "CU" | awqms1$ParamX == "HARD"),
+    c("Monitoring.Location.ID", "Activity.Start.Date","Result.Value", "Result.Unit",
+      "Detection.Limit.Type1","Detection.Limit.Value1","Water.Body","Stream_ecoR",
+      "ParamX", "Samp.frac", "Par_frac","SKey1")]
+data.CU$data.flag <- plyr::revalue(data.CU$Detection.Limit.Type1,
+    c("Method Detection Level" = "U","Lower Quantitation Limit" = "J",
+      "Lower Reporting Limit" = "J"))
+data.CU <- dplyr::select(data.CU, Monitoring.Location.ID:Result.Unit,data.flag, 
+                         everything(), -Detection.Limit.Type1) %>% 
+    rename(c("Monitoring.Location.ID" = "MLID", "Detection.Limit.Value1" = "RL"))
+data.CU$Result_X <- ifelse(!is.na(data.CU$Result.Value), data.CU$Result.Value,
+                           ifelse(data.CU$ParamX == "CU" & data.CU$data.flag == "U",
+                                  (data.CU$RL/2),
+                                  ifelse(data.CU$ParamX == "CU" & data.CU$data.flag == "J",
+                                         data.CU$RL, NA)))
+#
+data.CU_w <- reshape2::dcast(data.CU, SKey1 + Water.Body + Stream_ecoR + MLID ~ ParamX,
+                             value.var = "Result_X", fun.aggregate=function(x) mean(x, na.rm=TRUE))
+data.CU_w$CU.acut <- ifelse(!is.na(data.CU_w$HARD),
+                            (exp(0.9422*log(data.CU_w$HARD)-1.7)*0.96),
+                            NA)
+data.CU_w$CU.chron <- ifelse(!is.na(data.CU_w$HARD),
+                            (exp(0.8545*log(data.CU_w$HARD)-1.702)*0.96),
+                            NA)
+## replace missing Hardness values w/ 25%ile of Water.Body x Stream_ecoR
+CU_hard_summary <- data.CU_w[!is.na(data.CU_w$HARD),] %>% 
+    group_by(Water.Body, Stream_ecoR) 
+CU_hard_summary.q25 <- reshape2::dcast(CU_hard_summary, Water.Body ~ Stream_ecoR, 
+                                       value.var = "HARD", 
+                                       fun.aggregate=function(x) quantile(x, 0.25, na.rm=T))
+for (j in data.CU_w$Water.Body) {
+    for (k in data.CU_w$Stream_ecoR) {
+        data.CU_w$HARD_25[data.CU_w$Water.Body == j & data.CU_w$Stream_ecoR == k] <- 
+            ifelse(is.na(data.CU_w$HARD[data.CU_w$Water.Body == j & data.CU_w$Stream_ecoR == k]),
+                   CU_hard_summary.q25[CU_hard_summary.q25$Water.Body == j,k],
+                   NA)      }   }
+data.CU_w$CU.acut <- ifelse(!is.na(data.CU_w$HARD),
+                            (exp(0.9422*log(data.CU_w$HARD)-1.7)*0.96),
+                            (exp(0.9422*log(data.CU_w$HARD_25)-1.7)*0.96))
+data.CU_w$CU.chron <- ifelse(!is.na(data.CU_w$HARD),
+                            (exp(0.8545*log(data.CU_w$HARD)-1.702)*0.96),
+                            (exp(0.8545*log(data.CU_w$HARD_25)-1.702)*0.96))
+# exceedence
+data.CU_w$CU.XCD_acut <- ifelse(data.CU_w$CU >= data.CU_w$CU.acut, "Y", NA)
+data.CU_w$CU.XCD_chron <- ifelse(data.CU_w$CU >= data.CU_w$CU.chron, "Y", NA)
+```
+
+```{r hardness.imput.table}
+htmlTable::htmlTable(htmlTable::txtRound(CU_hard_summary.q25, digits=1), caption = "Calculated Hardness for Streams x Stream-Region; 25th percentile values", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.8em;", times=ncol(CU_hard_summary.q25)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.85em;",ncol=ncol(CU_hard_summary.q25), nrow=nrow(CU_hard_summary.q25))), align=c("l|c"))
+```
+
+
+```{r CU_exceed.tab01}
+# Acute CU exceedences
+addmargins(table(paste(data.CU_w$Water.Body, data.CU_w$Stream_ecoR), data.CU_w$CU.XCD_acut, useNA = "ifany"))
+# Chronic CU exceedences
+addmargins(table(paste(data.CU_w$Water.Body, data.CU_w$Stream_ecoR), data.CU_w$CU.XCD_chron, useNA = "ifany"))
+```
+
+
+
+```{r fig03, fig.height=5, fig.width = 5}
+library(ggplot2); library(scales)
+data.CU_w$Hard_all <- ifelse(is.na(data.CU_w$HARD), data.CU_w$HARD_25, data.CU_w$HARD)
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + facet_grid(Stream_ecoR ~ Water.Body, scales="free") +
+    geom_point(aes(x = Hard_all, y = CU, col = CU.XCD_acut), na.rm=T) +
+        ggtitle("Copper x Hardness : Acute Criteria") +
+    ylab("Copper (ug/L)") + xlab("Hardness (as mg CaCO3/L)") +
+    geom_line(aes(x=Hard_all, y=CU.acut), lty=2, col="red") +
+    theme(legend.position = c(0.5,0.85), legend.background = element_rect(fill="gray90"),
+          legend.title = element_text(size=9), legend.text = element_text(size=8)) +
+    guides(col= guide_legend("Acute\n    Exceedence"))
+
+ggsave(paste("WDC_Cu_AcuteExcd_fig03_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=6, width=7, dpi=500)
+```
+    
+
+```{r fig04, fig.height=5, fig.width = 5}
+library(ggplot2); library(scales)
+data.CU_w$Hard_all <- ifelse(is.na(data.CU_w$HARD), data.CU_w$HARD_25, data.CU_w$HARD)
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + facet_grid(Stream_ecoR ~ Water.Body, scales="free") +
+    geom_point(aes(x = Hard_all, y = CU, col = CU.XCD_chron), na.rm=T) +
+        ggtitle("Copper x Hardness : Chronic Criteria") +
+    ylab("Copper (ug/L)") + xlab("Hardness (as mg CaCO3/L)") +
+    geom_line(aes(x=Hard_all, y=CU.chron), lty=2, col="red") +
+    theme(legend.position = c(0.5,0.85), legend.background = element_rect(fill="gray90"),
+          legend.title = element_text(size=9), legend.text = element_text(size=8)) +
+    guides(col= guide_legend("Chronic\n    Exceedence"))
+
+ggsave(paste("WDC_Cu_ChronicExcd_fig04_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=6, width=7, dpi=500)
+```
+
+#### 2.4 Cu Effects :: Magnitude of Exceedence
+
+```{r Cu_Efx_data, eval=F}
+# add Effects Ratio (for Cu)
+data.CU_w$CU.EfxR_acut <- round((data.CU_w$CU / data.CU_w$CU.acut), digits=2)
+data.CU_w$CU.EfxR_chron <- round((data.CU_w$CU / data.CU_w$CU.chron), digits=2)
+#
+data.CU_w$SampDate <- as.Date(as.integer(substr(data.CU_w$SKey1, 9, nchar(data.CU_w$SKey1))), 
+                              origin="1899-12-30")
+data.CU_w$SDate <- as.Date(paste(2017, strftime(data.CU_w$SampDate,format="%m-%d"), sep="-"))
+```
+
+**Copper Exceedence Magnitude by Stream and Location**
+
+```{r CuEfxR.fig, fig.height=8, fig.width = 5}
+library(ggplot2); library(scales); library(EnvStats)
+#
+data.CU_w$MLID_ecoR <- (paste(data.CU_w$MLID, data.CU_w$Stream_ecoR, sep=" \n "))
+data.CU_w <- data.CU_w[data.CU_w$MLID %in% CU.mlids,]
+data.CU_w$MLID_ecoR <- factor(data.CU_w$MLID_ecoR, 
+            c("4990340 \n Montane","4990350 \n Upper Basin", "4990320 \n Lower Basin",
+              "4990220 \n Upper Basin", "4990190 \n Lower Basin",
+              "4915630 \n Montane", "4915650 \n Montane", "4990135 \n Upper Basin",
+                "4990020 \n Lower Basin", "4990110 \n Lower Basin", "4990112 \n Lower Basin",
+              "4985465 \n Impounded", "4985800 \n Fringe", "4985810 \n Fringe",
+              "4985820 \n Fringe"))
+#
+ggplot(data = data.CU_w) + theme_bw() + facet_wrap(~Water.Body, ncol=1, scales="free") +
+    geom_boxplot(aes(x = MLID_ecoR, y = as.numeric(CU.EfxR_acut)), 
+                 na.rm=T, outlier.alpha = 0.5, outlier.stroke = 0) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(CU.EfxR_acut))),
+                y.pos = 5.3, size=3) +
+    scale_y_continuous(limits=c(0, 5.5), oob=squish, breaks=c(0:5),
+                       labels=c(0,1,2,3,4,">5")) +
+    ggtitle("Magnitude of Copper Exceedences (acute)") +
+    ylab("Copper Exceedence Ratio ([Cu] / [Cu-numeric criterion])") + xlab(NULL) + 
+    geom_hline(yintercept = 1, lty=2, col="darkgreen")
+
+ggsave(paste("WDC_Cu_AcutEfxR_Box_fig05_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=7, width=5, dpi=500)
+
+ggplot(data = data.CU_w) + theme_bw() + facet_wrap(~Water.Body, ncol=1, scales="free") +
+    geom_jitter(aes(x = MLID_ecoR, y = as.numeric(CU.EfxR_acut), col=Stream_ecoR), 
+                 na.rm=T, width=0.2, size=1.2, height=0) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(CU.EfxR_acut))),
+                y.pos = 5.3, size=3) +
+    scale_y_continuous(limits=c(0, 5.5), oob=squish, breaks=c(0:5),
+                       labels=c(0,1,2,3,4,">5")) +
+    ggtitle("Magnitude of Copper Exceedences (acute)") +
+    ylab("Copper Exceedence Ratio ([Cu] / [Cu-numeric criterion])") + xlab(NULL) + 
+    geom_hline(yintercept = 1, lty=2, col="darkgreen") + guides(col="none")
+
+
+ggsave(paste("WDC_Cu_AcutEfxR_jitt_fig05_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=7, width=5, dpi=500)
+
+```
+
+**Copper Exceedence Magnitude x Stream**
+
+```{r CuEfxR.fig_chron, fig.height=8, fig.width = 5}
+data.CU_w$MLID_ecoR <- (paste(data.CU_w$MLID, data.CU_w$Stream_ecoR, sep=" \n "))
+data.CU_w <- data.CU_w[data.CU_w$MLID %in% CU.mlids,]
+data.CU_w$MLID_ecoR <- factor(data.CU_w$MLID_ecoR, 
+            c("4990340 \n Montane","4990350 \n Upper Basin", "4990320 \n Lower Basin",
+              "4990220 \n Upper Basin", "4990190 \n Lower Basin",
+              "4915630 \n Montane", "4915650 \n Montane", "4990135 \n Upper Basin",
+                "4990020 \n Lower Basin", "4990110 \n Lower Basin", "4990112 \n Lower Basin",
+              "4985465 \n Impounded", "4985800 \n Fringe", "4985810 \n Fringe",
+              "4985820 \n Fringe"))
+#
+ggplot(data = data.CU_w) + theme_bw() + facet_wrap(~Water.Body, ncol=1, scales="free") +
+    geom_jitter(aes(x = MLID_ecoR, y = as.numeric(CU.EfxR_chron), col=Stream_ecoR), 
+                 na.rm=T, width=0.2, size=1.2, height=0) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(CU.EfxR_chron))),
+                y.pos = 5.3, size=3) +
+    scale_y_continuous(limits=c(0, 5.5), oob=squish, breaks=c(0:5),
+                       labels=c(0,1,2,3,4,">5")) +
+    ggtitle("Magnitude of Copper Exceedences  (chronic)") +
+    ylab("Copper Exceedence Ratio ([Cu] / [Cu-numeric criterion])") + xlab(NULL) + 
+    geom_hline(yintercept = 1, lty=2, col="darkgreen") + guides(col="none")
+
+
+ggsave(paste("WDC_Cu_ChronfxR_jitt_fig05_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=7, width=5, dpi=500)
+
+```
+
+**Acute Copper Exceedence Ratio by Stream over time**
+
+```{r CuEfxR_date.fig, fig.height=8, fig.width = 7}
+data.CU_w$Stream_ecoR <- factor(data.CU_w$Stream_ecoR, 
+                                  levels = c("Montane","Upper Basin","Lower Basin" ))
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=SampDate, y = CU.EfxR_acut, color = Stream_ecoR), size=1.5, na.rm=T) + 
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    geom_hline(yintercept=1.0, lty=2, col="darkgreen") +
+    ylab("Cu Exceedence Ratio ([Cu] / [Cu-numeric criterion])") +
+    ggtitle("Acute Copper Exceedences over time") + xlab(NULL)
+#
+ggsave(paste("WDC_Cu_AcutEfxR_DATE_fig06_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=8, width=7, dpi=500)
+
+```
+
+**Chronic Copper Exceedence Ratio by Stream over time**
+
+```{r CuEfxR_date_2.fig, fig.height=8, fig.width = 7}
+data.CU_w$Stream_ecoR <- factor(data.CU_w$Stream_ecoR, 
+                                  levels = c("Montane","Upper Basin","Lower Basin" ))
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=SampDate, y = CU.EfxR_chron, color = Stream_ecoR), size=1.5, na.rm=T,
+               position=position_jitter(height=0.1)) + 
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    scale_y_continuous(limits=c(0,8), oob=squish) +
+    geom_hline(yintercept=1.0, lty=2, col="darkgreen") +
+    ylab("Cu Exceedence Ratio ([Cu] / [Cu-numeric criterion])") +
+    ggtitle("Chronic Copper Exceedences over time") + xlab(NULL)
+#
+ggsave(paste("WDC_Cu_ChronEfxR_DATE_fig07_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=8, width=7, dpi=500)
+
+```
+
+**Seasonal changes in Copper (acute) Exceedences**
+
+```{r CuEfxR_acut_Season_2.fig, fig.height=8, fig.width = 7}
+data.CU_w$Stream_ecoR <- factor(data.CU_w$Stream_ecoR, 
+                                  levels = c("Montane","Upper Basin","Lower Basin" ))
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=SDate, y = CU.EfxR_acut, color = Stream_ecoR), 
+               size=1.5, na.rm=T) + 
+    scale_x_date(limits = c(as.Date("2017-01-01"), as.Date("2017-12-31")),
+                 labels = date_format("%d %b")) +
+    scale_y_continuous(limits=c(0,8), oob=squish) +
+    geom_hline(yintercept=1.0, lty=2, col="darkgreen") +
+    ylab("Cu Exceedence Ratio") +
+    ggtitle("Acute Copper Exceedences by season") + xlab(NULL)
+#
+
+ggsave(paste("WDC_Cu_AcutEfxR_season_fig08_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=8, width=7, dpi=500)
+
+```
+
+
+**Seasonal changes in Copper (chronic) Exceedences**
+
+```{r CuEfxR_Season_2.fig, fig.height=8, fig.width = 7}
+data.CU_w$Stream_ecoR <- factor(data.CU_w$Stream_ecoR, 
+                                  levels = c("Montane","Upper Basin","Lower Basin" ))
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_y") +
+    geom_point(aes(x=SDate, y = CU.EfxR_chron, color = Stream_ecoR), 
+               size=1.5, na.rm=T) + 
+    geom_smooth(aes(x=SDate, y = CU.EfxR_chron, color = Stream_ecoR), 
+                se=F, method="loess", na.rm=T) +
+    scale_x_date(limits = c(as.Date("2017-01-01"), as.Date("2017-12-31")),
+                 labels = date_format("%d %b")) +
+    scale_y_continuous(limits=c(0,8), oob=squish) +
+    geom_hline(yintercept=1.0, lty=2, col="darkgreen") +
+    ylab("Cu Exceedence Ratio") +
+    ggtitle("Chronic Copper Exceedences by season") + xlab(NULL)
+#
+
+ggsave(paste("WDC_Cu_ChronEfxR_season_fig09_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=8, width=7, dpi=500)
+
+```
+
+### 3.0 Consider Flow efx
+
+```{r flow_setup}
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+graph_package <- c("ggplot2", "scales", "EnvStats")
+#
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+```
+
+#### 3.1 Flow CDFs
+
+```{r Flow01}
+awqms1 %>% filter(.$ParamX == "Flow") %>%
+    {table(.$ParamX, .$Samp.frac, useNA = "ifany")}
+# PARAMx == "Flow" is clean and good
+awqms1 %>% filter(.$ParamX == "Flow") %>%
+    {table(.$Stream_ecoR, .$Water.Body, useNA = "ifany")}
+```
+
++ Flow results available for Sites and stream_regions
+
++ Make sure result units for flow are consistent
+
+```{r Flow01_Values}
+awqms1 %>% filter(., ParamX == "Flow") %>%
+    {table(.$Result.Unit, useNA = "ifany")}
+
+
+```
+
++ As of 181019, only 1 record w/ different result-units...leave alone for now (exclude)
+
+
+```{r Flow02}
+flow_dat <- awqms1 %>% 
+    filter(ParamX == "Flow") %>%
+    filter(., .$Result.Unit == "ft3/sec") %>%
+    filter(., .$Activity.Type == "Field Msr/Obs") %>%
+    select(., Monitoring.Location.ID, Activity.ID, Monitoring.Location.Name,
+           Monitoring.Location.Type, Activity.Type, Activity.Start.Date, 
+           Characteristic.Name, Result.Value:Result.Status.ID,
+           Water.Body:SKey1)
+#
+q0 <- ggplot(data=flow_dat[flow_dat$Result.Value > 0,]) + theme_bw()
+q1_0 <- q0 + stat_ecdf(aes(x=Result.Value, col=Water.Body), na.rm=T, lty=1) +
+    ggtitle("Cumulative distribution of Stream-Flows by Stream") +
+    ylab("% of records below X-value") +
+    xlab("Stream Flow rate (ft3/sec  [cfs])") +
+    scale_y_continuous(labels=percent) +
+    scale_x_continuous(oob=squish, limits=c(NA,NA)) +
+    geom_hline(yintercept = c(0.25, 0.5, 0.75), lty=2, color="gray40")
+q1_0
+#
+#
+q1_1 <- q0 + stat_ecdf(aes(x=Result.Value, col=Water.Body), na.rm=T, lty=1) +
+    ggtitle("Cumulative distribution of Stream-Flows by Stream") +
+    ylab("% of records below X-value") +
+    xlab("Stream Flow rate (ft3/sec  [cfs])") +
+    scale_y_continuous(labels=percent) +
+    scale_x_continuous(trans="log10", oob=squish, limits=c(NA,NA)) +
+    geom_hline(yintercept = c(0.25, 0.5, 0.75), lty=2, color="gray40")
+q1_1
+
+q1_2 <- q0 + geom_freqpoly(aes(x=Result.Value, col=Water.Body), na.rm=T, lty=1,
+                           stat="density") +
+    ggtitle("Distribution of Stream-Flows by Stream") +
+    ylab("Frequency") +
+    xlab("Stream Flow rate (ft3/sec  [cfs])") +
+    scale_x_continuous(oob=squish, limits=c(NA,80))
+q1_2
+
+```
+
+#### 3.2 Q x Ci Plot Data
+
+**Cu x Flow**
+
+(Note: Weltands excluded from further flow analysis)
+
+```{r Flow03}
+dat_qCi <- awqms1 %>% 
+    filter(., .$ParamX %in% c("Flow", "CU")) %>%
+    filter(., .$Result.Unit != "gal/min") %>%
+    filter(., .$Activity.Type != "Quality Control Sample-Field Replicate" &
+               .$Activity.Type != "Quality Control Field Replicate Msr/Obs" &
+               .$Activity.Type != "Quality Control Sample-Blind Duplicate") %>%
+    select(., MLID = Monitoring.Location.ID, SiteName = Monitoring.Location.Name,
+           Site.Type = Monitoring.Location.Type, Activity.Type, Activity.Start.Date, 
+           Result.Value:Result.Status.ID,
+           DetCon = Detection.Condition, ResQual = Result.Qualifier,
+           Water.Body:SKey1)
+#
+dat_qCi$ResQual <- ifelse(!is.na(dat_qCi$DetCon),
+                          ifelse(dat_qCi$DetCon == "Not Detected",
+                                 "U",
+                                 dat_qCi$ResQual),
+                                 dat_qCi$ResQual)
+#
+dat_qCi %>% {table(.$ParamX, .$Samp.frac, useNA = "ifany")}
+dat_qCi %>% {table(.$DetCon, .$ResQual, useNA = "ifany", deparse.level = 2)}
+#
+dat_qCi$RV2 <- ifelse(dat_qCi$ParamX == "CU",
+                      ifelse(!is.na(dat_qCi$Result.Value),
+                             dat_qCi$Result.Value,
+                             NA),
+                      ifelse(dat_qCi$ParamX == "Flow",
+                             dat_qCi$Result.Value,
+                             NA))
+dat_qCi %<>% select(MLID:ResQual, RV2, everything())
+#
+dat_qCi$RV2 <- ifelse(!is.na(dat_qCi$ResQual) & dat_qCi$ResQual == "U",
+                       0.5,
+                       dat_qCi$RV2)
+## these data in awqms are a frickin mess...
+# remove zeros in RV
+dat_qCi$RV2 <- ifelse(dat_qCi$RV2 == 0,
+                      NA,
+                      dat_qCi$RV2)
+
+```
+
+```{r Flow04, message=FALSE, warning=FALSE}
+dat_qCi_w <- reshape2::dcast(dat_qCi,
+                             SKey1 + MLID + Water.Body + Stream_ecoR ~ Par_frac,
+                             value.var = "RV2",
+                             fun.aggregate=function(x) mean(x, na.rm=TRUE))
+# code concentration flags in Xtab
+for (j in dat_qCi_w$SKey1) {
+    if(length(unique(dat_qCi$ResQual[dat_qCi$SKey1 == j & dat_qCi$ParamX == "CU"])) > 0) {
+        dat_qCi_w$CU_flag[dat_qCi_w$SKey1 == j] <- 
+            ifelse(is.na(unique(dat_qCi$ResQual[dat_qCi$SKey1 == j & 
+                                                      dat_qCi$ParamX == "CU"])),
+                   NA,
+                   ifelse(unique(dat_qCi$ResQual[dat_qCi$SKey1 == j & 
+                                                 dat_qCi$ParamX == "CU"]) == "U",
+                          "U",
+                          ifelse(unique(dat_qCi$ResQual[dat_qCi$SKey1 == j & 
+                                                        dat_qCi$ParamX == "CU"]) == "J",
+                                 "J",
+                                 NA)))}   }
+#
+
+```
+
+#### 3.3 Q x Ci Plots
+
+```{r dat_review}
+## a truncated full dataset for review / qc
+#
+# x <- awqms1 %>% select(SKey1, Result.Value, Result.Unit, Result.Value.Type,
+#                        Det.Type = Detection.Limit.Type1,
+#                        DetVal = Detection.Limit.Value1,
+#                        Water.Body:Par_frac)
+
+
+```
+
+```{r Flow05}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+QCu.dat <- dat_qCi_w %>% select(-CU_TOT) %>%
+    filter(., .$Water.Body != "Wetlands") 
+QCu.dat$CU_DIS <- ifelse(is.na(QCu.dat$CU_DIS), NA,
+                         QCu.dat$CU_DIS)
+QCu.dat$Flow_TOT <- ifelse(is.na(QCu.dat$Flow_TOT), NA,
+                         QCu.dat$Flow_TOT)
+    
+f01 <- ggplot(data = QCu.dat) + theme_bw() +
+    geom_point(aes(x = Flow_TOT, y = CU_DIS, col=Water.Body), na.rm=T) +
+    scale_x_continuous(trans="log10") + 
+    scale_y_continuous(trans="log10")
+f01
+
+
+```
+
+```{r Flow05_fig2, fig.height=9, fig.width=6}
+f02 <- ggplot(data = QCu.dat) + theme_bw() +
+    facet_wrap(~Water.Body, ncol=1, scales="fixed") +
+    geom_point(aes(x = Flow_TOT, y = CU_DIS, col=Stream_ecoR), na.rm=T) +
+    scale_x_continuous(name="Discharge Rate (ft^3/sec)") + 
+    scale_y_continuous(name="Dissolved Cu concentration (ug/L)")
+f02
+```
+
+
+
+```{r Flow05_fig3, fig.height=6.5, fig.width = 6 }
+ggplot(data = QCu.dat) + theme_bw() +
+    facet_grid(Stream_ecoR~Water.Body, scales="fixed") +
+    geom_point(aes(x = Flow_TOT, y = CU_DIS),
+               na.rm=T, size=1.5) +
+    scale_colour_manual(values=rainbow(11)) +
+    scale_x_continuous(name="Discharge Rate (ft^3/sec)", trans="log10",
+                       limits=c(0.1,100)) + 
+    scale_y_continuous(name="Dissolved Cu concentration (ug/L)",
+                       limits=c(NA,90), oob=squish) +
+    theme(legend.position="none")
+
+
+QCu.dat %>% {table(.$MLID, .$Stream_ecoR, useNA = "ifany")}
+QCu.dat %>% {table(.$MLID, .$Water.Body, useNA = "ifany")}
+
+```
+
+
+### Wrap-Up
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***
+
+

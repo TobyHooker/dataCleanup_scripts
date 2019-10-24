@@ -1,0 +1,743 @@
+---
+title: "Utah Lake Atmospheric Deposition, v2.0"
+author: "T.Hooker"
+date: "29 November, 2017"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 10
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "xtable", "dplyr")
+#lapply(packge.set, library, character.only=T)
+#options(table_counter=FALSE)
+options(scipen = 999, digits = 4)
+#opts_chunk$set(tidy=TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+Utah Lake P-deposition Summary Figures
+
+**171130**    
+
++ Received Updated Data from Jacob Olsen in new file.  
++ Have re-calculated variables.  
++ Will now import new file.  
+
+**New Calculation File work starts in Sect. 1.2**
+
+### 1.0 Data import and cleanup
+
+#### 1.1 Import 
+```{r Import1, eval=F}
+#filename <- choose.files(caption="Select xlsx File to Import", multi=FALSE)
+#DATA.file <- openxlsx::read.xlsx(filename, sheet="DATA.r", startRow = 1, colNames=TRUE, rowNames=FALSE, detectDates=FALSE);
+path.filename <- dirname(filename)
+setwd(path.filename)
+
+# loadWorkbook(filename)
+#openxlsx::getSheetNames(filename) 
+
+```
+
+```{r data1, eval=F}
+DATA0 <- DATA.file
+names(DATA0)
+```
+
+#### 1.2 Import Scaling Calculations
+
+```{r Import2, eval=F}
+#filename2 <- choose.files(caption="Select xlsx File to Import", multi=FALSE)
+#DATA.file2 <- openxlsx::read.xlsx(filename2, sheet="ALL.sites2_X", startRow = 5, colNames=TRUE, rowNames=FALSE, detectDates=FALSE)
+openxlsx::getSheetNames(filename2) 
+
+DATA2 <- DATA.file2
+names(DATA2)
+# clean up some vars
+DATA2 <- DATA2[, -c(1,4:6,8:22,24,34)]
+DATA2 <- DATA2[,-c(4,5,6)]
+```
+
+#### 1.3 Cleanup
+
+```{r data2, eval=F, message=FALSE}
+# convert data-fields to numeric
+DATA2$Vol.ADD.d <- as.numeric(DATA2$Vol.ADD.d); DATA2$Vol.ADD.w <- as.numeric(DATA2$Vol.ADD.w); DATA2$SVol.dry <- as.numeric(DATA2$SVol.dry); DATA2$Svol.wet <- as.numeric(DATA2$Svol.wet); DATA2$Svol.blk <- as.numeric(DATA2$Svol.blk)
+#
+DATA2$NH4.dry <- as.numeric(DATA2$NH4.dry); DATA2$NO32.dry <- as.numeric(DATA2$NO32.dry)
+DATA2$TN.dry <- as.numeric(DATA2$TN.dry); DATA2$SRP.dry <- as.numeric(DATA2$SRP.dry)
+DATA2$TP.dry <- as.numeric(DATA2$TP.dry); DATA2$NH4.wet <- as.numeric(DATA2$NH4.wet)
+DATA2$NO32.wet <- as.numeric(DATA2$NO32.wet); DATA2$TN.wet <- as.numeric(DATA2$TN.wet)
+DATA2$SRP.wet <- as.numeric(DATA2$SRP.wet); DATA2$TP.wet <- as.numeric(DATA2$TP.wet)
+DATA2$NH4.blk <- as.numeric(DATA2$NH4.blk); DATA2$NO32.blk <- as.numeric(DATA2$NO32.blk)
+DATA2$TN.blk <- as.numeric(DATA2$TN.blk); DATA2$SRP.blk <- as.numeric(DATA2$SRP.blk)
+DATA2$TP.blk <- as.numeric(DATA2$TP.blk); 
+#
+DATA2$NH4.dry.F <- as.numeric(DATA2$NH4.dry.F); DATA2$NO32.dry.F <- as.numeric(DATA2$NO32.dry.F)
+DATA2$TN.dry.F <- as.numeric(DATA2$TN.dry.F); DATA2$SRP.dry.F <- as.numeric(DATA2$SRP.dry.F)
+DATA2$TP.dry.F <- as.numeric(DATA2$TP.dry.F); DATA2$NH4.wet.F <- as.numeric(DATA2$NH4.wet.F)
+DATA2$NO32.wet.F <- as.numeric(DATA2$NO32.wet.F); DATA2$TN.wet.F <- as.numeric(DATA2$TN.wet.F)
+DATA2$SRP.wet.F <- as.numeric(DATA2$SRP.wet.F); DATA2$TP.wet.F <- as.numeric(DATA2$TP.wet.F)
+DATA2$NH4.blk.F <- as.numeric(DATA2$NH4.blk.F); DATA2$NO32.blk.F <- as.numeric(DATA2$NO32.blk.F)
+DATA2$TN.blk.F <- as.numeric(DATA2$TN.blk.F); DATA2$SRP.blk.F <- as.numeric(DATA2$SRP.blk.F)
+DATA2$TP.blk.F <- as.numeric(DATA2$TP.blk.F)
+```
+
+
+```{r Dates1, eval=F}
+# fix dates (XLS)
+names(DATA2)[2] <- "Date.0"
+DATA2$Date.0 <- as.Date(as.numeric(DATA2$Date.0), origin="1899-12-30")
+```
+
+
+```{r data3, eval=FALSE}
+# remove 0.0's
+DATA2$Svol.wet[DATA2$Svol.wet == 0] <- NA
+DATA2$SRP.dry[DATA2$SRP.dry == 0] <- NA
+DATA2$SRP.wet[DATA2$SRP.wet == 0] <- NA
+DATA2$TN.dry.X[DATA2$TN.dry.X == 0] <- NA
+DATA2$SRP.dry.X[DATA2$SRP.dry.X == 0] <- NA
+DATA2$SRP.wet.X[DATA2$SRP.wet.X == 0] <- NA
+DATA2$TN.blk.X[DATA2$TN.blk.X == 0] <- NA
+DATA2$TN.Bk.byu.DEP[DATA2$TN.Bk.byu.DEP == 0] <- NA
+DATA2$TN.D.DWQ.DEP[DATA2$TN.D.DWQ.DEP == 0] <- NA
+DATA2$SRP.D.DWQ.DEP[DATA2$SRP.D.DWQ.DEP == 0] <- NA
+DATA2$SRP.W.DWQ.DEP[DATA2$SRP.W.DWQ.DEP == 0] <- NA
+DATA2$TN.Bk.DWQ.DEP[DATA2$TN.Bk.DWQ.DEP == 0] <- NA
+```
+
+#### 1.4 Maintain Variable Units
+
+```{r Units1, eval=F}
+#Gather units
+filename2 <- choose.files(caption="Select xlsx File to Import", multi=FALSE)
+#Var.Units <- openxlsx::read.xlsx(filename2, sheet="Units", startRow = 1, colNames=TRUE, rowNames=FALSE, detectDates=FALSE)
+#openxlsx::getSheetNames(filename2) 
+```
+
+
+### 2.0 Figures
+
+#### 2.1 CDF of BYU-Utah Lake TP concentrations 
+
+```{r Fig1.data, eval=F}
+cdf.dat1 <- DATA0[DATA0$Data.source == "Tipping[1]" | DATA0$Data.source == "Brahney[2]",]
+byu.dat <- DATA2[,c("Site", "TP.D.DWQ.DEP", "TP.D.byu.DEP", "Dry.valid")]
+byu.dat <- reshape2::melt(byu.dat, id.vars=c("Site", "Dry.valid"), variable.name="Calc.grp",
+                           value.name="Pdep.rate")
+byu.dat$Calc.grp2 <- ifelse(byu.dat$Calc.grp == "TP.D.DWQ.DEP", "DWQ", "BYU")
+byu.dat$PDep.2 <- byu.dat$Pdep.rate*365/1000
+byu.dat$PDep.2.units <- "g/m2/y"
+cdf.dat2 <- byu.dat[(byu.dat$Dry.valid != "N" & byu.dat$Dry.valid != "ns"),c("Calc.grp2", "PDep.2", "PDep.2.units")]
+names(cdf.dat2) <- c("Data.source", "P.dep", "Units")
+cdf_data <-  rbind(cdf.dat1, cdf.dat2)
+```
+
+
+```{r Fig1-1b, fig.width=8, fig.asp=0.65}
+# Figure of 4 Overlaying eCDFs based on data.source
+library(ggplot2); library(scales);
+x0 <- ggplot(data=cdf_data) + theme_bw()
+x1 <- x0 + stat_ecdf(aes(x=P.dep, col=Data.source), na.rm=T, lty=1)
+x2 <- x1 + ggtitle("Comparison of atmospheric P deposition from BYU-Utah Lake\n calculations compared to two literature summaries") + ylab("% of records below X-value") + 
+            xlab("TP atm. dep. rate (g/m2/y)") + scale_y_continuous(labels=percent) + 
+            scale_x_continuous(trans="log10", oob=squish, limits=c(0.003, 25), 
+                               breaks = c(0.005, 0.01, 0.05, 0.1, 0.5, 5, 20)) +
+            geom_hline(yintercept = c(0.25, 0.5, 0.75), lty=2, color="gray40") +
+            geom_segment(aes(x=0.27, y=0.5, xend=0.27, yend=0.95), lty=5, col="green4",
+                         arrow=arrow(length=unit(0.03, "npc"), type="closed", ends="both")) +
+            annotate("text", x = 0.35, y = 0.38, hjust=0, vjust=0.1,
+                label="Roughly 50% of Utah Lake \nresults are greater than the\n maximum P-dep rate from\n two global syntheses",
+                color="black", size=3, fontface="italic") +
+            geom_segment(aes(x=4.56, y=0.3, xend=4.56, yend=0.9), lty=5, col="navy",
+                         arrow=arrow(length=unit(0.03, "npc"), type="closed", ends="both")) +
+        annotate("text", x = 5, y = 0.48, hjust=0, vjust=0.1,
+                label="P dep. rate required\n for Utah Lake total\n of 1600 Mg P/y",
+                color="black", size=3, fontface="italic") +
+            theme(legend.position = c(0.8, 0.13), legend.key.height = unit(0.45,"cm"))
+x2
+ggsave("UtahLake_Pdep_fig1_2b.jpeg", x2, width = 7, height=6, dpi=500)
+```
+
+#### 2.2 Boxplots x Site
+
+```{r Fig2-1, message=FALSE, warning=FALSE}
+## FIG-2 : TP concentrations from dry buckets in 2017, UTL
+fig.data <- DATA2[,c("Site", "TP.dry", "TP.wet")]
+fig.data <- reshape2::melt(fig.data, id.vars="Site", variable.name="Sample.Type", value.name="TP.conc")
+z <- ggplot(data=fig.data) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TP.conc, fill=Sample.Type), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.003, NA), 
+                               breaks = c(0.002, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)) +
+            ylab("TP concentration (mg P/L)")
+z2
+```
+
++ It is interesting that the Dry-dep samples have consistently higher concentrations than Wet samples, even though a substantial amount of water (3L) was the initial sample-collection volume in the dry buckets, while the wet buckets were only brought up to 500 mL
+
+```{r Fig3-1}
+# FIG-3 : TP concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TP.dry, fill= Dry.valid), na.rm=T)
+z2 <- z1 + geom_boxplot(aes(x=Site, y = TP.wet, col = "Wet.Samples"), na.rm=T, fill="gray70", alpha=0.5) +
+    scale_y_continuous(trans="log10", oob=squish, limits=c(0.003, NA), 
+                       breaks = c(0.002, 0.01, 0.05, 0.1, 0.5, 1, 5, 10))
+z2
+```
+
+```{r Fig4-1, message=FALSE, warning=FALSE}
+# Fig-4 : NH4 concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = NH4.dry, fill= Dry.valid), na.rm=T)
+z2 <- z1 + geom_boxplot(aes(x=Site, y = NH4.wet, col = "Wet.Samples"), na.rm=T, fill="gray70", alpha=0.5) +
+    scale_y_continuous(trans="log10", oob=squish, limits=c(0.005, NA), 
+                       breaks = c(0.006, 0.01, 0.05, 0.1, 0.5, 1, 5, 10))
+z2
+```
+
+```{r Fig5-1}
+# Fig-5 : NO3 concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = NO32.dry, fill= Dry.valid), na.rm=T)
+z2 <- z1 + geom_boxplot(aes(x=Site, y = NO32.wet, col = "Wet.Samples"), na.rm=T, fill="gray70", alpha=0.5) +
+    scale_y_continuous(trans="log10", oob=squish, limits=c(0.12, NA), 
+                       breaks = c(0.05, 0.15, 0.2, 0.3, 0.4, 0.5, 1, 5, 10))
+z2
+```
+
+```{r Fig6-1}
+# Fig-6 : TN concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TN.dry, fill= Dry.valid), na.rm=T)
+z2 <- z1 + geom_boxplot(aes(x=Site, y = TN.wet, col = "Wet.Samples"), na.rm=T, fill="gray70", alpha=0.5) +
+    scale_y_continuous(trans="log10", oob=squish, limits=c(0.1, NA), 
+                       breaks = c(0.05, 0.15, 0.2, 0.3, 0.4, 0.5, 1, 2, 5, 10))
+z2
+```
+
+```{r Fig7-1}
+# Fig-7 : SRP concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = SRP.dry, fill= Dry.valid), na.rm=T)
+z2 <- z1 + geom_boxplot(aes(x=Site, y = SRP.wet, col = "Wet.Samples"), na.rm=T, fill="gray70", alpha=0.5) +
+    scale_y_continuous(trans="log10", oob=squish, limits=c(0.007, NA), 
+                       breaks = c(0.005, 0.05, 0.15, 0.2, 0.3, 0.5, 1, 2, 5, 10))
+z2
+```
+
+```{r Fig8-1}
+# Fig-8 : Corrected TP concentrations from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TP.dry.X, fill= Dry.valid), na.rm=T, alpha=0.5)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.01, NA), 
+                       breaks = c(0.005, 0.05, 0.15, 0.3, 0.5, 1, 2, 5, 10)) +
+                ylab("Sample-volume Corrected TP concentration (mg P / L)")
+#z2
+```
+
+```{r Fig9-1, fig.width=8, fig.asp=0.6}
+# Fig-9X : P deposition (estimated-evap) from dry buckets in 2017, UTL :: Using only Valid Bucket samples, BYU vs DWQ corretions
+fig.data <- DATA2[,c("Site", "TP.D.DWQ.DEP", "TP.D.byu.DEP", "Dry.valid")]
+fig.data <- reshape2::melt(fig.data, id.vars=c("Site", "Dry.valid"), variable.name="Calc.grp",
+                           value.name="Pdep.rate")
+grp.labs <- c(TP.D.DWQ.DEP = "DWQ", TP.D.byu.DEP = "BYU")
+#
+z <- ggplot(data=fig.data) + theme_bw() + 
+            facet_grid(~Calc.grp, labeller = labeller(Calc.grp = grp.labs))
+z1 <- z + geom_boxplot(aes(x=Site, y = Pdep.rate, fill= Dry.valid, col=Dry.valid), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.05, NA), 
+                              breaks = c(0.005, 0.05, 0.2, 0.5, 1, 2, 5, 10, 30, 100, 400)) +
+    ylab("Estimated atmospheric P deposition (mg P / m2 / d)") + 
+        scale_x_discrete(labels=c("CDSD.wwtp" = "CDSD", "Lake.Shore" = "Lakeshore", 
+                                  "Mosida" = "Mosida", "Orem.wwtp" = "Orem", 
+                                  "Pump.Stn" = "PumpStn", "Saratoga.Spr" = "Saratoga")) +
+        theme(axis.title.x = element_blank(), axis.text.x = element_text(angle=45, hjust=1))
+z2
+#panel.grid.major.y = element_line(color="gray40")
+```
+
+```{r Fig9-2}
+# Fig-9-2 : P deposition (estimated-evap) from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+# BYU calcs
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TP.D.byu.DEP, fill= Dry.valid, col=Dry.valid), na.rm=T, alpha=0.5)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.05, NA), 
+                              breaks = c(0.005, 0.05, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 150)) +
+    ylab("Estimated atmospheric P deposition (mg P / m2 / d)")
+#z2
+```
+
+
+#### 2.3 Calc N:P ratios
+
+```{r data4, eval=F}
+DATA2$TN.TP.dry <- DATA2$TN.dry/DATA2$TP.dry
+DATA2$TNTP.dry_mol <- (DATA2$TN.dry/14)/(DATA2$TP.dry/31)
+```
+
+
+```{r Fig10-1}
+# Fig-10 : N:P (molar) ratios from dry buckets in 2017, UTL :: Using only Valid Bucket samples
+z <- ggplot(data=DATA2) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = `TNTP.dry_mol`, fill= Dry.valid, col=Dry.valid), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.05, NA), 
+                              breaks = c(0.2, 0.5, 1, 2, 5, 10, 30, 100, 300)) +
+    ylab("N:P mol/mol")
+z2
+```
+
+#### 2.4 Dep Rates
+```{r Fig11-1, message=FALSE}
+# Fig-11 : Lake-level P deposition from dry buckets in 2017, UTL BYU vs DWQ
+fig.data <- DATA2[,c("Site", "TP.D.DWQ.DEP", "TP.D.byu.DEP", "Dry.valid")]
+fig.data <- reshape2::melt(fig.data, id.vars=c("Site", "Dry.valid"), variable.name="Calc.grp",
+                           value.name="Pdep.rate")
+
+z <- ggplot(data=fig.data[fig.data$Site != "CDSD.wwtp" & fig.data$Dry.valid != "N" & fig.data$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_jitter(aes(x=Site, y = Pdep.rate, col= Calc.grp), na.rm=T,
+                width=0.13, alpha=0.8)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(NA, NA), breaks=c(0.1,1,5,10,100,200, 500)) +
+    ylab("Estimated atm P deposition to Utah Lake (mg P/m2/d)") + ggtitle("P Dry-deposition rates: byu x dwq")
+z2
+```
+
+```{r 11-2, fig.width=8}
+fig.data <- DATA2[,c("Site", "TP.D.DWQ.DEP", "TP.D.byu.DEP", "Dry.valid")]
+fig.data <- fig.data[(fig.data$Dry.valid != "N" & fig.data$Dry.valid != "ns"),]
+linedat <- data.frame(x1 = 0, y1 = 0, x2 = 500, y2 = 500)
+#
+library(ggplot2); library(scales);
+q <- ggplot(data=fig.data) + theme_bw()
+q1 <- q + geom_point(aes(x = TP.D.byu.DEP, y = TP.D.DWQ.DEP, fill=Dry.valid), 
+                     na.rm=T, shape=21) + xlab("P deposition rate by BYU [mg P/m2/d]") +
+    ylab("P deposition rate by DWQ [mg P/m2/d]")  +
+    scale_y_continuous(limits=c(NA,150)) + scale_x_continuous(limits=c(NA,NA)) + 
+    geom_abline(slope=1, intercept=0, col="darkgreen", lty="99", na.rm=T)
+q1
+# log10 trans for (trans="log10") and limits=c(0.02,NA) show a high-bias by BYU rel. to DWQ
+```
+
++ DWQ estimates of atmospheric [Dry] P deposition are on the order of 10% of preliminary values reported by BYU
+
+
+### 3.0 Summarize by Site / Sampling-interval
+
+#### 3.1 Nutrient Concentrations
+
+```{r calc1, eval=F}
+# mean nutrient concentrations in Dry Dep samples by site
+UTL.DryConc <- data.frame(Site = unique(DATA2$Site))
+for (j in UTL.DryConc$Site) {
+    UTL.DryConc$n_TN.dry[UTL.DryConc$Site == j] <- length(DATA2$TN.dry[!is.na(DATA2$TN.dry) & DATA2$Dry.valid != "N" & DATA2$Site == j])
+    UTL.DryConc$avg_TN.dry[UTL.DryConc$Site == j] <- mean(DATA2$TN.dry[DATA2$Site == j & DATA2$Dry.valid != "N"], na.rm=T)
+    UTL.DryConc$sd_TN.dry[UTL.DryConc$Site == j] <- sd(DATA2$TN.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryConc$n_TP.dry[UTL.DryConc$Site == j] <- length(DATA2$TP.dry[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry) & DATA2$Site == j])
+    UTL.DryConc$avg_TP.dry[UTL.DryConc$Site == j] <- mean(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryConc$sd_TP.dry[UTL.DryConc$Site == j] <- sd(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryConc$n_SRP.dry[UTL.DryConc$Site == j] <- length(DATA2$SRP.dry[DATA2$Dry.valid != "N" & !is.na(DATA2$SRP.dry) & DATA2$Site == j])
+    UTL.DryConc$avg_SRP.dry[UTL.DryConc$Site == j] <- mean(DATA2$SRP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryConc$sd_SRP.dry[UTL.DryConc$Site == j] <- sd(DATA2$SRP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+}
+```
+
+```{r calc1.tab1}
+htmlTable::htmlTable(htmlTable::txtRound(UTL.DryConc, 3), css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(UTL.DryConc)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(UTL.DryConc), nrow=nrow(UTL.DryConc))), rnames=FALSE, align="lccc|ccc|ccc", caption = "Mean Nutrient Concentrations for Dry-dep samples, by Site (mg/L)")
+```
+
+
+```{r calc2, eval=F}
+# mean nutrient concentrations in Wet Dep samples by site
+UTL.WetConc <- data.frame(Site = unique(DATA2$Site))
+for (j in UTL.WetConc$Site) {
+    UTL.WetConc$n_TN.wet[UTL.WetConc$Site == j] <- length(DATA2$TN.wet[!is.na(DATA2$TN.wet) & DATA2$Site == j])
+    UTL.WetConc$avg_TN.wet[UTL.WetConc$Site == j] <- mean(DATA2$TN.wet[DATA2$Site == j], na.rm=T)
+    UTL.WetConc$sd_TN.wet[UTL.WetConc$Site == j] <- sd(DATA2$TN.wet[DATA2$Site == j], na.rm=T)
+    UTL.WetConc$n_TP.wet[UTL.WetConc$Site == j] <- length(DATA2$TP.wet[!is.na(DATA2$TP.wet) & DATA2$Site == j])
+    UTL.WetConc$avg_TP.wet[UTL.WetConc$Site == j] <- mean(DATA2$TP.wet[DATA2$Site == j], na.rm=T)
+    UTL.WetConc$sd_TP.wet[UTL.WetConc$Site == j] <- sd(DATA2$TP.wet[DATA2$Site == j], na.rm=T)
+    UTL.WetConc$n_SRP.wet[UTL.WetConc$Site == j] <- length(DATA2$SRP.wet[!is.na(DATA2$SRP.wet) & DATA2$Site == j])
+    UTL.WetConc$avg_SRP.wet[UTL.WetConc$Site == j] <- mean(DATA2$SRP.wet[DATA2$Site == j], na.rm=T)
+    UTL.WetConc$sd_SRP.wet[UTL.WetConc$Site == j] <- sd(DATA2$SRP.wet[DATA2$Site == j], na.rm=T)
+}
+```
+
+```{r calc2.tab1}
+tab <- UTL.WetConc
+htmlTable::htmlTable(htmlTable::txtRound(tab, 3), css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align="lccc|ccc|ccc", caption = "Mean Nutrient Concentrations for Wet-dep samples, by Site (mg/L)")
+```
+
+
+```{r calc3, eval=F}
+# mean Raw vs Corrected TP concentrations in Dry Dep samples by site
+UTL.DryTP <- data.frame(Site = unique(DATA2$Site))
+for (j in UTL.DryTP$Site) {
+    UTL.DryTP$n_TP.dry[UTL.DryTP$Site == j] <- length(DATA2$TP.dry[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry) & DATA2$Site == j])
+    UTL.DryTP$avg_TP.dry[UTL.DryTP$Site == j] <- mean(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryTP$sd_TP.dry[UTL.DryTP$Site == j] <- sd(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    #
+    UTL.DryTP$n_TP.byu[UTL.DryTP$Site == j] <- length(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry.F) & DATA2$Site == j])
+    UTL.DryTP$avg_TP.byu[UTL.DryTP$Site == j] <- mean(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryTP$sd_TP.byu[UTL.DryTP$Site == j] <- sd(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    #
+     UTL.DryTP$n_TP.dwq[UTL.DryTP$Site == j] <- length(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry.X) & DATA2$Site == j])
+    UTL.DryTP$avg_TP.dwq[UTL.DryTP$Site == j] <- mean(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryTP$sd_TP.dwq[UTL.DryTP$Site == j] <- sd(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+}
+```
+
+```{r calc3.tab1}
+tab <- UTL.DryTP
+htmlTable::htmlTable(htmlTable::txtRound(tab, 3), css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align="lccc|ccc|ccc", caption = "Mean Raw vs Evap-corrected TP conc. in dry-dep samples (mg/L)")
+```
+
+
+```{r calc4, eval=F}
+# mean Raw vs Corrected TP concentrations in Dry Dep samples by Sample-Date group
+UTL.DryTP.dates <- data.frame(Start.Date = unique(DATA2$Date.0))
+for (j in UTL.DryTP.dates$Start.Date) {
+    UTL.DryTP.dates$n_TP.dry[UTL.DryTP.dates$Start.Date == j] <- length(DATA2$TP.dry[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry) & DATA2$Date.0 == j])
+    UTL.DryTP.dates$avg_TP.dry[UTL.DryTP.dates$Start.Date == j] <- mean(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTP.dates$sd_TP.dry[UTL.DryTP.dates$Start.Date == j] <- sd(DATA2$TP.dry[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    #
+    UTL.DryTP.dates$n_TPbyu[UTL.DryTP.dates$Start.Date == j] <- length(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry.F) & DATA2$Date.0 == j])
+    UTL.DryTP.dates$avg_TPbyu[UTL.DryTP.dates$Start.Date == j] <- mean(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTP.dates$sd_TPbyu[UTL.DryTP.dates$Start.Date == j] <- sd(DATA2$TP.dry.F[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    #
+    UTL.DryTP.dates$n_TPdwq[UTL.DryTP.dates$Start.Date == j] <- length(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.dry.X) & DATA2$Date.0 == j])
+    UTL.DryTP.dates$avg_TPdwq[UTL.DryTP.dates$Start.Date == j] <- mean(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTP.dates$sd_TPdwq[UTL.DryTP.dates$Start.Date == j] <- sd(DATA2$TP.dry.X[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+}
+```
+
+```{r calc4.tab1}
+tab <- UTL.DryTP.dates
+tab[,c(2:ncol(tab))] <- htmlTable::txtRound(tab[,c(2:ncol(tab))], 3)
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align="lccc|ccc|ccc", caption = "Mean Raw vs Evap-corrected TP conc. in dry-dep samples by Sample Interval (mg/L)")
+```
+
+#### 3.2 P Deposition Rates
+
+```{r calc5, eval=F}
+# mean P dry-deposition rate and total P dep to Utah Lake
+UTL.DryTP.dep <- data.frame(Site = unique(DATA2$Site))
+for (j in UTL.DryTP.dep$Site) {
+    UTL.DryTP.dep$n_Pdep.byu[UTL.DryTP.dep$Site == j] <- length(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.byu.DEP) & DATA2$Site == j])
+    UTL.DryTP.dep$avg_Pdep.byu[UTL.DryTP.dep$Site == j] <- mean(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    UTL.DryTP.dep$sd_Pdep.byu[UTL.DryTP.dep$Site == j] <- sd(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Site == j], na.rm=T)
+    #
+    UTL.DryTP.dep$n_Pdep.dwq[UTL.DryTP.dep$Site == j] <- length(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.DWQ.DEP) & DATA2$Site == j])
+    UTL.DryTP.dep$avg_Pdep.dwq[UTL.DryTP.dep$Site == j] <- mean(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.DWQ.DEP) & DATA2$Site == j])
+    UTL.DryTP.dep$sd_Pdep.dwq[UTL.DryTP.dep$Site == j] <- sd(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.DWQ.DEP) & DATA2$Site == j])
+}
+```
+
+```{r calc5.tab1}
+tab <- UTL.DryTP.dep
+tab[nrow(tab)+1,] <- NA 
+tab[nrow(tab),2] <- "Avg's"
+tab[nrow(tab),3] <- mean(as.numeric(tab$avg_Pdep.byu),na.rm=T)
+tab[nrow(tab),4] <- sd(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+tab[nrow(tab),6] <- mean(as.numeric(tab$avg_Pdep.dwq), na.rm=T)
+tab[nrow(tab),7] <- sd(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+#
+tab[nrow(tab)+1,] <- NA
+tab[nrow(tab),2] <- "Geo-Mean"
+tab[nrow(tab),3] <- EnvStats::geoMean(as.numeric(tab$avg_Pdep.byu), na.rm=T)
+tab[nrow(tab),4] <- EnvStats::geoSD(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+tab[nrow(tab),6] <- EnvStats::geoMean(as.numeric(tab$avg_Pdep.dwq), na.rm=T)
+tab[nrow(tab),4] <- EnvStats::geoSD(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+#
+tab[,c(3,4,6,7)] <- htmlTable::txtRound(tab[,c(3,4,6,7)], 3)
+#
+htmlTable::htmlTable(htmlTable::txtRound(tab, 3), css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align="l|ccc|ccc", caption = "P Dry-deposition rate for BYU x DWQ calculations (arithmetic mean; mg P/m2/d)", n.tspanner=c(nrow(tab)-1), total="tspanner")
+```
+
+```{r calc6, eval=F}
+# mean P deposition rates (mg/m2/d) by Sample-Date group
+UTL.DryTPDEP.dates <- data.frame(Start.Date = unique(DATA2$Date.0))
+for (j in UTL.DryTPDEP.dates$Start.Date) {
+    #
+    UTL.DryTPDEP.dates$n_PDep.byu[UTL.DryTPDEP.dates$Start.Date == j] <- length(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.byu.DEP) & DATA2$Date.0 == j])
+    UTL.DryTPDEP.dates$avg_PDep.byu[UTL.DryTPDEP.dates$Start.Date == j] <- mean(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTPDEP.dates$sd_PDep.byu[UTL.DryTPDEP.dates$Start.Date == j] <- sd(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    #
+    UTL.DryTPDEP.dates$n_PDep.dwq[UTL.DryTPDEP.dates$Start.Date == j] <- length(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TP.D.DWQ.DEP) & DATA2$Date.0 == j])
+    UTL.DryTPDEP.dates$avg_PDep.dwq[UTL.DryTPDEP.dates$Start.Date == j] <- mean(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTPDEP.dates$sd_PDep.dwq[UTL.DryTPDEP.dates$Start.Date == j] <- sd(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T) }
+```
+
+```{r calc6.tab1}
+tab <- UTL.DryTPDEP.dates
+tab[,c(3,4,6,7)] <- htmlTable::txtRound(tab[,c(3,4,6,7)], 3)
+tab[nrow(tab)+1,] <- NA 
+tab[26,2] <- "Avg's"
+tab[26,3] <- mean(as.numeric(tab$avg_PDep.byu),na.rm=T)
+tab[26,4] <- sd(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+tab[26,6] <- mean(as.numeric(tab$avg_PDep.dwq), na.rm=T)
+tab[26,7] <- sd(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+#
+tab[nrow(tab)+1,] <- NA
+tab[nrow(tab),2] <- "Geo-Mean"
+tab[nrow(tab),3] <- EnvStats::geoMean(as.numeric(tab$avg_PDep.byu), na.rm=T)
+tab[nrow(tab),4] <- EnvStats::geoSD(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+tab[nrow(tab),6] <- EnvStats::geoMean(as.numeric(tab$avg_PDep.dwq), na.rm=T)
+tab[nrow(tab),4] <- EnvStats::geoSD(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+#
+tab[,c(3,4,6,7)] <- htmlTable::txtRound(tab[,c(3,4,6,7)], 3)
+tab$Units[c(26,27)] <- c("mg P/m2/d", "mg P/m2/d")
+#
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align="l|ccc|ccc", caption = "P Dry-deposition rate for BYU x DWQ calculations (arithmetic means; mg P/m2/d)", n.tspanner=c(nrow(tab)-1), total="tspanner")
+```
+
+
+```{r Fig12-1}
+# Fig-11 : Comparison of P Dry-deposition rates 2017, UTL BYU vs DWQ
+fig.data <- DATA2[,c("Site", "Dry.valid", "TP.D.DWQ.DEP", "TP.D.byu.DEP")]
+fig.data2 <- reshape2::melt(fig.data, id.vars = c("Site", "Dry.valid"), 
+                            variable.name="Calc.grp", value.name="TP.d.DEP")
+#
+z <- ggplot(data=fig.data2[fig.data2$Site != "CDSD.wwtp" & fig.data2$Dry.valid != "N" & fig.data2$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = TP.d.DEP, fill= Calc.grp), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(NA, NA), 
+                              breaks=c(0.05, 0.1,1,5,10,100,200, 500)) +
+    ylab("Estimated atm P deposition to Utah Lake (mg P/m2/d)") + ggtitle("P Dry-deposition rates: byu x dwq")
+z2
+```
+
+
+#### 3.3 Utah Lake P deposition estimates
+
+```{r calc6-2, eval=F}
+tab <- UTL.DryTPDEP.dates[,c(1,3,4,6,7)]
+names(tab)[c(2,3,4,5)] <- c("avg_Pdep.BYU", "sd.byu", "avg_Pdep.DWQ", "sd.dwq")
+tab$UtahLake_Pdep.byu <- tab$`avg_Pdep.BYU`*(3.51*10^8)/1000/1000/1000
+tab$sd_Pdep.byu <- tab$`sd.byu`*(3.51*10^8)/1000/1000/1000
+tab$UtahLake_Pdep.dwq <- tab$`avg_Pdep.DWQ`*(3.51*10^8)/1000/1000/1000
+tab$sd_Pdep.dwq <- tab$`sd.dwq`*(3.51*10^8)/1000/1000/1000
+#
+tab <- tab[,c(1,6,7,8,9)]
+tab[,c(2:ncol(tab))] <- htmlTable::txtRound(tab[,c(2:ncol(tab))], 3)
+#
+tab[nrow(tab)+1,] <- NA 
+tab$Summ <- NA
+tab <- tab[,c(ncol(tab), 1:(ncol(tab)-1))]
+tab[26,1] <- "Average"
+tab[26,3] <- mean(as.numeric(tab$UtahLake_Pdep.byu),na.rm=T)
+tab[26,5] <- mean(as.numeric(tab$UtahLake_Pdep.dwq), na.rm=T)
+tab$Units <- NA
+tab[26,7] <- "Mg P/yr"
+tab[nrow(tab)+1,] <- NA 
+tab[nrow(tab),1] <- "Geo-Mean"
+#
+tab[nrow(tab),3] <- EnvStats::geoMean(as.numeric(tab$UtahLake_Pdep.byu), na.rm=T)
+tab[nrow(tab),4] <- EnvStats::geoSD(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)*((3.51*10^8)/1000/1000/1000)
+tab[nrow(tab),5] <- EnvStats::geoMean(as.numeric(tab$UtahLake_Pdep.dwq), na.rm=T)
+tab[nrow(tab),6] <- EnvStats::geoSD(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)*((3.51*10^8)/1000/1000/1000)
+
+tab[nrow(tab),7] <- "Mg P/yr"
+names(tab)[c(3,4,5,6)] <- c("Total P Dep [byu]", "sd_byu", "Total P Dep [dwq]", "sd_dwq")
+#
+tab[,c(3,4,5,6)] <- htmlTable::txtRound(tab[,c(3,4,5,6)], 3)
+
+```
+
+```{r calc6-2.tab1}
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align=c("l", "c"), caption = "P Dry-deposition rates scaled to Utah Lake surface (3.51 x 10^8 m2); (arithmetic mean of sites x date; Mg P/yr)", n.cgroup=c(2,2,2,1), cgroup=c("", "BYU calcs", "DWQ calcs", ""), n.tspanner=c(nrow(tab)-1), total="tspanner")
+```
+
+
+```{r calc7}
+
+mean(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=TRUE)
+sd(DATA2$TP.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=TRUE)
+#
+mean(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=TRUE)
+sd(DATA2$TP.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=TRUE)
+
+```
+
+
+#### 3.4 Other Nutrient Deposition Rates
+
+**Total N**
+
+```{r Fig13-1}
+# Fig-13 : Comparison of Dry-deposition rates 2017 @UTL: BYU vs DWQ
+fig.data <- DATA2[,c("Site", "Dry.valid", "TN.D.DWQ.DEP", "TN.D.byu.DEP")]
+fig.data2 <- reshape2::melt(fig.data, id.vars = c("Site", "Dry.valid"), 
+                            variable.name="Calc.grp", value.name="dry.DEP")
+#
+z <- ggplot(data=fig.data2[fig.data2$Site != "CDSD.wwtp" & fig.data2$Dry.valid != "N" & fig.data2$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = dry.DEP, fill= Calc.grp), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(NA, NA), 
+                              breaks=c(0.05, 0.5,1,2,5,10,100,200, 500)) +
+    ylab("Estimated atm TN dep. to Utah Lake (mg N/m2/d)") + ggtitle("Total-N Dry-deposition rates: byu x dwq")
+z2
+```
+
+**TOTAL N**
+
+```{r calc8, eval=F}
+# mean P deposition rates (mg/m2/d) by Sample-Date group
+UTL.DryTNDEP.dates <- data.frame(Start.Date = unique(DATA2$Date.0))
+for (j in UTL.DryTNDEP.dates$Start.Date) {
+    #
+    UTL.DryTNDEP.dates$n_Dep.byu[UTL.DryTNDEP.dates$Start.Date == j] <- length(DATA2$TN.D.byu.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TN.D.byu.DEP) & DATA2$Date.0 == j])
+    UTL.DryTNDEP.dates$avg_Dep.byu[UTL.DryTNDEP.dates$Start.Date == j] <- mean(DATA2$TN.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTNDEP.dates$sd_Dep.byu[UTL.DryTNDEP.dates$Start.Date == j] <- sd(DATA2$TN.D.byu.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    #
+    UTL.DryTNDEP.dates$n_Dep.dwq[UTL.DryTNDEP.dates$Start.Date == j] <- length(DATA2$TN.D.DWQ.DEP[DATA2$Dry.valid != "N" & !is.na(DATA2$TN.D.DWQ.DEP) & DATA2$Date.0 == j])
+    UTL.DryTNDEP.dates$avg_Dep.dwq[UTL.DryTNDEP.dates$Start.Date == j] <- mean(DATA2$TN.D.DWQ.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T)
+    UTL.DryTNDEP.dates$sd_Dep.dwq[UTL.DryTNDEP.dates$Start.Date == j] <- sd(DATA2$TN.D.DWQ.DEP[DATA2$Dry.valid != "N" & DATA2$Date.0 == j], na.rm=T) }
+```
+
+```{r calc8.tab1}
+tab <- UTL.DryTNDEP.dates
+tab[,c(2:ncol(tab))] <- htmlTable::txtRound(tab[,c(2:ncol(tab))], 3)
+tab[nrow(tab)+1,] <- NA 
+tab[26,2] <- "Avg's"
+tab[26,3] <- mean(as.numeric(tab$avg_Dep.byu),na.rm=T)
+tab[26,4] <- sd(DATA2$TN.D.byu.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+tab[26,6] <- mean(as.numeric(tab$avg_Dep.dwq), na.rm=T)
+tab[26,7] <- sd(DATA2$TN.D.DWQ.DEP[DATA2$Dry.valid != "N"], na.rm=T)
+#
+tab[nrow(tab)+1,] <- NA
+tab[nrow(tab),2] <- "Geo-Mean"
+tab[nrow(tab),3] <- EnvStats::geoMean(as.numeric(tab$avg_Dep.byu), na.rm=T)
+tab[nrow(tab),6] <- EnvStats::geoMean(as.numeric(tab$avg_Dep.dwq), na.rm=T)
+#
+tab[,c(3:(ncol(tab)))] <- htmlTable::txtRound(tab[,c(3:(ncol(tab)))], 3)
+tab$Units[c(26,27)] <- c("mg N/m2/d", "mg N/m2/d")
+#
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, align=c("l", "c"), caption = "TN Dry-deposition rate for BYU x DWQ calculations (arithmetic means; mg TN/m2/d)", n.tspanner=c(nrow(tab)-1), total="tspanner")
+```
+
+
+
+**Total Inorganic N [NH4 + NO32]**
+
+```{r Fig14-1, message=FALSE, warning=FALSE}
+# Fig-14 : Comparison of Dry-deposition rates 2017 @UTL: BYU vs DWQ
+fig.data <- DATA2[,c("Site", "Dry.valid", "NH4.D.DWQ.DEP", "NO32.D.DWQ.DEP",
+                     "NH4.D.byu.DEP", "NO32.D.byu.DEP")]
+fig.data$TIN.D.DWQ.DEP <- fig.data$NH4.D.DWQ.DEP + fig.data$NO32.D.DWQ.DEP
+fig.data$TIN.D.byu.DEP <- fig.data$NH4.D.byu.DEP + fig.data$NO32.D.byu.DEP
+fig.data <- fig.data[,c("Site", "Dry.valid", "TIN.D.DWQ.DEP", "TIN.D.byu.DEP")]
+fig.data2 <- reshape2::melt(fig.data, id.vars = c("Site", "Dry.valid"), 
+                            variable.name="Calc.grp", value.name="dry.DEP")
+#
+z <- ggplot(data=fig.data2[fig.data2$Site != "CDSD.wwtp" & fig.data2$Dry.valid != "N" & fig.data2$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = dry.DEP, fill= Calc.grp), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.1, 300), 
+                              breaks=c(0.05, 0.5,1,2,5,10,100,200, 500)) +
+    ylab("Estimated atm TIN dep. to Utah Lake (mg N/m2/d)") + ggtitle("Total Inorganic N (TIN) Dry-deposition rates: byu x dwq")
+z2
+```
+
+**Total Inorganic N [by moiety]**
+
+```{r Fig15-1, message=FALSE, warning=FALSE}
+# Fig-15 : Comparison of Dry-deposition rates 2017 @UTL: BYU vs DWQ
+fig.data <- DATA2[,c("Site", "Dry.valid", "NH4.D.DWQ.DEP", "NO32.D.DWQ.DEP",
+                     "NH4.D.byu.DEP", "NO32.D.byu.DEP")]
+fig.data2 <- reshape2::melt(fig.data, id.vars = c("Site", "Dry.valid"), 
+                            variable.name="Nform", value.name="dry.DEP")
+#
+z <- ggplot(data=fig.data2[fig.data2$Site != "CDSD.wwtp" & fig.data2$Dry.valid != "N" & fig.data2$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = dry.DEP, fill= Nform), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(0.01, 150), 
+                              breaks=c(0.1, 0.5,1,2,5,10,25, 100,200, 500)) +
+    ylab("Est. atm NH4 & NO32 dep. to Utah Lake (mg N/m2/d)") + ggtitle("Inorganic N Dry-deposition rates: byu x dwq")
+z2
+```
+
+**Soluble Reactive P**
+
+```{r Fig16-1, message=FALSE, warning=FALSE}
+# Fig-16 : Comparison of Dry-deposition rates 2017 @UTL: BYU vs DWQ
+fig.data <- DATA2[,c("Site", "Dry.valid", "SRP.D.DWQ.DEP", "SRP.D.byu.DEP")]
+fig.data2 <- reshape2::melt(fig.data, id.vars = c("Site", "Dry.valid"), 
+                            variable.name="Calc.grp", value.name="dry.DEP")
+#
+z <- ggplot(data=fig.data2[fig.data2$Site != "CDSD.wwtp" & fig.data2$Dry.valid != "N" & fig.data2$Dry.valid != "ns",]) + theme_bw()
+z1 <- z + geom_boxplot(aes(x=Site, y = dry.DEP, fill= Calc.grp), na.rm=T)
+z2 <- z1 + scale_y_continuous(trans="log10", oob=squish, limits=c(NA, NA), 
+                              breaks=c(0.01, 0.05,0.1, 0.5,1,2,5,10,50,100,200, 500)) +
+    ylab("Est. atm SRP dep. to Utah Lake (mg P/m2/d)") + ggtitle("Soluble Reactive P Dry-deposition rates: byu x dwq")
+z2
+```
+
+#### 3.5 Data Distributions
+
+**Dry Deposition Rates**
+
+_Red lines for BYU and Blue for DWQ_
+
+```{r Fig17-1}
+q <- ggplot(data=DATA2[DATA2$Site != "CDSD.wwtp" & DATA2$Dry.valid != "N" & DATA2$Dry.valid != "ns",]) + theme_bw() +
+        geom_freqpoly(aes(x=TP.D.byu.DEP), color="red", na.rm=T) +
+        geom_freqpoly(aes(x=TP.D.DWQ.DEP), color="darkblue", na.rm=T) +
+        scale_x_continuous(limits=c(0.01, NA), trans="log10")
+q
+```
+
+```{r Fig18-1}
+q <- ggplot(data=DATA2[DATA2$Site != "CDSD.wwtp" & DATA2$Dry.valid != "N" & DATA2$Dry.valid != "ns",]) + theme_bw() +
+        geom_freqpoly(aes(x=TN.D.byu.DEP), color="red", na.rm=T) +
+        geom_freqpoly(aes(x=TN.D.DWQ.DEP), color="darkblue", na.rm=T) +
+        scale_x_continuous(limits=c(NA, NA), trans="log10")
+q
+```
+
+```{r Fig19-1}
+q <- ggplot(data=DATA2[DATA2$Site != "CDSD.wwtp" & DATA2$Dry.valid != "N" & DATA2$Dry.valid != "ns",]) + theme_bw() +
+        geom_freqpoly(aes(x=NH4.D.byu.DEP), color="red", na.rm=T) +
+        geom_freqpoly(aes(x=NH4.D.DWQ.DEP), color="darkblue", na.rm=T) +
+        scale_x_continuous(limits=c(NA, NA), trans="log10")
+q
+```
+
+```{r Fig20-1}
+q <- ggplot(data=DATA2[DATA2$Site != "CDSD.wwtp" & DATA2$Dry.valid != "N" & DATA2$Dry.valid != "ns",]) + theme_bw() +
+        geom_freqpoly(aes(x=NO32.D.byu.DEP), color="red", na.rm=T) +
+        geom_freqpoly(aes(x=NO32.D.DWQ.DEP), color="darkblue", na.rm=T) +
+        scale_x_continuous(limits=c(NA, NA), trans="log10")
+q
+```
+
+```{r Fig21-1}
+q <- ggplot(data=DATA2[DATA2$Site != "CDSD.wwtp" & DATA2$Dry.valid != "N" & DATA2$Dry.valid != "ns",]) + theme_bw() +
+        geom_freqpoly(aes(x=SRP.D.byu.DEP), color="red", na.rm=T) +
+        geom_freqpoly(aes(x=SRP.D.DWQ.DEP), color="darkblue", na.rm=T) +
+        scale_x_continuous(limits=c(NA, NA), trans="log10")
+q
+```
+
+***
+### Wrap-Up
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***
