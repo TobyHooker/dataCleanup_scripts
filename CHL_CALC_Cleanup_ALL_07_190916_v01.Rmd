@@ -1,0 +1,262 @@
+---
+title: "CHL Calcs & Cleanup: 2010-2018 [VI]"
+author: "T.Hooker"
+date: "16 September, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable", "tidyverse")
+# 
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=87)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Notes
+
+Prior work compared and compiled data from two (2) active files containing CHL data:  
+
+i) A file for the 2010-2016 CHL data and cleanup procedures, and 
+    + File :: "CHdat5_XX_4.0_190215_t1.xlsx"
+ii) A file for 2017-2018 CHL data based on the more recent UPHL-LIMS system and incorporating a new HPLC method for CHL analysis
+    + File :: "CHL201718_CHL08_03_noDup_dat_190226_t1.xlsx"
+
+Goals were to align dataset-fields, compare calculations, ensure completeness of project datasets, and prepare data for import to AWQMS.  It is anticipated that much of this latter work will be performed on a project-specific basis.
+
+[190310] :: New Notebook / Version to coninue Utah-Lake specific CHL cleanup, matchup and import to AWQMS.
+
++ Continuing Work Elements
+
+**Working Datasets**
+
+1) UTLK CHL 2010 - 2016
+    + Dataframe `utlk_CHL_201016_import01`
+        + Note that some updates to XLS-datafile were made to complete import process
+    + UTLK-specific Activity.IDs for Lake / Non-Lake records were compiled and cleaned
+        + `awqms_ACTID_UTLK_raw_02`
+    + Source dataframe for CHL results [2010-2016] :: `UL1016_09`
+        + Only 370 records from dataframe were transferred to import file.  Remaining records did not have a match to UTLK-specific ACT.IDs
+    + XLS file for import to AWQMS :: `UTLK_CHL_201016_import01_190308_t1.xlsx`
+
+2) UTLK CHL 2017 - 2018
+    + `UL18718_05`
+
+**Prior Work**
+
++ Build from $3.4/ 3.41, but apply cleanup to more recent CHL data (2017-18)
++ Completed CHL 2010-2016 UTAH LAKE import (sect. 3.5.2) from nb: `CHL_Compile_ALL_01_190306_v02.Rmd`
++ Completed CHL 2017/2018 UTAH LAKE import (sect. 6.3) from nb: `CHL_Compile_ALL_02_190310_v01.Rmd`
+
+[190417]  
+
++ Prior to splitting UTLK datasets, working dataframes were:  
+    + `CHL1016_01`
+    + `CHL1718_01`
++ These were saved as .rds files and need to be re-imported for this notebook
+    + see `DF_recovery_190417.r`
+
+
+[190715]
+
++ Getting back to look at CHL data for the remaining records...
++ Will extract WSpur data for Suzan T.
++ **Information on WSpur project can be found in notebook "CHL_Status_ALL_03_190417_v01.Rmd"**
+
+[190813]
+
++ Re-starting CHL-status review
++ ID cleanup needs
++ fix and import datasets...
+
+[190815]  
+
++ Moving forward w/ "_final_" calculations of CHL concentrations for both datasets
++ Then, clean up records characterizing COMPLETENESS and Non-Detects
++ Then, prepare files for AWQMS IMPORT...
++ Current Datafiles::
+  + `CHL1016_02`
+  + `CHL1718_02`
+  + `CHL_param.Date` :: summary table of percent of records w/ Non-Detect flags for CHLA/CHLA.total for both datasets combined.
+
+[190829]
+
++ Have prioritized projects for review of Non-Detect records and possible re-calc of CHL observations from raw absorbance values retrieved from UPHL benchsheets
+  + `"chl_project_Priority_table_190829.docx"`
+
++ Key dates for Non-Detect review are 2013 to 2014 (possibly after, and starting in November, 2012); these benchsheets are on-order from UPHL
+
+***
+
+## Project Notes
+Goal: Review _completeness_-related status of CHL results from both datasets / data-periods and summarize for management review
+
+**Working dataframes [current]**
+
+**2017/2018 Data**
+
+  + `CHL1718_04`
+
+**2010-2016 Data**
+
+  + ~~`CHL1016_04`~~
+  + `CHL1016_08` [_updated 190916_]
+
+***
+***
+
+## Current Work
+
+**Remaining Tasks**
+
+1) ~~Cleanup `PROJ_grp` == "unknown"~~
+2) ~~Clarify and cleanup BENTHIC samples~~
+3) ~~Locate last set of volumes...~~
+4) For Non-Detect issues, pay special attention to U-flags from November, 2012 onward.  (_Not sure when this practice was corrected, but sometime around the change ot the new LIMS (2017?)_)
+5) Re-examine and cleanup **duplicated** records...
+
+
+[190916] :: 
+
++ Review prior (part 06) project summaries
++ Identify and Remove _`Duplicate Records`_
++ Compile / collate measured Absorbance values (**as needed**)
++ Compare corrected results within projects
++ Prepare data for import to AWQMS
+
+***
+
+### Clean up workspace
+
++ _done_ [190917]
+
+
+## 10.0 2010-16 data: Benchsheet-Review Priorities
+
+_Targets_
+
+1) Records after late-2012
+2) Records where volume is available
+3) MLIDs **are Not** `Blanks`
+4) WC only (no Benthic)
+
+### Version 2010-16 dataset
+
+```{r}
+CHL1016_08 -> CHL1016_09
+```
+
+### 10.1 ID Key status-variable-classes
+
+1) RECORD_STATUS
+
+```{r}
+CHL1016_09 %>% {addmargins(table(.$RECORD_STATUS, is.na(.$SKey2), useNA="ifany", 
+                                 deparse.level = 2, dnn=c("RECORD_STATUS", "")),1)}
+```
+
++ **Keep only `RECORD_STATUS` == _NULL_**
+
+2) PARAM_status
+
+```{r}
+CHL1016_09 %>% {addmargins(table(.$PARAM_status, is.na(.$SKey2), useNA="ifany", 
+                                 deparse.level = 2, dnn=c("PARAM_status", "")),1)}
+```
+
++ **Keep only `PARAM_status` == _NULL_**
+
+3) import_status
+
+```{r}
+CHL1016_09 %>% {addmargins(table(.$import_status, is.na(.$SKey2), useNA="ifany", 
+                                 deparse.level = 2, dnn=c("import_status", "")),1)}
+```
+
++ **Keep only `import_status` $not$ _NULL_**
+
+4) Project Groups to prepare for import
+  + %in% `proj_import`
+  
+```{r}
+CHL1016_09 %>% filter(PROJ_grp %in% proj_import) %>%
+  {addmargins(table(.$PROJ_grp, is.na(.$Filt.Vol), useNA="ifany", 
+                    deparse.level = 2, dnn=c("Project Group", "Missing.Volume")))}
+```
+
+### 10.2 Project-Grp Status Summary
+
++ Exclude _ANY_ `.$RECORD_STATUS`
+
+```{r}
+CHL1016_09 %>% 
+  filter(is.na(RECORD_STATUS) &
+           PROJ_grp %in% proj_import) %>%
+  group_by(PROJ_grp) %>%
+  summarize(n.Obs = n(),
+            k_Obs = n_distinct(SKey2),
+            k_Ok = n_distinct(SKey2[!is.na(.$Filt.Vol)], na.rm=T)) %>%
+  as.data.frame() %>%
+  mutate(
+    Review_status = case_when(
+      PROJ_grp %in% c("NPS", "UBI") ~ "IGNORE",
+      PROJ_grp %in% c("BRI", "LAKES", "SBCI", "TMDLLAKES",
+                      "UCASE","WRI") ~ "REVW_NDs",
+      TRUE ~ "OK")) %>%
+  add_row(., PROJ_grp = "TOTALs",
+          n.Obs = sum(.$n.Obs),
+          k_Obs = sum(.$k_Obs),
+          k_Ok = sum(.$k_Ok)) %>%
+  htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T, caption="Project-Group Summary of CHL record availability", align="rl|ccc|l")
+  
+```
+
+
+### 10.5 Identify and Remove Duplicate Records
+
+ k_import = n_distinct(SKey2[!is.na(import_status)], na.rm=T),
+
+***
+***
+***
+
+## END
+```{r}
+CHL1016_09 %>% select(contains("status", ignore.case = T)) %>% names(.)
+# CHL1016_05 %>% {addmargins(table(.$PROJ_grp, .$RECORD_STATUS,
+#                                  useNA="ifany", deparse.level = 2))}
+# CHL1016_07 %>% distinct(RECORD_STATUS) %$% .$RECORD_STATUS
+```
+
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
