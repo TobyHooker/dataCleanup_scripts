@@ -1,0 +1,938 @@
+# Useful Code-Elements and Functions for Data-Cleanup to Keep
+## Will separate R code-blocks w/: 
+``` 
+<...> 
+<... Note: will need to add {r -optional.block.name and handles-} to each chunk >
+```
+****************************************************************
+
+***
+
+# Notebook and Coding Setup
+## Startup && Closeout
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+# 
+if(!all(tidy_package %in% (.packages()))) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!all(graph_package %in% (.packages()))) {invisible(lapply(graph_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose = F))))}
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+## Importing Files
+
+### [AWQMS Standard Export format; or other XLSX files]
+```{r import01}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# data01 <- openxlsx::read.xlsx(file.01, sheet=1, startRow = 1,
+#                               rowNames=FALSE, check.names = T)
+data01.filename <- basename(file.01)
+data01.path <- dirname(file.01)
+```
+
+[Show data characteristics]
++ Filename ::  `r data01.filename`
++ Path ::  `r data01.path`
++ Datafile has :: `r nrow(data01)` records & `r ncol(data01)` fields
++ Record Data Range :: From `r min(data01$Activity.Start.Date)` to `r max(data01$Activity.Start.Date)`
++ Record Sample-Time Range :: From [`r min(data01$Activity.Start.Time, na.rm=T)`] to [`r max(data01$Activity.Start.Time, na.rm=T)`]
+
+***
+
+### [UPHL-EDD files]
+```{r Import0, eval=FALSE}
+files_c <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+c <- lapply(files_c, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename_c <- basename(files_c)
+names(c) <- filename_c
+path.filename_c <- dirname(files_c)
+```
+
+A total of `r length(c)` data files were selected from path:  **`r path.filename_c[1]`**
+
+***
+
+### [.RData files: workspace and data-object files]
+[1]
+```
+file.CFuniq5  <- choose.files(caption="Select _working_ DATA file [*.RData]", multi = FALSE)
+load(file.CFuniq5)
+```
+
+[2]
+```
+file.01 <- choose.files(caption="Select DATA files [*.RData]", multi = TRUE)
+StdExp03 <- get(load(file.01))
+```
++ Filename ::  `r basename(file.01)`
++ Path ::  `r dirname(file.01)`  
++ Last Accessed :: [`r file.mtime(file.01)`]
+
++ DF [`StdExp03`] :: `r nrow(StdExp03)` records and `r ncol(StdExp03)` fields
+
+## Export Files
+### XLS ::  Using OPENXLSX (lib) 
+[1] Multiple dataframes to a single XLS file (multi-tabbed)
+```{r export01, eval=F}
+exp.files <- list("Lab_summary" = Lab_summ1, "CHL_data" = CHLA.dat1, "Lab_comparison" = CHLA_ag.dat2)
+#
+openxlsx::write.xlsx(exp.files, file = paste("UTLK_CHLA_MethodComparison_export01",
+                format(Sys.Date(), "%y%m%d"), ".xlsx", sep=""))
+```
+
+### .RData objects (files and groups of files)
+[1] Multiple DFs loaded into a list will save multiple objects
+```
+save(CHLmethods_dat,
+     file = paste("UtahLake_CHL2017_MethodsData_",
+                                  format(Sys.Date(), "%y%m%d"), ".RData", sep=""))
+```
+
+[2] Single DFs
+```
+save(MonLoc.file, file=paste("MonitoringLocations_awqms_", format(Sys.Date(), "%y%m%d"), ".RData", sep=""))
+```
+
+## Paste to / Copy from ClipBoard
+[1; send vector to Clipboard for pasting into some other file]
+```
+writeClipboard(names(utlk_f_prof_00))
+```
+
+[2; paste vector from ClipBoard to DF / vector]
+```
+readClipboard()-> profile_vars2
+```
+
+***
+
+# Dealing with AWQMS Exports
+## Cleanup Sample_Dates and Times
+```
+data01$Activity.Start.Date <- as.Date(data01$Activity.Start.Date, origin="1899-12-30")
+data01$Analysis.Start.Date <- as.Date(data01$Analysis.Start.Date, origin="1899-12-30")
+data01$Activity.Start.Time <- chron::times((data01$Activity.Start.Time - as.integer(data01$Activity.Start.Time)))
+data01$Analysis.Start.Time <- chron::times((data01$Analysis.Start.Time - as.integer(data01$Analysis.Start.Time)))
+```
+
+## Fields to Keep from AWQMS Standard Export
+```
+awqms_export_fields_tokeep <- c("Organization.ID","Activity.ID","Activity.Type","Activity.Media","Activity.Start.Date", "Activity.Start.Time", "Activity.Relative.Depth","Activity.Depth.Height","Activity.Depth.Height.Unit","Activity.Top.Depth.Height","Activity.Top.Depth.Height.Unit","Activity.Bottom.Depth.Height","Activity.Bottom.Depth.Height.Unit","Project.ID1","Project.ID2","Activity.Conducting.Organization1","Activity.Conducting.Organization2","Monitoring.Location.ID","Monitoring.Location.Name","Monitoring.Location.Type","Activity.Comment","Sample.Collection.Method.ID","Sample.Collection.Method.Context","Sample.Collection.Method.Name","Sample.Collection.Method.Description","Result.UID","Data.Logger.Line","Detection.Condition","Characteristic.Name","Method.Speciation","Sample.Fraction","Result.Value","Result.Unit","Result.Qualifier","Result.Status","Value.Type","Time.Basis","Temperature.Basis","Result.Comment","Result.Depth.Height","Result.Depth.Height.Unit","Analytical.Method.ID","Analytical.Method.Context","Analytical.Method.Name","Analytical.Method.Qualifier","Analytical.Method.Description","Laboratory.Name","Analysis.Start.Date","Analysis.Start.Time","Analysis.Start.Time.Zone","Laboratory.Comment.Code","Detection.Limit.Type1","Detection.Limit.Value1","Detection.Limit.Unit1","Detection.Limit.Type2","Detection.Limit.Value2","Detection.Limit.Unit2","Laboratory.Accreditation.Indicator","Substance.Dilution.Factor1","Lab.Batch.ID","Lab.Sample.ID")
+```
+
+### Generate Summary Table from amwqs-Std-Exp 
+```{r Data_chars01}
+data.file <- data01
+# 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+#
+Data.Vars$Retain <- "drop"
+Data.Vars$Retain[Data.Vars$name_i %in% awqms_export_fields_tokeep] <- "YES"
+##
+htmltools::knit_print.html(htmlTable::htmlTable(Data.Vars, caption ="Structure of AWQMS Standard-Export-File", align = c("clc|c"), css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.8em;", times=ncol(Data.Vars)), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.8em;",ncol=ncol(Data.Vars), nrow=nrow(Data.Vars))), rnames = FALSE, header = c("Field No.", "Field Name", "Class","NAs", "Levels", "Blanks", "Obs", "Retain")))
+```
+
+### Re-code kept Fields for data.review
+```
+data01 %>% select(., awqms_export_fields_tokeep) -> data02
+data02 %<>% select(ORG = Activity.Conducting.Organization1,
+                   ACTID = Activity.ID, ACT.type = Activity.Type, SDate = Activity.Start.Date,
+                   STime = Activity.Start.Time, ACT.depth = Activity.Relative.Depth, 
+                   PROJ01 = Project.ID1, 
+                   MLID = Monitoring.Location.ID, MLID.name = Monitoring.Location.Name,
+                   MLID.type = Monitoring.Location.Type, ACT.comment = Activity.Comment,
+                   DLL = Data.Logger.Line, 
+                   MethodID = Analytical.Method.ID, PARAM = Characteristic.Name, 
+                   SampFrac = Sample.Fraction, 
+                   DetCond = Detection.Condition, 
+                   ResQual = Result.Qualifier, Result.Value, Result.Status, Result.Comment, 
+                   Value.Type,
+                   Limit01_nm = Detection.Limit.Type1, Limit01_val = Detection.Limit.Value1,
+                   Limit02_nm = Detection.Limit.Type2, Limit02_val = Detection.Limit.Value2,
+                   DilFact = Substance.Dilution.Factor1, 
+                   Method_desc = Analytical.Method.Description,
+                   LAB = Laboratory.Name, AnalysisDate = Analysis.Start.Date,
+                   BatchID = Lab.Batch.ID, 
+                   PROJ02 = Project.ID2, everything()
+				   )
+```
+
+# Working with UPHL EDDs
+
+## Import and Summarize EDDs (from uphl *.txt files)
+```{r Import0, eval=FALSE}
+files <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+b <- lapply(files, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename <- basename(files)
+names(b) <- filename
+path.filename <- dirname(files)
+```
+
+A total of `r length(b)` data files were selected from path:  
+
+**`r path.filename[1]`**
+
+```{r show.Import0, warning=FALSE}
+options(width=95)
+file.list <- c(filename)
+length(file.list) <- prod(dim(matrix(file.list, ncol=3)))
+filelist.dat <- data.frame(matrix(data=(file.list), ncol=3, byrow=TRUE))
+htmlTable::htmlTable(filelist.dat, caption = "Names of imported data files", css.cell = rbind(rep("padding-left: 1em; padding-right: 1em;font-size: 0.8em;", times=ncol(filelist.dat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;", ncol=ncol(filelist.dat), nrow=nrow(filelist.dat))), align="l", header = rep(NA, times = ncol(filelist.dat)))
+```
+
+### Summarize imported EDDs
+```{r FILES1}
+file_Summ <- data.frame()
+for (i in 1:length(b)) {
+    file_Summ <- rbind(file_Summ, 
+        data.frame(n = i, File.name = names(b[i]), n_recs = nrow(b[[i]]),
+                   min_SDate = min(as.Date(b[[i]]$Sample.Date,format = "%m/%d/%Y")),
+                   max_SDate = max(as.Date(b[[i]]$Sample.Date,format = "%m/%d/%Y")),
+                   Site = length(unique(b[[i]]$Station.ID)),
+                   Sample = length(unique(b[[i]]$Project.Name)),
+                   Method = length(unique(b[[i]]$Method.Description)),
+                   Param = length(unique(b[[i]]$Param.Description))
+        ))   }
+TOT <- as.data.frame(cbind(NA, "Totals", format(sum(file_Summ[, "n_recs"], na.rm=T), big.mark=","), NA, NA, format(sum(file_Summ[, "Site"], na.rm=T), big.mark=","), format(sum(file_Summ[, "Sample"], na.rm=T), big.mark=","), NA, NA))
+names(TOT) <- names(file_Summ)
+file_Summ_x <- rbind(file_Summ, TOT)
+```
+
+```{r show.FILES1}
+htmlTable::htmlTable(file_Summ_x, caption = "Data file Summary", css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(file_Summ_x)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;",ncol=ncol(file_Summ_x), nrow=nrow(file_Summ_x))), rnames=FALSE, align=c("l", "l", "c"), total = TRUE)
+```
+
+## Methods and Method-Groups from EDDs
+```{r meta02}
+methodIDs <- data.frame(Method.ID = sort(unique(dat02_summ1$MethodID)))
+metals.methID <- c("200.8", "245.1", "3114C", "200.7", "3114-C")
+nutr.methID <- c("350.1", "365.1", "353.2", "LACHAT", "5310B", "351.2", "4500-N-C", "5310-B")
+BOD.methID <- c("5210B", "5210-B")
+Gen.methID <- c("120.1", "160.1", "160.2", "180.1", "325.2", "375.2", "2320B", "300", "370.1", "160.4", "150.1", "2320-B", "2540-D", "300.0")
+hard.methID <- c("2340B")
+H2S.methID <- c("376.2")
+CHLA.methID <- c("10200H")
+PERI.methID <- c("10300C")
+Ecoli.methID <- c("9223-QT", "Colilert/2000")
+newCHL.methID <- c("HPLC", "HPLCmod")
+HAB.methID <- c("546")
+Organic.methID <- c("8260B")
+#
+for (i in 1:nrow(methodIDs)) {
+    methodIDs$Method_type[i] <- 
+    ifelse(methodIDs$Method.ID[i] %in% metals.methID, "Metals",
+    ifelse(methodIDs$Method.ID[i] %in% nutr.methID, "Nutrients",
+    ifelse(methodIDs$Method.ID[i] %in% BOD.methID, "BOD",
+    ifelse(methodIDs$Method.ID[i] %in% Gen.methID, "Gen Chem",
+        ifelse(methodIDs$Method.ID[i] %in% hard.methID, "Hardness",
+               ifelse(methodIDs$Method.ID[i] %in% H2S.methID, "Sulfide",
+        ifelse(methodIDs$Method.ID[i] %in% Ecoli.methID, "E.coli",
+        ifelse(grepl("FIELD", methodIDs$Method.ID[i],
+                     ignore.case = T), "Field result",
+               ifelse(methodIDs$Method.ID[i] %in% Organic.methID, "Organics",
+               "unk")))))))))    }
+#
+## translate Method_types to Data_types
+methodIDs$Data_type <- ifelse(methodIDs$Method_type == "unk", "junk",
+                              ifelse(methodIDs$Method_type %in% c("Gen Chem", "Metals",
+                                                                  "Nutrients", "Sulfide",
+                                                                  "BOD", "Organics"),
+                                     "LAB",
+                                     ifelse(grepl("FIELD", methodIDs$Method_type,
+                                                  ignore.case = T), "Field",
+                                            ifelse(methodIDs$Method_type == "E.coli",
+                                                   "Ecoli",
+                                            "?"))))
+#
+htmltools::knit_print.html(htmlTable::htmlTable(methodIDs, caption ="Method IDs in ACTID file", align = c("rcl"), css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.8em;", times=ncol(methodIDs)+1), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.8em;",ncol=ncol(methodIDs)+1, nrow=nrow(methodIDs)))))
+```
+
+### Summarize EDD Method-Groups
+```
+file_Summ2 <- data.frame()
+for (i in 1:length(b)) {
+    file_Summ2 <- rbind(file_Summ2, 
+        data.frame(n = i, File.name = names(b[i]), n_recs = nrow(b[[i]]),
+Mets = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% metals.methID])),
+Nutr = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% nutr.methID])),
+GChem = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% Gen.methID])),
+BOD = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% BOD.methID])),
+Hardn = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% hard.methID])),
+Sulfide = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% H2S.methID])),
+CHLA = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% CHLA.methID])),
+Peri = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% PERI.methID])),
+Ecoli = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% Ecoli.methID])),
+CHL_new = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% newCHL.methID])),
+HAB = length(unique(b[[i]]$Project.Name[trimws(b[[i]]$Method.ID) %in% HAB.methID]))
+        ))   }
+#
+TOT <- as.data.frame(cbind(NA, "Totals", format(sum(file_Summ2[, "n_recs"], na.rm=T), big.mark=","), format(sum(file_Summ2[, "Mets"], na.rm=T), big.mark=","), format(sum(file_Summ2[, "Nutr"], na.rm=T), big.mark=","), format(sum(file_Summ2[, "GChem"], na.rm=T), big.mark=","), sum(file_Summ2[, "BOD"], na.rm=T), sum(file_Summ2[, "Hardn"], na.rm=T), sum(file_Summ2[, "Sulfide"], na.rm=T), sum(file_Summ2[, "CHLA"], na.rm=T), sum(file_Summ2[, "Peri"], na.rm=T), sum(file_Summ2[, "Ecoli"], na.rm=T), sum(file_Summ2[, "CHL_new"], na.rm=T),
+                           sum(file_Summ2[, "HAB"], na.rm=T)))
+names(TOT) <- names(file_Summ2)
+file_Summ2_x <- rbind(file_Summ2, TOT); rm(TOT)
+#
+htmlTable::htmlTable(file_Summ2_x, caption = "Data file Bottle Summary", css.cell = rbind(rep("padding-left: 0.6em; padding-right: 0.6em;font-size: 0.75em;", times=ncol(file_Summ2_x)), matrix("padding-left: 0.6em; padding-right: 0.6em; font-size: 0.77em;",ncol=ncol(file_Summ2_x), nrow=nrow(file_Summ2_x))), rnames=FALSE, align=c("r","l", "c"), total=TRUE)
+```
+
+## Convert EDDs (list) to Data.Frame and Cleanup Fields
+
+```{r EDD.extract}
+EDD.dat1 <- plyr::ldply(c, .id="Lab.filename")
+#**Fix EDD-Dates**
+EDD.dat1$Sample.Date <- as.Date(lubridate::parse_date_time(EDD.dat1$Sample.Date, "mdy HMS", truncated=3))
+EDD.dat1$Sample.Received.Date <- as.Date(lubridate::parse_date_time(EDD.dat1$Sample.Received.Date, "mdy HMS", truncated=3))
+EDD.dat1$Analysis.Date <- as.Date(lubridate::parse_date_time(EDD.dat1$Analysis.Date, "mdy HMS", truncated=3))
+## Sample.Time should be okay
+#**Add MLID as -Character.string- of `Station.ID`**
+EDD.dat1$MLID <- as.character(EDD.dat1$Station.ID)
+#**Clean up Method.IDs**
+EDD.dat1$Method.ID <- trimws(EDD.dat1$Method.ID)
+#**Clean up Trip.IDs**
+EDD.dat1$Trip.ID <- trimws(EDD.dat1$Trip.ID)
+EDD.dat1$Trip.ID <- ifelse(!is.na(EDD.dat1$Trip.ID),
+                           ifelse(EDD.dat1$Trip.ID == "", NA, EDD.dat1$Trip.ID), NA)
+#**Extract Project[s] from Trip.IDs**
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+EDD.dat1$project <- 
+    trimws(EDD.dat1$Trip.ID) %>%
+    {stringr::str_to_upper(.)} %>%
+    {stringr::str_extract(., "[:alpha:]+")}
+#**Clean up Sample.Descriptions**
+EDD.dat1$Sample.Description <- ifelse(EDD.dat1$Sample.Description == "",
+                                      NA,
+                                      EDD.dat1$Sample.Description)
+```
+
+## more date cleanup
+####**Fix EDD-Dates**
+date_vars <- select(EDD.0, contains("date", ignore.case = T)) %>% names(.)
+#
+EDD.0 %<>% mutate_at(
+    .vars = date_vars,
+    .funs = funs(as.Date(lubridate::parse_date_time(., "mdy HMS", truncated = 3))))
+
+CHL1016_07 <- CHL1016_06_x %>% 
+  mutate_at(vars(contains("date", ignore.case = T)),
+                           funs(as.Date(., origin="1899-12-30")) )
+
+## Cleanup / Truncate Activity.ID
+```
+data03 %<>% mutate(ACT_trunc = NA) %>% select(., ACTID, ACT_trunc, everything())
+for (i in 1:nrow(data03)) {
+    data03$ACT_trunc[i] <- paste(
+        stringr::str_split(data03$ACTID[i],"-", simplify = T)[,c(1:3)], collapse="-")  }
+```
+
+## Trip.ID cleanup from UPHL Activity.IDs
+```
+data03 %<>%
+    mutate(TripID = {trimws(substr(.$ACTID, 1,
+                                  regexpr("-", .$ACTID)-1))}) %>%
+        mutate(Project_name = {trimws(substr(.$TripID, 1,
+                                     (stringr::str_locate(.$TripID,
+                                                          "[0-9]")[,1])-1))}) %>%
+    select(ACTID:ACT.depth, TripID, Project_name, everything())
+data03$Project_name <- ifelse(is.na(data03$Project_name),
+                              data03$TripID,
+                              data03$Project_name)
+```
+
+## Calculate Sample Keys
+```{r recalc_keys}
+edd06_compareDupes %<>% 
+    mutate(
+        SKey1 = paste(.$MLID2, 
+                      as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                      sep="."),
+        SKey2 = paste(.$MLID2, 
+                      as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                      .$Sample.Number,
+                      sep="."),
+        PARAM.key = paste(.$ParamX,
+                          .$Sample.Matrix,
+                          sep=".")) %>%
+    mutate(
+        SKey3 = paste(.$SKey2,
+                      .$PARAM.key,
+                      sep="."),
+        SKey4 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      sep="."),
+        SKey5 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      .$PARAM.key,
+                      sep="."), 
+        SKey6 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      .$PARAM.key,
+                      .$Proj2,
+                      sep="."))
+```
+
+## Identifying and Fixing Duplicated Records
+
+[1]
+```
+EDD.dat3 %>% 
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    .[duplicated(.$SKey3),"SKey3"] -> SKey3_dupes
+## Label Dupes
+EDD.dat3 %<>% mutate(
+    dupe_sk3 = case_when(
+        SKey3 %in% SKey3_dupes ~ "dupe.rec",
+        TRUE ~ as.character(NA)
+    ))
+## Summaries
+EDD.dat3 %>%
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(!is.na(dupe_sk3)) %>% distinct(SKey3, Lab.filename, RECORD_status) %>% 
+    {table(.$Lab.filename, .$RECORD_status, useNA="ifany")}
+
+EDD.dat3 %>%
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(!is.na(dupe_sk3)) %>% 
+    {addmargins(table(.$Lab.filename, .$RECORD_status, useNA="ifany"))}
+```
+
+[2]
+```
+EDD.dat6 %>%
+    filter(is.na(RECORD_status)) %>%
+    {table(.$SKey6, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    {table(.$Freq)}
+#
+EDD.dat6 %>%
+    filter(is.na(RECORD_status)) %>%
+    {table(.$SKey6, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) %>% arrange(Var1) -> Dupe02
+##
+EDD.dat6 %<>% mutate(dupe_sk6 = NA) %>% mutate(
+    dupe_sk6 = case_when(
+        paste(.$SKey5, .$TripID2, sep="_") %in% Dupe02$Var1 ~ "dupe.rec",
+        TRUE ~ as.character(NA) ))
+```
+
+### Compare Duplicate Record-Pairs
+
+```{r SKey6_dupe03Compare}
+# keep order of SKey6 for matchup
+Dupe03  %<>% arrange(Var1) 
+EDD.dat6 %<>% arrange(SKey6)
+#
+CharDIFF <- data.frame(); NumDIFF <- data.frame()
+#
+for (j in Dupe03$Var1) {
+    DUPE.j <- EDD.dat6[EDD.dat6$SKey6 == j,]
+# numeric fields
+    DIFF.rv <- ifelse(
+                var(c(DUPE.j$Result.Value), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.sampnum <- ifelse(
+                var(as.numeric(c(DUPE.j$Sample.Number)), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.samptype <- ifelse(
+                var(c(DUPE.j$SType2), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.testnum <- ifelse(
+                var(c(DUPE.j$Test.Number), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.lrl <- ifelse(
+                var(c(DUPE.j$Lower.Report.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.mdl <- ifelse(
+                var(c(DUPE.j$Method.Detect.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.df <- ifelse(
+                var(c(DUPE.j$Dilution.Factor), na.rm=TRUE) > 0, "YES", "no")
+    NumDIFF <- rbind(NumDIFF, data.frame(KEY.1 = j, DIFF.rv, DIFF.sampnum, DIFF.samptype, DIFF.testnum, DIFF.lrl, DIFF.mdl, DIFF.df))
+    ## character fields
+    for (k in 1:nrow(DUPE.j)) {
+        DIFF.labfile <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.projnm <- ifelse(
+            as.logical(setequal(DUPE.j$Project.Name[k], DUPE.j$Project.Name)),
+            "no", "YES")
+        DIFF.batchnum <- ifelse(
+            as.logical(setequal(DUPE.j$Batch.Number[k], DUPE.j$Batch.Number)),
+            "no", "YES")
+        DIFF.anldate <- ifelse(
+            as.logical(setequal(DUPE.j$Analysis.Date[k], DUPE.j$Analysis.Date)),
+            "no", "YES")
+        DIFF.FILE <- ifelse(
+            as.logical(setequal(DUPE.j$FILE[k], DUPE.j$FILE)),
+            "no", "YES")
+        DIFF.METHid <- ifelse(
+            as.logical(setequal(DUPE.j$Method.ID[k], DUPE.j$Method.ID)),
+            "no", "YES")
+        DIFF.METHgrp <- ifelse(
+            as.logical(setequal(DUPE.j$Method.GRP[k], DUPE.j$Method.GRP)),
+            "no", "YES")
+        DIFF.ParamX <- ifelse(
+            as.logical(setequal(DUPE.j$ParamX[k], DUPE.j$ParamX)),
+            "no", "YES")
+        CharDIFF <- rbind(CharDIFF, data.frame(KEY.1 = j, DIFF.labfile, DIFF.projnm, DIFF.batchnum, DIFF.anldate, DIFF.FILE, DIFF.METHid, DIFF.METHgrp, DIFF.ParamX)) }  
+    DIFFs <- merge(CharDIFF, NumDIFF)  }
+## bring it all together
+DIFFs %<>% distinct(.)
+edd06_compareDupes <- left_join(EDD.dat6, distinct(DIFFs),
+                                by = c("SKey6" = "KEY.1"))
+```
+
+#### Generate Pattners of Duplicated Records (which fields vary and why)
+
+```{r dupe04, eval=F}
+# combine all Dupe-responses
+edd06_compareDupes$DIFF.all <- paste(paste(edd06_compareDupes$DIFF.labfile, edd06_compareDupes$DIFF.projnm, edd06_compareDupes$DIFF.batchnum, edd06_compareDupes$DIFF.anldate, sep="."), paste(edd06_compareDupes$DIFF.rv, edd06_compareDupes$DIFF.sampnum, edd06_compareDupes$DIFF.samptype, edd06_compareDupes$DIFF.testnum, edd06_compareDupes$DIFF.lrl, edd06_compareDupes$DIFF.mdl, edd06_compareDupes$DIFF.df, sep="."), sep="_")
+##
+edd06_compareDupes %<>% mutate(
+    DIFF.all = case_when(
+        DIFF.all == "NA.NA.NA.NA_NA.NA.NA.NA.NA.NA.NA" ~ as.character(NA),
+        !is.na(DIFF.all) ~ DIFF.all,
+        is.na(DIFF.all) ~ as.character(NA)
+    ))
+	
+edd06_compareDupes %>% 
+    filter(is.na(RECORD_status)) %>%
+    filter(!grepl("CHL", .$Method.GRP)) %>%
+    {addmargins(table(.$DIFF.all, .$Proj_SET, useNA="ifany", deparse.level = 2))} %>%
+    as.data.frame.matrix(.) %>% tibble::rownames_to_column(var="GRP") %>%
+    htmlTable::htmlTable(., align=c("rlccccccc"),
+                         css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+```
+
+
+
+
+*******************************************************************************
+
+# Data Presentation
+
+## Making Tables
+### Make HTMLTables from a PIPE
+#### Generate htmlTable::htmlTable() template in a doc
+
+[This block provides row-names but no TOTAL, for 2x2 table]
+`r {data} %>% {table(.$VAR1, .$VAR2, useNA="ifany", deparse.level=1)} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+[This block provides row-names and TOTAL-row, for 2x2 table]
+`r RCode_01 %>% {addmargins(table(paste(.$TripID2, .$Sample.Date, sep="_"), .$Method.ID, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rccccccl"), caption="",
+header=c(""), total=T)`
+
+### General HTMLTable features
+#### Lines spanning Tables
+
+[This block will add a specified number of table-spanning lines w/ an optional set of sub-headers; total of n.tspanner MUST EQUAL TOTAL NUMBER of ROWS in TABLE]
+```
+[data] %>% [filtering and/or {table} generation] %>% htmltable...
+##
+EDD.dat1 %>% {addmargins(table(.$ParamMeth, .$PARAM_status, useNA="ifany", deparse.level = 2))} %>%
+    as.data.frame.matrix(.) %>% tibble::rownames_to_column(., "ParamMeth") %>%
+    setNames(., c("ParamMeth", "REJECT", "Keep","n_Records")) %>%
+    left_join(., 
+              distinct(select(EDD.dat1,
+                              ParamMeth, ParamX, Method.ID, Method.GRP)),
+              by = c("ParamMeth" = "ParamMeth")) %>%
+    arrange(Method.GRP, Method.ID, ParamX) %>%
+    distinct(ParamMeth, REJECT, Keep, n_Records, ParamX, Method.ID, .keep_all = T) %>%
+    select(Method.GRP, ParamX, Method.ID, Keep, REJECT, n_Records) %>%
+    htmlTable::htmlTable(.,
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;",
+        times=ncol(.)+1), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.7em;",
+                                 ncol=ncol(.)+1, nrow=nrow(.))), align=c("rlllrrr"),
+        caption="Parameter summary by Method-Group and Pass-thru Status", total=T,
+        n.tspanner=c(4,9,21,8,28,6,2,2,3,53,1), 
+        tspanner=c("","","","","","","","","","","",""),
+		css.tspanner.sep = "border-top: 1px solid;")
+```
+[Can also set set the Total Row w/ t-spanner...]
+```
+htmlTable::htmlTable(., ..., n.tspanner=c(nrow(tab)-1), total="tspanner")
+
+#### Row-Groups
+```
+htmlTable::htmlTable(Data.Vars, caption ="Datafile Characteristics [field_dat1]", 
+                     align = c("clc|c"), 
+                     css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.8em;",
+                                times=ncol(Data.Vars)), 
+                                matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.8em;",
+                                       ncol=ncol(Data.Vars), 
+                                       nrow=nrow(Data.Vars))), 
+                     rnames = FALSE, 
+                     header = c("Field No.", "Field Name", "Class","NAs", "Levels", "Blanks", "Obs"),
+                     n.rgroup=c(23,23), rgroup=c("----   Metadata   ----","----   Results   ----"),
+                     css.rgroup = "font-weight: 700; text-align: center; font-style: italic;",
+                     n.tspanner=c(23, 23), tspanner=c("",""))
+```
+[Additional options:::]
+```
+htmlTable(..., col.rgroup = c("none", "none", "grey70","grey70"),...)
+```
+
+## Creating Figures Using ggplot2
+### Cumulative Distribution Functions (Use piping as well, see below)
+[Requires libraries "ggplot2" and "scales" - at minimum]
+```
+x0 <- ggplot(data=cdf_data) + theme_bw()
+x1 <- x0 + stat_ecdf(aes(x=P.dep, col=Data.source), na.rm=T, lty=1)
+x2 <- x1 + ggtitle("Comparison of atmospheric P deposition from BYU-Utah Lake\n calculations compared to two literature summaries") + ylab("% of records below X-value") + 
+            xlab("TP atm. dep. rate (g/m2/y)") + scale_y_continuous(labels=percent) + 
+            scale_x_continuous(trans="log10", oob=squish, limits=c(0.003, 25), 
+                               breaks = c(0.005, 0.01, 0.05, 0.1, 0.5, 5, 20)) +
+            geom_hline(yintercept = c(0.25, 0.5, 0.75), lty=2, color="gray40") +
+            geom_segment(aes(x=0.27, y=0.5, xend=0.27, yend=0.95), lty=5, col="green4",
+                         arrow=arrow(length=unit(0.03, "npc"), type="closed", ends="both")) +
+            annotate("text", x = 0.35, y = 0.38, hjust=0, vjust=0.1,
+                label="Roughly 50% of Utah Lake \nresults are greater than the\n maximum P-dep rate from\n two global syntheses",
+                color="black", size=3, fontface="italic") +
+            geom_segment(aes(x=4.56, y=0.3, xend=4.56, yend=0.9), lty=5, col="navy",
+                         arrow=arrow(length=unit(0.03, "npc"), type="closed", ends="both")) +
+        annotate("text", x = 5, y = 0.48, hjust=0, vjust=0.1,
+                label="P dep. rate required\n for Utah Lake total\n of 1600 Mg P/y",
+                color="black", size=3, fontface="italic") +
+            theme(legend.position = c(0.8, 0.13), legend.key.height = unit(0.45,"cm"))
+x2
+ggsave("UtahLake_Pdep_fig1_2b.jpeg", x2, width = 7, height=6, dpi=500)
+```
+
+### Box-Plots w/ added Jitter-dots
+```
+v0 <- ggplot(data=OW4.dat, aes(x=factor(Month), y=Temp, col=Year.FX)) + theme_bw();
+v1 <- v0 + geom_boxplot(na.rm=T, outlier.shape=NA) + 
+    scale_colour_tableau() +
+    labs(col="Sampling Year") + 
+    geom_jitter( position=position_jitter(width=0.25), na.rm=T);
+v2 <- v1 + ggtitle("Changes in Water Temperature by Month \nin Willard Spur (2011-2013)");
+v3 <- v2 + xlab("Calendar Month") + ylab(paste(OW4.nm[50,2], " (", OW4.nm[50,3],")"));
+ggsave(file="WSpur_Temp-x-Month_fig2.jpeg", width=5, height=4, dpi=500);
+```
+
+### Grouped-Boxplots
+```
+bills4.df %>% filter(Date.Received > as.Date("2017-12-31")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    filter(., Category %in% c("INO", "MTL")) %>%
+    ggplot(., aes(y=TAT, x = (as.factor(month_Sample)), col=Category)) + theme_bw() +
+    scale_colour_brewer(palette = "Set1") +
+    geom_boxplot(na.rm=T, position = position_dodge2(preserve = "single")) + 
+    {facet_wrap( ~ Yr_Rcvd, 
+                strip.position="bottom", scales="fixed")} +
+    theme(panel.spacing = unit(0, "lines"),
+          strip.background = element_blank(),
+          strip.placement = "outside") +
+    ggtitle("2018 to present, Monthly TAT by Chemistry-Group") +
+    scale_y_continuous(name="Turnaround Time for Reported Analyses (days)",
+                       limits=c(NA,NA), oob=squish) +
+    scale_x_discrete(name="Calendar Month and Year",
+                     labels=month.abb) +
+    geom_hline(yintercept=21, lty=2, color="red") +
+    geom_hline(yintercept=14, lty=2, color="darkgreen")
+```
+
+[Added sample-size to plots]
+```
+ggplot(data = hard01) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_x") +
+    geom_boxplot(aes(x = MLID_ecoR, y = as.numeric(Result.Value))) +
+    stat_n_text(aes(x = MLID_ecoR, y = length(!is.na(Result.Value))), y.pos=500,
+                size=3) +
+    ggtitle("Distribution of Hardness values by stream name\nand site order") +
+    ylab("Hardness (as CaCO3 equiv (mg/L)") + xlab(NULL) +
+    geom_hline(yintercept=400, lty=2, col="darkgreen")
+#
+ggsave(paste("WDC_HARD_fig01b_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), 
+       height=8, width=5, dpi=500)
+```
+
+[side-ways boxplots]
+```
+UL1016_04 %>% 
+    filter(PARAM.X != "PERI") %>%
+    filter(Proj.Grp != "UCASE") %>%
+    filter(LRL.val > 0.0 & LRL.val < 0.7) %>%
+    ggplot(., aes(y = LRL.val, x=PARAM.X)) + 
+    geom_jitter(width = 0.1, col="red", alpha=0.6, height=0.0002) + 
+    geom_boxplot(outlier.colour = "red", width=0.3, col="darkblue", fill="darkblue") +
+    coord_flip()
+```
+
+```
+hard01 <- awqms1[awqms1$Characteristic.Name == "Hardness, Ca, Mg",]
+hard01$Monitoring.Location.ID2 <- factor(hard01$Monitoring.Location.ID,
+                                         c(unique(as.character(sites.awqms0$MLID))))
+#
+#
+ggplot(data = hard01) + theme_bw() + 
+    facet_wrap(~Water.Body, ncol=1, scales="free_x") +
+    geom_boxplot(aes(x = Monitoring.Location.ID2, y = as.numeric(Result.Value))) +
+    stat_n_text(aes(x = Monitoring.Location.ID2, y = length(!is.na(Result.Value))), y.pos=500,
+                size=3) +
+    ggtitle("Distribution of Hardness values by stream name\nand site order") +
+    ylab("Hardness (as CaCO3 equiv (mg/L)") + xlab(NULL) +
+    geom_hline(yintercept=400, lty=2, col="darkgreen")
+```
+
+
+
+### Scatterplots
+```
+ggplot(data=Blank.TP.all, aes(x=SDate, y=LRL), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T) + scale_y_continuous(limits=c(NA, 0.02), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02)) +
+    ggtitle("TP reporting limits (4/2011 to present)")
+```
+
+```
+p0 <- ggplot(data=OW4.dat[OW4.dat$SiteName == "WS-6",], aes(x=DOY, col=Year.FX)) + theme_bw()
+p3 <- p0 + geom_line(aes(y=CHLA)) + geom_point(aes(y=CHLA), size=3.5) +
+    geom_ribbon(aes(y=CHLA, ymin=CHLA*0.9, ymax=CHLA*1.1, linetype=NA, fill=Year.FX), alpha=0.25) +
+    labs(col="Sampling Year", fill="Sampling Year")
+p4 <- p3 + xlab("Day of year") + ylab(expression(paste("Chlorophyll-a concentration (",mu,"g/L)"))) +
+    ggtitle(paste("Willard Spur: ","WS-6", " - ", "CHLA")) + theme(plot.title=element_text(face="bold"))
+```
+
+```
+z <- ggplot(data = plot1_dat2, na.rm=TRUE)
+z1 <- z + geom_point(aes(x = UPHL, y = CTF), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA conc. (ug/L) :: CTF versus UPHL")
+```
+
+```{r agg01_fig04}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# UPHL x HPLC
+q <- ggplot(data = CHLA_SUMM02, aes(x = UPHL.mean, y = HPLC.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(7))
+q2 <- q + geom_errorbar(aes(ymin=HPLC.mean-HPLC.sd, ymax=HPLC.mean+HPLC.sd, 
+                            width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=UPHL.mean-UPHL.sd, 
+                       xmax=UPHL.mean+UPHL.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA conc.: UPHL vs. HPLC") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+q2
+```
+
+```
+library(ggplot2); library(scales); scaleFUN <- function(x) sprintf("%.3f", x)
+# polygon data
+poly.d <- data.frame(x = c(0.02, 0.02, 0.003, 0.003), y = c(0.003, 0.040, 0.040, 0.003))
+#
+ggplot(data=TP.pairs_cast[TP.pairs_cast$GRP == "ok",]) + theme_bw() + 
+    geom_polygon(data=poly.d, aes(x=x, y=y), fill="gray70", alpha=0.5) +
+    geom_point(aes(x=HiCAL, y=LoCAL)) + 
+    geom_abline(slope=1, intercept=0, col="black", lty=5, size=0.7) +
+    geom_vline(xintercept = 0, lty=5, col="darkgray", size=0.4) +
+    geom_hline(yintercept = 0, lty=5, col="darkgray", size=0.4) + 
+    scale_y_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on Low-Calibration (mg P/L)") +
+    scale_x_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on High-Calibration (mg P/L)") +
+    ggtitle("TP concentrations:  Low-cal versus High-cal") +
+    geom_hline(yintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.010, lty=2, col="darkgreen", size=0.5) +
+    annotate("text", x=0.0035, y = 0.038, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.035, y = 0.0038, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.0105, y = 0.038, hjust=0,vjust=0.65, 
+             label="Low-Std\n   (Hi-Cal)", col="darkgreen") +
+    annotate("text", x = 0.035, y = 0.038, hjust=1,vjust=1, label="1:1 line") +
+    geom_point(data=TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",],
+               aes(x=HiCAL, y=LoCAL), col="darkorange2")
+#
+ggsave(file=paste("TP_cal_Fig2_scatter_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       width=6.5, height=5, dpi=500)
+```
+
+[Total vs Dissolved P w/ RL boundaries]
+```
+######  Figure 3 ::  x < 0.2
+z0 <- ggplot(data=BRI.Pdata) + theme_bw()
+z1 <- z0 + geom_point(data=BRI.Pdata, aes(x=Total, y=Dissolved), na.rm=TRUE) + 
+    coord_cartesian(xlim=c(0,0.2), ylim=c(0,0.2)) +
+    geom_abline(slope=1, intercept=0, col="black", lty=5, size=0.6) + 
+    ylab("Dissolved") + xlab("Total")
+
+tri <- data.frame(x=c(0.0001,13,13), y=c(0.0001,13,0.0001))
+    # Where DP < TP [ok!] Use FULL BOUNDS for FIGURE
+lobar <- data.frame(x=c(0,0,0.006,0.003), y=c(0.003,0.006,0.006,0.003))
+bar <- data.frame(x=c(0,13,13,0), y=c(0.006, ((13*1.1)+0.006),13,0))
+blanks <- data.frame(x=c(0,0,0.059,0.006), y=c(0.006,0.059,0.059,0.006))
+
+z2 <- z1 + geom_hline(yintercept=0.003, color="red", lty=2) +
+        geom_vline(xintercept=0.003, color="red", lty=2) +
+        geom_polygon(data=tri, aes(x=x, y=y), fill = "gray60", alpha=0.5) +
+    annotate("text",x=0.15,y=0.1,hjust=0,vjust=0,label="OK ! :: TP > DP",
+        fontface="bold",size=5) +
+    annotate("text", x=0.01, y=0.001, hjust=0, vjust=1, label="MRL = 0.003", col="red",
+        size=3.5) +
+    annotate("text", x=0.15, y=0.15,hjust=-0.20,vjust=1.5,label="1:1 Line", col="black",
+             fontface="bold")
+z3 <- z2 + geom_polygon(data=lobar, aes(x=x, y=y), fill="red")
+z4 <- z3 + geom_polygon(data=bar, aes(x=x, y=y),fill="darkgreen", alpha=0.5) +
+    annotate("text", x=0.1, y=0.1, hjust=1, vjust=-1.2, 
+         label="10% allowable error\n on 1:1 Line", col="darkgreen", fontface="bold")
+z5 <- z4 + geom_polygon(data=lobar, aes(x=x, y=y), fill="red")
+z6 <- z5 +geom_polygon(data=blanks, aes(x=x, y=y), fill="red", alpha=0.5)
+z6
+
+ggsave(file="TPDP.figure3.BRI1415.jpeg", width=5, height=5, dpi=500)
+```
+
+[Exceedence Plots]
+```
+w0 <- ggplot(data=NH3calc, aes(x=pH.x)) + theme_bw() + scale_colour_manual(values=rainbow(4));
+w1 <- w0 + geom_line(aes(y=T14.5, colour="14.5 C"), na.rm=T) +
+            geom_line(aes(y=T20, colour="20 C"), na.rm=T) +
+            geom_line(aes(y=T25, colour="25 C"), na.rm=T) +
+            geom_line(aes(y=T35, colour="35 C"), na.rm=T) + labs(col="Water Temp") ;
+w2 <- w1 + geom_point(data=subset(OW6.Exceed, NH3_excd = ""), aes(x=pH, y=NH4.T), shape=1,
+                      col="darkgreen", na.rm=T) + scale_shape(solid=FALSE);
+w3 <- w2 + geom_point(data=subset(OW6.Exceed, NH3_excd != ""), aes(x=pH, y=NH4.T), 
+                      shape=21, col="black", fill="darkred",size=2.5, na.rm=T);
+w4 <- w3 + ggtitle(expression(NH[3]* " Toxicity Criteria (3B) vs pH and Temperature")) +
+            xlab("Water pH") + ylab(expression(NH[3]* " Concentration (mg/L)" )) +
+            theme(legend.position=c(0.87,0.78)) + scale_y_continuous(limits=c(0,2.5)) +
+            scale_x_continuous(limits=c(7,10.6));
+w4
+ggsave(file=paste("WS_NH3crit_x_pH_v1.jpeg", sep=""), width=5, height=4, dpi=500);
+```
+
+### More Mixed line and point plots
+``` {r fig03, fig.height=5, fig.width = 5}
+library(ggplot2); library(scales)
+data.CU_w$Hard_all <- ifelse(is.na(data.CU_w$HARD), data.CU_w$HARD_25, data.CU_w$HARD)
+#
+ggplot(data = data.CU_w[data.CU_w$Water.Body != "Wetlands",]) + theme_bw() + facet_grid(Stream_ecoR ~ Water.Body, scales="free") +
+    geom_point(aes(x = Hard_all, y = CU, col = CU.XCD_acut), na.rm=T) +
+        ggtitle("Copper x Hardness : Acute Criteria") +
+    ylab("Copper (ug/L)") + xlab("Hardness (as mg CaCO3/L)") +
+    geom_line(aes(x=Hard_all, y=CU.acut), lty=2, col="red") +
+    theme(legend.position = c(0.5,0.85), legend.background = element_rect(fill="gray90"),
+          legend.title = element_text(size=9), legend.text = element_text(size=8)) +
+    guides(col= guide_legend("Acute\n    Exceedence"))
+
+ggsave(paste("WDC_Cu_AcuteExcd_fig03_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""), height=6, width=7, dpi=500)
+```
+
+### Mixed plots using facets
+```
+dataX <- WatSAV9
+    dataX$SiteGROUP <- factor(dataX$SiteGROUP, levels=c("Eastern Margin", "WS-2 to WS-4", 
+                            "Mid-Spur", "WS-7 to WS-9", "Western Margin"));
+## PLOTTING ##
+v0 <- ggplot(data=dataX, aes(x=Month, col=factor(Year))) + theme_bw() + 
+    labs(col="Sampling Year") + 
+    facet_wrap(~SiteGROUP, scales="fixed", ncol=5);
+v1 <- v0 + geom_point(aes(y=SAV.biovol), na.rm=T) + 
+    scale_y_continuous(limits=c(NA,NA), labels=comma)  +
+    scale_x_continuous(limits=c(3,12), breaks=seq(3, 12, 1), labels=c("Mar", "Apr", "May", 
+        "Jun", "Jul", "Aug", "Sep","Oct", "Nov", "Dec"));
+v2 <- v1 + geom_hline(yintercept=0, lty=2, col="black");
+v3 <- v2 + xlab(NULL) +  ylab(paste(" SAV Biovolume (Cover x Height)")) + 
+    ggtitle("Mean SAV Biovolume: Willard Spur (2011-13)");
+# geom_smooth(aes(y=SAVcov.avg), na.rm=T, se=F)  + 
+####  Recalculate the Mean/Median (month) for each year, by the SiteGROUP classes ####
+    gm_mean <- function(x, na.rm=TRUE){ exp(sum(log(x[x>0]), na.rm=na.rm) / length(x))  };
+    cnt <- function(x) count(x);
+    nmissing <- function(x) sum(is.na(x));
+    nDiff <- function(x) (length(x)-nmissing(x));
+    gm_mean2 <- function(x, na.rm=T, zero.propagate=FALSE) 
+        { if(any(x<0, na.rm=T)) {   return(NaN) }
+        if(zero.propagate) { if(any(x==0, na.rm=T)){ return(1) }
+        exp(mean(log(x), na.rm=na.rm))  }   
+        else { exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))   }   }       ###########
+####### GROUP Wise CALCS ###  ## #######
+    z1 <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(gm_mean, na.rm=T));
+    z2x <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(gm_mean2, na.rm=T));
+    z3 <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(nmissing));
+    z4 <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(length));
+    z5 <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(mean, na.rm=T));
+    z6 <- ddply(dataX, .(SiteGROUP, Year, Month), numcolwise(median, na.rm=T));
+    dat.z6 <- z6[,c(1:3, 11, 55:58, 64:74)]     ## ##################
+v5 <- v3 + geom_point(data=z6, aes(x=Month, y=SAV.biovol , col=factor(Year)), shape=19, size=3,
+                      na.rm=T) + geom_line(data=z6, aes(x=Month, y=SAV.biovol , col=factor(Year)));
+v6 <- v5 + theme(axis.text.x=element_text(size=rel(0.65)), legend.text=element_text(size=rel(0.65)),
+                 legend.position=c(0.92,0.82), legend.background=element_rect(fill="transparent"));
+v6
+######
+    ggsave(file=paste("WS15-SAVbioVOL_Sites_x5_v7.jpeg", sep=""), width=10, height=3.5, dpi=500);
+```
+
+## Figures using `corrplot` etc.
+```
+library(corrplot)
+#
+cor.dat <- COR.1$r
+corrplot(cor.dat, method="number", type="lower", diag=FALSE, order="hclust")
+corrplot(cor.dat, method="circle", type="upper", diag=FALSE, tl.col="black", tl.srt=45,
+         p.mat=sig.dat, sig.level=0.01)
+corrplot(cor.dat, method="color", type="lower", order="hclust",diag=FALSE, 
+         tl.col="black", tl.srt=45, addCoef.col="black", cl.cex=0.05,
+         p.mat=sig.dat, sig.level=0.05, insig="blank")
+```
+
+```
+COR.1 <- rcorr(as.matrix(MSI.chem), type="pearson")
+cor.dat <- COR.1$r
+sig.dat <- COR.1$P
+jpeg(file="Corrplots_Chem_v2.jpg", width=6.5, height=5.5, units="in", quality=80, res=500)
+    corrplot(cor.dat, method="ellipse", type="lower", diag=FALSE, tl.col="black", tl.srt=45,
+         p.mat=sig.dat, sig.level=0.01, insig="blank", tl.cex=0.5,order="original")
+dev.off()
+```
+*******************************************************************************
+*******************************************************************************
+
+# Additional code-blocks that help monitor processing status
+
+## When you need to save a partial / intermediate component as a DF, while continuing to process the data stream
+
+```
+DF %>% 
+	<do something> %>%
+	{. ->> intermediate.object} %>%
+	<continue doing more stuff>
+```
+# Adjusting Table widths
+
+1) In Notebook::
+	+ Add "width=90" to _options_ line in STARTUP-code-block
+
+2) For specific code-chunk
+	+ before chunk:
+<div style='width:900px;margin: 0 auto;'>
+```{r}
+code for a chunk to develop a table (not a data.table)
+stuff
+```
+</div>
+
+*******************************************************************************
+
+
+
+
