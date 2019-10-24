@@ -1,0 +1,163 @@
+---
+title: "Data Review: HABs 2019 UPHL Googlesheet"
+author: "T.Hooker"
+date: "22 August, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+# gSheets_package <- c("googlesheets","plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# if(!all(gSheets_package %in% (.packages()))) {invisible(lapply(gSheets_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose=F))))}
+##
+gDrive_package <- c("googledrive","plyr", "dplyr", "tidyr", "magrittr", "htmlTable",
+                    "googlesheets", "bizdays", "RQuantLib", "timeDate")
+if(!all(gDrive_package %in% (.packages()))) {invisible(lapply(gDrive_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose=F))))}
+##
+## check for packages
+# (.packages())
+##
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=87)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Notes
+
+[190822] Worksheet started to build in `R` to `googlesheets` data retrieval and rapid data review
+
+## 1.0 Data Retrieval
+
+### 1.1 Access googleSheets
+
+```{r}
+HAB19_tbl <- drive_find(type="spreadsheet", pattern="HAB") %>%
+    filter(name=="2019 HAB Partners Testing Results")
+
+# register sheet using gs_title or gs_key
+
+HAB19_reg <- gs_title("2019 HAB Partners Testing Results")
+```
+
+```{r}
+HAB19_dat <- gs_read(HAB19_reg, ws="HAB Lab Results",check.names=T)
+
+HAB19_dat
+```
+
+
+***
+
+## 2.0 Turn-around-Time (TAT) examination
+
+### 2.1 UPHL TAT for ELISA results
+
+
+```{r}
+# version DF
+# HAB19_dat -> HAB19_dat01
+## clean var names
+# names(HAB19_dat01)
+# Var-names qwere driving me crazee
+# also trimmed max name-width to 35...
+HAB19_dat %>% 
+  rename_all(
+    funs(gsub("[[:punct:]]", "", make.names(strtrim(names(HAB19_dat), 35))))
+    ) -> HAB19_dat01
+#
+names(HAB19_dat01)
+```
+
+```{r}
+HAB19_dat01 %<>% mutate(
+  dDiff_RcvRptd = case_when(
+    !is.na(DateDeliveredtoUPHL) & 
+      !is.na(DateFinalDataDeliveredfromLab) ~ 
+      bizdays::bizdays(as.Date(.$DateDeliveredtoUPHL, tryFormats = c("%m/%d/%Y")),
+                       as.Date(.$DateFinalDataDeliveredfromLab,  tryFormats = c("%m/%d/%Y")),
+                       cal="Rmetrics/NYSE"),
+    TRUE ~ as.numeric(NA))) %>% 
+  select(Waterbody:DateFinalDataDeliveredfromLab, 
+         dDiff_RcvRptd, everything())
+```
+
+### 2.2 Compare Waterbody TATs
+
+```{r}
+HAB19_dat01 %>% 
+  filter(!is.na(DateDeliveredtoUPHL)) %>%
+  arrange(Waterbody, RoutinevsResponse) %>%
+  ggplot(.) + theme_bw() +
+  geom_jitter(aes(x=LHD, y=dDiff_RcvRptd, col=factor(X24vs72hr)),
+              na.rm=T, width=0.25, height=0.1) +
+  labs(x="Local Health Department", y="Number of business days between samples \ndelivered and final results reported", col="Requested \nTAT (hrs)", title="Approximate turnaround times for Microcystins analysis \nreporting by UPHL, summer 2019") + coord_flip()
+
+```
+
+
+```{r}
+HAB19_dat01 %>% 
+  filter(!is.na(DateDeliveredtoUPHL)) %>%
+  arrange(Waterbody, RoutinevsResponse) %>%
+  ggplot(.) + theme_bw() +
+  geom_jitter(aes(x=LHD, y=dDiff_RcvRptd, col=factor(X24vs72hr)),
+              na.rm=T, width=0.25, height=0.1) +
+  labs(x="Local Health Department", y="Number of business days between samples \ndelivered and final results reported", col="Requested \nTAT (hrs)", title="Approximate turnaround times for Microcystins analysis \nreporting by UPHL, summer 2019") +
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width=10)) +
+  scale_y_continuous(limits=c(0, NA)) +
+  geom_hline(yintercept = 1, lty=2, color="red") +
+  geom_hline(yintercept = 3, lty=2, color="cyan")
+
+```
+
+### 2.3 Export table to XLSX
+
+```{r}
+openxlsx::write.xlsx(HAB19_dat01, 
+                     file=paste("HAB2019_TATcalculation_",
+                                format(Sys.Date(), "%y%m%d"),
+                                ".xlsx", sep=""))
+```
+
+
+***
+***
+
+## END
+```{r}
+# CHL1016_03 %>% select(contains("unit", ignore.case = T)) %>% names(.)
+```
+
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
