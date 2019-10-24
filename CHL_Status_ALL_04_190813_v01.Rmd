@@ -1,0 +1,873 @@
+---
+title: "CHL Status Summary: 2010-2018 [IV]"
+author: "T.Hooker"
+date: "13 August, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](WaterQuality1_72dpi_2.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=75)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Notes
+
+Prior work compared and compiled data from two (2) active files containing CHL data:  
+
+i) A file for the 2010-2016 CHL data and cleanup procedures, and 
+    + File :: "CHdat5_XX_4.0_190215_t1.xlsx"
+ii) A file for 2017-2018 CHL data based on the more recent UPHL-LIMS system and incorporating a new HPLC method for CHL analysis
+    + File :: "CHL201718_CHL08_03_noDup_dat_190226_t1.xlsx"
+
+Goals were to align dataset-fields, compare calculations, ensure completeness of project datasets, and prepare data for import to AWQMS.  It is anticipated that much of this latter work will be performed on a project-specific basis.
+
+[190310] :: New Notebook / Version to coninue Utah-Lake specific CHL cleanup, matchup and import to AWQMS.
+
++ Continuing Work Elements
+
+**Working Datasets**
+
+1) UTLK CHL 2010 - 2016
+    + Dataframe `utlk_CHL_201016_import01`
+        + Note that some updates to XLS-datafile were made to complete import process
+    + UTLK-specific Activity.IDs for Lake / Non-Lake records were compiled and cleaned
+        + `awqms_ACTID_UTLK_raw_02`
+    + Source dataframe for CHL results [2010-2016] :: `UL1016_09`
+        + Only 370 records from dataframe were transferred to import file.  Remaining records did not have a match to UTLK-specific ACT.IDs
+    + XLS file for import to AWQMS :: `UTLK_CHL_201016_import01_190308_t1.xlsx`
+
+2) UTLK CHL 2017 - 2018
+    + `UL18718_05`
+
+**Prior Work**
+
++ Build from $3.4/ 3.41, but apply cleanup to more recent CHL data (2017-18)
++ Completed CHL 2010-2016 UTAH LAKE import (sect. 3.5.2) from nb: `CHL_Compile_ALL_01_190306_v02.Rmd`
++ Completed CHL 2017/2018 UTAH LAKE import (sect. 6.3) from nb: `CHL_Compile_ALL_02_190310_v01.Rmd`
+
+[190417]  
+
++ Prior to splitting UTLK datasets, working dataframes were:  
+    + `CHL1016_01`
+    + `CHL1718_01`
++ These were saved as .rds files and need to be re-imported for this notebook
+    + see `DF_recovery_190417.r`
+
+
+[190715]
+
++ Getting back to look at CHL data for the remaining records...
++ Will extract WSpur data for Suzan T.
++ **Information on WSpur project can be found in notebook "CHL_Status_ALL_03_190417_v01.Rmd"**
+
+[190813]
+
++ Re-starting CHL-status review
++ ID cleanup needs
++ fix and import datasets...
+
+
+***
+
+## 0.0 Project Notes
+
+Goal: Review _completeness_-related status of CHL results from both datasets / data-periods and summarize for management review
+
+### 0.1 Workspace cleanup
+
++ tidy things up !
+    + Backup workspace :: `190417.1.RData`
+    + Cleaned up :: `190417-2.RData`
+
+
+## 1.0 Working dataframes
+
+### 1.1 Import CHL 2010-2016 RDS file
+
+```{r}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.RDS]", multi = FALSE)
+# CHL1016_01b <- readRDS(file.01)
+```
+
+### 1.2 Import CHL 2017-2018 RDS file
+
+```{r}
+# file.02  <- choose.files(caption="Select _working_ DATA file [*.RDS]", multi = FALSE)
+# CHL1718_01b <- readRDS(file.02)
+```
+ 
+### 1.3 Compare versions of dataframes
+
+During setup of this notebook, and workspace cleanup, two prior working dataframes were kept, and two copies of these dataframes from previous notebooks were exported/re-imported via RDS; need to clarify whether these objects are the same, and if not, which one is more accurate or newer.
+
+```{r}
+# all(CHL1016_01 == CHL1016_01b,na.rm = T)
+# all(CHL1718_01 == CHL1718_01b,na.rm = T)
+# ##
+# identical(CHL1016_01, CHL1016_01b)
+# identical(CHL1718_01, CHL1718_01b)
+```
+
++ They look equivalent / identical
+    + remove extraneous DFs
+
+```{r}
+# rm(CHL1016_01b, CHL1718_01b)
+```
+
+***
+
+## 2.0 Status:  CHL 2017/18
+
++ Dataframe `CHL1718_01`
+    + Rows :: `r nrow(CHL1718_01)`
+    + Columns :: `r ncol(CHL1718_01)`
+    + Sample.Dates :: From `r min(CHL1718_01$SDate_x)` to `r max(CHL1718_01$SDate_x)`
+
+1) $Proj_Use levels by Project::
+
+```{r}
+CHL1718_01 %>% distinct(SKey2, .keep_all=T) %>% {addmargins(table(.$Trip_root, .$Proj_Use, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)
+```
+
+
+### 2.1 Verify records that were already imported for UTLK
+
++ Import Import-data-file and review imported Activities
+    + Could just import the Activities tab `Activities_imported`, but pulling the actual data that were imported [`dat03`] will result in a cleaner record comparison...
+
+```{r}
+# file.03  <- choose.files(caption="Select _working_ DATA file [*.XLSX]", multi = FALSE)
+utlk_chl1718_imported <- openxlsx::read.xlsx(file.03, 
+                                             sheet="dat03", startRow = 1, 
+                                             rowNames=FALSE, check.names = T)
+```
+
++ File :: `r basename(file.03)`
++ Path :: `r dirname(file.03)`
+    + Records :: `r nrow(utlk_chl1718_imported)`
+    + Columns :: `r ncol(utlk_chl1718_imported)`
+    + Sample.Dates :: From `r min(as.Date(utlk_chl1718_imported$SDate_x, origin="1899-12-30"))` to `r max(as.Date(utlk_chl1718_imported$SDate_x, origin="1899-12-30"))`
+
+2) Projects imported :: `r utlk_chl1718_imported %>% distinct(SKey2, .keep_all=T) %>% {addmargins(table(.$Trip_root, useNA="ifany", deparse.level=2))} %>% as.data.frame(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)`
+
++ Update Proj_Use in `CHL1718_01` w/ verified imported records (based on SKey2)
+    + Version datafile
+```{r}
+CHL1718_02 <- CHL1718_01
+```
+
+```{r}
+CHL1718_02 %<>% mutate(Imported = as.character(NA)) %>% mutate(
+    Imported = case_when(
+        SKey2 %in% utlk_chl1718_imported$SKey2 ~ "utlk_01")) %>%
+    select(Imported, everything())
+```
+
+```{r}
+CHL1718_02 %>% {addmargins(table(.$Proj_Use, .$Imported, useNA="ifany", deparse.level = 2))}
+
+CHL1718_02 %>% filter(Proj_Use == "UTLK" & Imported == "utlk_01") %>% distinct(SKey2, .keep_all=T) %>% {addmargins(table(.$Trip_root, useNA="ifany", deparse.level=2))} %>% as.data.frame(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)
+```
+
++ The number of unique `SKey2` in CHL1718 data that match CHL1718 imported records is consistent with the imported set and number of Activtities imported
+
++ Records with Proj_Use = `UTLK` and Imported != `utlk_01` appear to lack matches in the AWQMS chemistry data available
+    + Less importance can now be placed on UTLK/utlk_01 -matched records, as these are already in AWQMS, the remainder need to be evaluated and prepared for import
+
+**Projects (`Trip_root`) that can be ignored with respect to AWQMS import** ::  
+
++ HABS :: No field data available and not imported to AWQMS  
++ GSLWET :: Sites not in AWQMS
++ Willard Spur (WSpur) :: Sites not in AWQMS
+
++ UCASE-related records need to have WC vs. benthic samples clarified (and verified)
+
+```{r}
+# select(CHL1718_02, contains("status", ignore.case = T)) %>% names(.)
+```
+
+### 2.2 Records Available for matchup and AWQMS.import
+
+
+```{r}
+
+CHL1718_02 %>% {unique(.$Imported)}
+CHL1718_02 %>% {unique(.$Proj_Use)}
+CHL1718_02 %>% {addmargins(table(.$Imported, .$Proj_Use,
+                                 useNA="ifany", deparse.level = 2))}
+
+```
+
++ Annotate other project-group records in `Proj_Use`
+
+```{r}
+wetL_projGrp <- c("FRNG", "GSLWET", "IW", "REFWET", "WSpur", "WS")
+utlk_projGrp <- c("BYUUL", "UTLK")
+CHL1718_02 %>% {addmargins(table(.$Trip_root,
+                                 useNA="ifany", deparse.level = 2))}
+#
+CHL1718_02 %<>% mutate(
+  Proj_Use = case_when(
+    Trip_root %in% wetL_projGrp ~ "WetL",
+    Trip_root %in% utlk_projGrp ~ "UTLK",
+    !is.na(Proj_Use) ~ Proj_Use,
+    TRUE ~ as.character(NA))
+)
+#
+CHL1718_02 %>% {addmargins(table(.$Trip_root, .$Proj_Use,
+                                 useNA="ifany", deparse.level = 2))}
+```
+
++ Can also ignore `Imported` = `!is.na()`
+
+### 2.3 Available Record Completeness
+
+**Dataset elements to use as filters**:
+
+1) Imported = `NULL`
+
++ Some record-sets appear to be missing Volumes...
+
+
+```{r}
+CHL1718_02 %>% 
+  {addmargins(table(.$Trip_root, .$No_VOL,
+                      useNA="ifany", deparse.level = 2))}
+
+CHL1718_02 %>% distinct(SKey2, No_VOL, .keep_all = T) %>%
+  {addmargins(table(.$Trip_root, .$No_VOL,
+                      useNA="ifany", deparse.level = 2))}
+```
+
+2) No_VOL = `NULL`
+
+```{r}
+CHL1718_02 %>% 
+  filter(is.na(Imported)) %>%
+  filter(is.na(No_VOL)) %>%
+  {addmargins(table(.$Trip_root, grepl("U", .$R.Code),
+                    useNA="ifany", deparse.level = 2,
+                    dnn=c("Trip_Root", "ResCode=U")))}
+```
+
+
+
+***
+***
+
+## 3.0 Status: CHL 2010-16
+
++ Dataframe `CHL1016_01`
+    + Rows :: `r nrow(CHL1016_01)`
+    + Columns :: `r ncol(CHL1016_01)`
+    + Sample.Dates :: From `r min(CHL1016_01$Sample.Date)` to `r max(CHL1016_01$Sample.Date)`
+
+1) $Proj_Use levels by Project::
+
+```{r}
+CHL1016_01 %>% distinct(SK2_3, .keep_all=T) %>% {addmargins(table(.$Proj.Grp, .$Proj_Use, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)
+```
+
+### 3.1 Verify records that were already imported for UTLK
+
+```{r}
+# file.04  <- choose.files(caption="Select _working_ DATA file [*.XLSX]", multi = FALSE)
+utlk_chl1016_imported <- openxlsx::read.xlsx(file.04, 
+                                             sheet="Sheet 1", startRow = 1, 
+                                             rowNames=FALSE, check.names = T)
+```
+
++ File :: `r basename(file.04)`
++ Path :: `r dirname(file.04)`
+    + Records :: `r nrow(utlk_chl1016_imported)`
+    + Columns :: `r ncol(utlk_chl1016_imported)`
+    + Sample.Dates :: From `r min(as.Date(utlk_chl1016_imported$Sample.Date, origin="1899-12-30"))` to `r max(as.Date(utlk_chl1016_imported$Sample.Date, origin="1899-12-30"))`
+
+2) Projects imported :: `r utlk_chl1016_imported %>% distinct(SK2_fix2, .keep_all=T) %>% {addmargins(table(.$Proj.Grp, .$Proj_Use, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)`
+
++ Update Proj_Use in `CHL1016_01` w/ verified imported records (based on SKey2)
+    + Version datafile
+```{r}
+CHL1016_02 <- CHL1016_01
+```
+
+
+```{r}
+CHL1016_02 %<>% mutate(Imported = as.character(NA)) %>% mutate(
+    Imported = case_when(
+        SK2_3 %in% utlk_chl1016_imported$SKey2 ~ "utlk_01")) %>%
+    select(Imported, everything())
+```
+
+```{r}
+CHL1016_02 %>% {addmargins(table(.$Proj_Use, .$Imported, useNA="ifany", deparse.level = 2))}
+
+CHL1016_02 %>% filter(Proj_Use == "UTLK" & Imported == "utlk_01") %>% distinct(SK2_3, .keep_all=T) %>% {addmargins(table(.$Proj.Grp, useNA="ifany", deparse.level=2))} %>% as.data.frame(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c(""), caption="", total=T)
+```
+
++ The number of unique `SK2_3` in CHL1016_02 data that match CHL1016 imported records is consistent with the imported set and number of Activtities imported
+
+### 3.2 Records Available for matchup and AWQMS.import
+
+```{r}
+CHL1016_02 %>% {unique(.$Imported)}
+CHL1016_02 %>% {unique(.$Proj_Use)}
+
+CHL1016_02 %>% {addmargins(table(.$Imported, .$Proj_Use,
+                                 useNA="ifany", deparse.level = 2))}
+```
+
++ Annotate other project-group recrods in Proj_USe
+
+```{r}
+wetL_projGrp <- c("FRNG", "GSLWET", "IW", "REFWET", "WSpur", "WS", "FarmB")
+utlk_projGrp <- c("BYUUL", "UTLK")
+
+CHL1016_02 %>% {addmargins(table(.$Proj.Grp,
+                                 useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+CHL1016_02 %<>% mutate(
+  Proj_Use = case_when(
+    Proj.Grp %in% wetL_projGrp ~ "WetL",
+    Proj.Grp %in% utlk_projGrp ~ "UTLK",
+    !is.na(Proj_Use) ~ Proj_Use,
+    TRUE ~ as.character(NA))
+)
+#
+CHL1016_02 %>% {addmargins(table(.$Proj.Grp, .$Proj_Use,
+                                 useNA="ifany", deparse.level = 2))}
+```
+
+### 3.3 Available Records Completeness
+
+1) `Imported` = `NULL`
+
+```{r}
+CHL1016_02 %>% 
+  filter(is.na(Imported)) %>%
+  {addmargins(table(.$Proj.Grp, is.na(.$Filt.Vol),
+                    useNA="ifany",
+                    deparse.level = 2,
+                    dnn=c("Proj.Grp", "Vol_missing?")))}
+```
+
+***
+***
+
+## 4.0 Identify Minimum-Required-Fields for data-import
+
++ file :: `"uphl_LIMS_importconfig_Template_02_190813.xlsx"`
++ path :: `"U:\INFODATA\Sampling\Data_Cleanup_Scripts\190227_Full_CHL_results\CHL_awqms_import_Template"`
+
+
+```{r}
+# importConfig_minFields <- readClipboard()
+importConfig_minFields
+```
+
+***
+
+## Work Backwards on CHL-data completion / cleanup
+
+***
+
+## 5.0 Non-detects for measured CHL values
+
++ How many Non-detects are there, by project, and how does this proportion change over time ?
+
+### 5.1 2017-2018 CHL-values
+
++ var-cleanup
+
+```{r}
+CHL1718_02 %<>% select(-Imported, -Proj_Use, -Trip.ID, -SKey1, -Activity.Comment, -Note,
+                       -SITE_status, -Personnel.1, -Personnel.2, everything()) %>%
+  select(Project.Name:MLID_x, QC_type, everything())
+```
+```{r}
+CHL1718_02 %>% 
+  {addmargins(table(.$Trip_root, grepl("U", .$R.Code), 
+                    useNA = "ifany", deparse.level = 2,
+                    dnn=c("Trip_root", "RCode_contains_U")))}
+```
+
+```{r}
+CHL1718_02 %>%
+  filter(!Method.ID %in% c("10300C")) %>%
+  filter(ParamX %in% c("CHL.tot", "CHLA")) %>%
+  {addmargins(table(.$Trip_root, grepl("U", .$R.Code),
+         useNA="ifany", deparse.level = 2))}
+```
+
+
++ Number of non-detects ("U") per year by Trip_root (by param)
+
+```{r}
+# project by PARAMs
+CHL1718_02 %>%
+  filter(!Method.ID %in% c("10300C")) %>%
+  filter(ParamX %in% c("CHL.tot", "CHLA")) %>%
+  {addmargins(table(.$Trip_root, 
+                    paste(toupper(.$Method.GRP),
+                          .$ParamX,
+                          sep="_"),
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Building off ParamX == "CHLA" only
+
+```{r}
+CHL1718_02 %>% 
+  filter(!Method.ID %in% c("10300C")) %>%
+  filter(ParamX %in% c("CHLA")) %>%
+  group_by(Trip_root, Method.GRP) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet= sum(stringr::str_detect(R.Code, "U"), na.rm=T),
+            k_SKey2=n_distinct(SKey2, na.rm=T)) %>%
+  mutate(p_NonDet = sprintf("%.f%%",(n_NonDet/n_obs)*100)) %>%
+  select(-k_SKey2, everything()) %>%
+  as.data.frame() %>%
+  add_row(., Trip_root = "SUM",
+          n_obs=sum(.$n_obs, na.rm=T),
+          n_NonDet=sum(.$n_NonDet, na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|ccr|c"), caption="", total=T, n.tspanner=c(2,1,2,1,1,2,2,2,1,2,1,2,1), tspanner=c("","", "", "", "", "", "", "", "", "", "", "", ""))
+```
+
+
+
+```{r}
+CHL1718_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$SDate_x) > 9 ~ 
+      paste(lubridate::year(.$SDate_x)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$SDate_x, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$SDate_x),".q",
+                 sprintf("%.2i",lubridate::quarter(.$SDate_x, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  filter(Method.ID %in% c("10200H")) %>%
+  filter(ParamX %in% c("CHLA")) %>%
+  filter(grepl("U", .$R.Code)) %>%
+  {addmargins(table(.$Trip_root, .$Samp_WYqtr,
+                    useNA="ifany", deparse.level = 2),c(1,2))}
+```
+
+```{r}
+# CHLA records :: Percent of records w/ NonDetect by Method.Grp
+CHL1718_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$SDate_x) > 9 ~ 
+      paste(lubridate::year(.$SDate_x)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$SDate_x, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$SDate_x),".q",
+                 sprintf("%.2i",lubridate::quarter(.$SDate_x, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  group_by(Method.GRP, Trip_root, Samp_WYqtr) %>%
+  # filter(stringr::str_detect(Method.ID, "HPLC",)) %>%
+  filter(ParamX %in% c("CHLA")) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(R.Code, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = sprintf("%.f%%", (n_NonDet/n_obs)*100)) %>%
+  select(Trip_root, Method.GRP, Samp_WYqtr, p_NonDetect) %>%
+  spread(Samp_WYqtr, p_NonDetect, drop=F) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|cccc|c"), caption="", total=F, n.tspanner=rep(2,length(unique(.$Trip_root))), tspanner=rep("",length(unique(.$Trip_root))))
+```
+
+```{r}
+# CHLA records :: Percent of records w/ NonDetect by Method.Grp
+CHL1718_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$SDate_x) > 9 ~ 
+      paste(lubridate::year(.$SDate_x)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$SDate_x, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$SDate_x),".q",
+                 sprintf("%.2i",lubridate::quarter(.$SDate_x, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  group_by(Method.GRP, Samp_WYqtr) %>%
+  # filter(stringr::str_detect(Method.ID, "HPLC",)) %>%
+  filter(ParamX %in% c("CHLA")) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(R.Code, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = sprintf("%.f%%", (n_NonDet/n_obs)*100)) %>%
+  select(Method.GRP, Samp_WYqtr, p_NonDetect) %>%
+  spread(Samp_WYqtr, p_NonDetect, drop=F) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|cccc|c"), caption="", total=F)
+```
+
+***
+
+### 5.2 2010-2016 CHL-values
+
++ var cleanup
+
+```{r}
+CHL1016_02 %<>% select(-Imported, -Proj_Use, everything())
+```
+
+```{r}
+CHL1016_02 %>% 
+  {addmargins(table(.$Proj.Grp, grepl("U", .$Non_Detect), 
+                    useNA = "ifany", deparse.level = 2,
+                    dnn=c("Proj_grp", "RCode_contains_U")))}
+```
+
+```{r}
+CHL1016_02 %>% {addmargins(table(.$PARAM.X))}
+
+CHL1016_02 %>%
+  filter(!MethodID2 %in% c("10300C")) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  {addmargins(table(.$Proj.Grp, grepl("U", .$Non_Detect), 
+         useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+CHL1016_02 %>% 
+  {addmargins(table(.$PARAM.X, .$MethodID2,
+                    useNA="ifany", deparse.level = 2))}
+
+```
+
++ Ignore PERI for now, keep EPA447.0
+
+```{r}
+CHL1016_02 %>% 
+  filter(!MethodID2 %in% c("10300C")) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  group_by(Proj.Grp, MethodID2) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet= sum(stringr::str_detect(Non_Detect, "U"), na.rm=T),
+            k_SKey2=n_distinct(SK2_3, na.rm=T)) %>%
+  mutate(p_NonDet = sprintf("%.f%%",(n_NonDet/n_obs)*100)) %>%
+  select(-k_SKey2, everything()) %>%
+  as.data.frame() %>%
+  add_row(., Proj.Grp = "SUM",
+          n_obs=sum(.$n_obs, na.rm=T),
+          n_NonDet=sum(.$n_NonDet, na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|ccr|c"), caption="", total=T)
+```
+
+
+```{r}
+CHL1016_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$Sample.Date) > 9 ~ 
+      paste(lubridate::year(.$Sample.Date)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$Sample.Date, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$Sample.Date),".q",
+                 sprintf("%.2i",lubridate::quarter(.$Sample.Date, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  filter(!MethodID2 %in% c("10300C")) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(grepl("U", .$Non_Detect)) %>%
+  {addmargins(table(.$Proj.Grp, .$Samp_WYqtr,
+                    useNA="ifany", deparse.level = 2),c(1,2))}
+```
+
++ Take closer lookat Param x Methods over time...
+
+```{r}
+CHL1016_02 %>% 
+  filter(!MethodID2 %in% c("10300C", "10300")) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  ggplot(.,
+         aes(y=Sample.Date,
+             x=factor(PARAM.X),
+             col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Method") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("CHL parameters")
+```
+
+```{r}
+# By year
+CHL1016_02 %>% 
+  mutate(Samp_YR = lubridate::year(Sample.Date)) %>%
+  group_by(PARAM.X, Proj.Grp, Samp_YR) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(!MethodID2 %in% c("10300C","10300", "447.0")) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(Non_Detect, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = sprintf("%.f%%", (n_NonDet/n_obs)*100)) %>%
+  select(Proj.Grp, PARAM.X, Samp_YR, p_NonDetect) %>%
+  spread(Samp_YR, p_NonDetect, drop=F) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|cccc|c"), caption="", total=F, n.tspanner=rep(3,length(unique(.$Proj.Grp))), tspanner=rep("",length(unique(.$Proj.Grp))))
+```
+
+```{r}
+# CHLA records :: Percent of records w/ NonDetect by PARAM
+CHL1016_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$Sample.Date) > 9 ~ 
+      paste(lubridate::year(.$Sample.Date)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$Sample.Date, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$Sample.Date),".q",
+                 sprintf("%.2i",lubridate::quarter(.$Sample.Date, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  group_by(PARAM.X, Proj.Grp, Samp_WYqtr) %>%
+  # filter(stringr::str_detect(Method.ID, "HPLCfilter(!MethodID2 %in% c("10300C")) %>%
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(!MethodID2 %in% c("10300C","10300", "447.0")) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(Non_Detect, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = sprintf("%.f%%", (n_NonDet/n_obs)*100)) %>%
+  select(Proj.Grp, PARAM.X, Samp_WYqtr, p_NonDetect) %>%
+  spread(Samp_WYqtr, p_NonDetect) 
+# %>%
+#   htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|cccc|c"), caption="", total=F)
+```
+
+```{r}
+# Ignore Project-Grps, look at CHL data as a whole
+# CHLA records :: Percent of records w/ NonDetect by PARAM
+CHL1016_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$Sample.Date) > 9 ~ 
+      paste(lubridate::year(.$Sample.Date)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$Sample.Date, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$Sample.Date),".q",
+                 sprintf("%.2i",lubridate::quarter(.$Sample.Date, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(!MethodID2 %in% c("10300C","10300", "447.0")) %>%
+  distinct(SK2_3, PARAM.X, .keep_all = T) %>%
+  group_by(Samp_WYqtr, PARAM.X) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(Non_Detect, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = sprintf("%.f%%", (n_NonDet/n_obs)*100)) %>%
+  select(PARAM.X, Samp_WYqtr, p_NonDetect) %>%
+  spread(PARAM.X, p_NonDetect) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|cccc|c"), caption="", total=F)
+```
+
+```{r}
+CHL1016_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$Sample.Date) > 9 ~ 
+      paste(lubridate::year(.$Sample.Date)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$Sample.Date, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$Sample.Date),".q",
+                 sprintf("%.2i",lubridate::quarter(.$Sample.Date, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(!MethodID2 %in% c("10300C","10300", "447.0")) %>%
+  distinct(SK2_3, PARAM.X, .keep_all = T) %>%
+  group_by(Samp_WYqtr, PARAM.X) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(Non_Detect, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = (n_NonDet/n_obs)*100) %>%
+  select(PARAM.X, Samp_WYqtr, p_NonDetect) %>%
+  ggplot(.,
+         aes(y=p_NonDetect,
+             x=(Samp_WYqtr),
+             col=factor(PARAM.X))) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.05), size=1) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1.0)) +
+  scale_x_discrete(labels = c("2011.q01" = "2011",
+                              "2012.q01" = "2012",
+                              "2013.q01" = "2013",
+                              "2014.q01" = "2014",
+                              "2015.q01" = "2015",
+                              "2016.q01" = "2016"),
+                   breaks=c("2011.q01","2012.q01", "2013.q01","2014.q01", "2015.q01", "2016.q01")) + 
+  xlab("Sample WY_qtr") + ylab("Percent Non-Detect") +
+  ggtitle("% Non-detect over Time: CHL")
+```
+
+### 5.3 Plot % Non-detects both datasets...
+
+```{r}
+CHL1718_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$SDate_x) > 9 ~ 
+      paste(lubridate::year(.$SDate_x)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$SDate_x, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$SDate_x),".q",
+                 sprintf("%.2i",lubridate::quarter(.$SDate_x, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  group_by(Method.GRP, ParamX, Samp_WYqtr) %>%
+  # filter(stringr::str_detect(Method.ID, "HPLC",)) %>%
+  filter(ParamX %in% c("CHLA", "CHL.tot")) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(R.Code, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = (n_NonDet/n_obs)*100) %>%
+  select(Param=ParamX, Method=Method.GRP, Samp_WYqtr, p_NonDetect) -> CHL1718_param.Date
+```
+
+```{r}
+CHL1016_02 %>% mutate(
+  Samp_WYqtr = case_when(
+    lubridate::month(.$Sample.Date) > 9 ~ 
+      paste(lubridate::year(.$Sample.Date)+1, ".q",
+            sprintf("%.2i", lubridate::quarter(.$Sample.Date, with_year = F,
+                                               fiscal_start = 10)), sep=""),
+    TRUE ~ paste(lubridate::year(.$Sample.Date),".q",
+                 sprintf("%.2i",lubridate::quarter(.$Sample.Date, with_year=F,
+                                                   fiscal_start=10)),sep=""))) %>% 
+  filter(PARAM.X %in% c("CHL.tot", "CHLA", "CHLA.tot", "CHLA.X", "CHLA.aa")) %>%
+  filter(!MethodID2 %in% c("10300C","10300", "447.0")) %>%
+  distinct(SK2_3, PARAM.X, .keep_all = T) %>%
+  group_by(Samp_WYqtr, MethodID2, PARAM.X) %>%
+  summarise(.,
+            n_obs=n(),
+            n_NonDet=sum(stringr::str_detect(Non_Detect, "U"), na.rm=T)) %>%
+  mutate(p_NonDetect = (n_NonDet/n_obs)*100) %>%
+  select(Param=PARAM.X, Method=MethodID2, Samp_WYqtr, p_NonDetect) -> CHL1016_param.Date
+```
+
+```{r}
+bind_rows(CHL1016_param.Date, CHL1718_param.Date) -> CHL_param.Date
+```
+
+```{r}
+CHL_param.Date %>% ungroup() %>%
+  mutate(
+    Param = recode(Param,
+                   "CHL.tot" = "CHL_tot",
+                   "CHLA.tot" = "CHL_tot",
+                   "CHLA.aa" = "CHLA",
+                   "CHLA.X" = "CHL_tot"),
+    Method = recode(Method,
+                    "CHL" = "10200",
+                    "CHL_hplc" = "HPLC")) %>%
+  arrange(Param, Method, Samp_WYqtr) %>%
+  ggplot(.,
+         aes(y=p_NonDetect,
+             x=(Samp_WYqtr),
+             col=factor(Param), group=interaction(.$Param, .$Method),
+             shape=Method)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.05), size=2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1.0)) +
+  scale_x_discrete(labels = c("2011.q01" = "2011",
+                              "2012.q01" = "2012",
+                              "2013.q01" = "2013",
+                              "2014.q01" = "2014",
+                              "2015.q01" = "2015",
+                              "2016.q01" = "2016",
+                              "2017.q01" = "2017",
+                              "2018.q01" = "2018",
+                              "2019.q01" = "2019"),
+                   breaks=c("2011.q01","2012.q01", "2013.q01","2014.q01", "2015.q01", "2016.q01",
+                            "2017.q01", "2018.q01", "2019.q01")) + 
+  xlab("Sample WY_qtr") + ylab("Percent Non-Detect") + labs(col="Parameter") +
+  ggtitle("% Non-detect over Time: CHL") +
+  geom_path(na.rm=T, lty=2)
+```
+
++ print version...
+```{r}
+(
+  CHL_param.Date %>% ungroup() %>%
+    mutate(
+      Param = recode(Param,
+                     "CHL.tot" = "CHL_tot",
+                     "CHLA.tot" = "CHL_tot",
+                     "CHLA.aa" = "CHLA",
+                     "CHLA.X" = "CHL_tot"),
+      Method = recode(Method,
+                      "CHL" = "10200",
+                      "CHL_hplc" = "HPLC")) %>%
+    arrange(Param, Method, Samp_WYqtr) %>%
+    ggplot(.,
+           aes(y=p_NonDetect,
+               x=(Samp_WYqtr),
+               col=factor(Param), group=interaction(.$Param, .$Method),
+               shape=Method)) + theme_bw() +
+    geom_point(na.rm=T,
+               position=position_jitter(width=0.05), size=2) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1, scale = 1.0)) +
+    scale_x_discrete(labels = c("2011.q01" = "2011",
+                                "2012.q01" = "2012",
+                                "2013.q01" = "2013",
+                                "2014.q01" = "2014",
+                                "2015.q01" = "2015",
+                                "2016.q01" = "2016",
+                                "2017.q01" = "2017",
+                                "2018.q01" = "2018",
+                                "2019.q01" = "2019"),
+                     breaks=c("2011.q01","2012.q01", "2013.q01","2014.q01", "2015.q01", "2016.q01",
+                              "2017.q01", "2018.q01", "2019.q01")) + 
+    xlab("Sample WY_qtr") + ylab("Percent Non-Detect") + labs(col="Parameter") +
+    ggtitle("% Non-detect over Time: CHL") +
+    geom_path(na.rm=T, lty=2)
+) %>% ggsave("state_CHL_20102018_p_nonDetect_paramMethod.jpg", .,
+             height=5, width=8, dpi=500)
+```
+
+
+***
+
+## New Notebook
+
+***
+***
+
+## XX.0 Project-based CHL data review(s)
+XX.1 Willard Spur
++ Working DFs:  
+
+  + 2010-2016 :: `CHL1016_01` [has been updated since writing...]
+  + 2016-2018 LL `CHL1718_02` [as of 190715]
+    + _Includes annotation re: imported_ (for utah lake)
++ See:  "CHL_Status_ALL_03_190417_v01.nb.html" and notebook
+
+***
+***
+## END
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

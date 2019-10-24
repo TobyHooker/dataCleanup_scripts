@@ -1,0 +1,2547 @@
+---
+title: "CHL Calcs & Cleanup: 2010-2018 [IV]"
+author: "T.Hooker"
+date: "15 August, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=87)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Notes
+
+Prior work compared and compiled data from two (2) active files containing CHL data:  
+
+i) A file for the 2010-2016 CHL data and cleanup procedures, and 
+    + File :: "CHdat5_XX_4.0_190215_t1.xlsx"
+ii) A file for 2017-2018 CHL data based on the more recent UPHL-LIMS system and incorporating a new HPLC method for CHL analysis
+    + File :: "CHL201718_CHL08_03_noDup_dat_190226_t1.xlsx"
+
+Goals were to align dataset-fields, compare calculations, ensure completeness of project datasets, and prepare data for import to AWQMS.  It is anticipated that much of this latter work will be performed on a project-specific basis.
+
+[190310] :: New Notebook / Version to coninue Utah-Lake specific CHL cleanup, matchup and import to AWQMS.
+
++ Continuing Work Elements
+
+**Working Datasets**
+
+1) UTLK CHL 2010 - 2016
+    + Dataframe `utlk_CHL_201016_import01`
+        + Note that some updates to XLS-datafile were made to complete import process
+    + UTLK-specific Activity.IDs for Lake / Non-Lake records were compiled and cleaned
+        + `awqms_ACTID_UTLK_raw_02`
+    + Source dataframe for CHL results [2010-2016] :: `UL1016_09`
+        + Only 370 records from dataframe were transferred to import file.  Remaining records did not have a match to UTLK-specific ACT.IDs
+    + XLS file for import to AWQMS :: `UTLK_CHL_201016_import01_190308_t1.xlsx`
+
+2) UTLK CHL 2017 - 2018
+    + `UL18718_05`
+
+**Prior Work**
+
++ Build from $3.4/ 3.41, but apply cleanup to more recent CHL data (2017-18)
++ Completed CHL 2010-2016 UTAH LAKE import (sect. 3.5.2) from nb: `CHL_Compile_ALL_01_190306_v02.Rmd`
++ Completed CHL 2017/2018 UTAH LAKE import (sect. 6.3) from nb: `CHL_Compile_ALL_02_190310_v01.Rmd`
+
+[190417]  
+
++ Prior to splitting UTLK datasets, working dataframes were:  
+    + `CHL1016_01`
+    + `CHL1718_01`
++ These were saved as .rds files and need to be re-imported for this notebook
+    + see `DF_recovery_190417.r`
+
+
+[190715]
+
++ Getting back to look at CHL data for the remaining records...
++ Will extract WSpur data for Suzan T.
++ **Information on WSpur project can be found in notebook "CHL_Status_ALL_03_190417_v01.Rmd"**
+
+[190813]
+
++ Re-starting CHL-status review
++ ID cleanup needs
++ fix and import datasets...
+
+[190815]  
+
++ Moving forward w/ "_final_" calculations of CHL concentrations for both datasets
++ Then, clean up records characterizing COMPLETENESS and Non-Detects
++ Then, prepare files for AWQMS IMPORT...
++ Current Datafiles::
+  + `CHL1016_02`
+  + `CHL1718_02`
+  + `CHL_param.Date` :: summary table of percent of records w/ Non-Detect flags for CHLA/CHLA.total for both datasets combined.
+
+***
+
+## 0.0 Project Notes
+Goal: Review _completeness_-related status of CHL results from both datasets / data-periods and summarize for management review
+
+### 0.1 Workspace cleanup
++ tidy things up !
+    + Backup workspace :: `190417.1.RData`
+    + Cleaned up :: `190417-2.RData`
+
+### 0.2 Working dataframes
+```{r}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.RDS]", multi = FALSE)
+# CHL1016_01b <- readRDS(file.01)
+```
+
+```{r}
+# file.02  <- choose.files(caption="Select _working_ DATA file [*.RDS]", multi = FALSE)
+# CHL1718_01b <- readRDS(file.02)
+```
+
+***
+
+### Workspace Cleanup
+
+### Version Datafiles
+
+```{r}
+CHL1016_03 <- CHL1016_02
+CHL1718_03 <- CHL1718_02
+```
+
+***
+***
+***
+
+## Final CHL Calculations and Record Cleanup
+
++ Will simplify Field-Names b/w files that they are congruent for the key CALC and IMPORT fields
+
+## 6.0 2017-2018 CHL Data
+
+### 6.1 Organize data-fields for ready review
+
+```{r}
+names(CHL1718_03)
+```
+
++ `Trip_root` == `PROJ_grp`
++ `Sample.Received.Date` == `x_SampRecDate`
++ `SDate_x` == `x_SDate`
++ `Sample.Time` == `x_STime`
++ `SNum_x` == `x_SNum`
++ `RV2_ug` == `x_RVal`
++ `Units_X` == `x_Units`
++ `RV3_conc` == `x_RVal.conc`
++ `RV3_c_Units` == `x_Units.conc`
++ `MLID_x` == `x_MLID`
+
+```{r}
+# rename some key fields... [new = old]
+CHL1718_03 %<>% rename("PROJ_grp" = "Trip_root",
+                       "Proj.Nm" = "Project.Name",
+                       "x_SampRecDate" = "Sample.Received.Date",
+                       "x_MLID" = "MLID_x",
+                       "x_SDate" = "SDate_x",
+                       "x_STime" = "Sample.Time",
+                       "x_SNum" = "SNum_x",
+                       "x_RVal" = "RV2_ug",
+                       "x_Units" = "Units_X",
+                       "x_RVal.conc" = "RV3_conc",
+                       "x_Units.conc" = "RV3_c_Units")
+```
+
+
+_Fields that are not strictly needed_
+
++ `PARAM.key`
++ `Trip_date`
++ `ResultValue_2`
++ `Param.key`
++ `Name`
++ `Station.ID` : older, original MLID field 
++ `QC_parent`
++ `MLID_name`
++ `Replicate.Number`
++ `MethPar.Key`
++ `Sample.Description`
++ `Param.Description`
++ `Units.old`
++ `Vol_comment` / `Vol_comment2`
++ `FILE`
++ `Sample.Date`
++ `MLID_00`
++ `Sample.Number`
++ `SKey3`
++ `VOL_filt`
++ `Result.Value`
++ `Units`
++ `Sample.Detect.Limit`
++ `Sample.Report.Limit`
++ `Personnel.1` / `Personnel.2`
++ `TripID`
++ `SKey1`
++ `Note`
+
+```{r}
+minor_fields <- c("PARAM.key","Trip_date","ResultValue_2","Param.key","Name",
+                  "Station.ID","QC.parent","MLID_name","Replicate.Number",
+                  "MethPar.Key","Sample.Description","Param.Description","Units.old",
+                  "Vol_comment","Vol_comment2","FILE","Sample.Date","MLID_00",
+                  "Sample.Number","SKey3","VOL_filt","Result.Value","Units",
+                  "Sample.Detect.Limit","Sample.Report.Limit","Personnel.1","Personnel.2",
+                  "Trip.ID","SKey1","Note", "Method.Agency","Method.Description",
+                  "Analysis.Date"
+                  )
+```
+
+
+```{r}
+CHL1718_03 %<>% select(-minor_fields,
+                       everything())
+```
+
+<div style='width:900px;margin: 0 auto;'>
+```{r}
+CHL1718_03 %>% {table(.$QC_type, useNA="ifany", deparse.level = 2)}
+CHL1718_03 %>% {table(.$Param.key, useNA="ifany", deparse.level = 2)}
+CHL1718_03 %>% {table(.$MethPar.Key, useNA="ifany", deparse.level = 2)}
+CHL1718_03 %>% {table(.$import_status, useNA="ifany", deparse.level = 2)}
+CHL1718_03 %>% {table(.$Method.GRP, useNA="ifany", deparse.level = 2)}
+```
+</div>
+
+```{r}
+CHL1718_03 %>% select(contains("_status", ignore.case = T)) %>% names(.)
+CHL1718_03 %>% select(contains("ACT", ignore.case = T)) %>% names(.)
+CHL1718_03 %>% select(contains("vol", ignore.case = T)) %>% names(.)
+```
+
+**Will need to add / populate `X_status` fields** ::  
+
++ Add:
+  + `PARAM_status` : whether calc was performed, if PARAM is appropriate, if param can be imported
+  + `RECORD_STATUS` :
+  + `import_status` : [from "**Imported**"]
+  + `RESULT_status`
+
+```{r}
+CHL1718_03 %<>% mutate(
+  PARAM_status = as.character(NA),
+  import_status = Imported) %>%
+  select(PARAM_status, import_status, everything()) %>%
+  select(PARAM_status:import_status,
+         PROJ_grp:SKey2, everything())
+```
+
++ Save Var-names and order
+
+```{r}
+names(CHL1718_03) -> CHL1718_03_vars
+```
+
++ Version Datafile
+
+```{r}
+CHL1718_04 <- CHL1718_03
+```
+
+### 6.2 Review Vols and Concentration Calcs
+
+```{r}
+CHL1718_04 %<>% arrange(PROJ_grp, x_MLID, x_SDate, 
+                        Method.GRP, ParamX)
+```
+
++ Records by Project group
+
+```{r}
+CHL1718_04 %>% {addmargins(table(.$PROJ_grp, .$Method.GRP, 
+                                 useNA = "ifany", deparse.level = 2))}
+```
+
++ Some previously used parameters do not have useful result-values, and can be ignored for particular methods...
+
+```{r}
+CHL1718_04 %>% 
+  {addmargins(table(.$ParamX, .$Method.GRP, 
+                    useNA="ifany", deparse.level = 2))}
+#
+CHL1718_04 %>% 
+  filter(is.na(x_RVal) | is.na(VOL_all_2)) %>%
+  {addmargins(table(.$ParamX, .$Method.GRP, 
+                    useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1718_04 %>%
+  group_by(PROJ_grp,
+           Method.GRP, 
+           ParamX) %>%
+  summarize(n_obs = n(),
+            n_NoVOL = sum(is.na(.data[["No_VOL"]]), na.rm=T),
+            n_NoRVal = sum(is.na(.data[["x_RVal"]]), na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|"), caption="", total=F,                       n.tspanner=c(8, 5, 8, 3, 3, 8, 8, 9, 5, 8, 3), tspanner=rep("",length(unique(.$PROJ_grp))))
+```
+
++ Can Ignore...
+  + For Method.GRP == "CHL_hplc"
+    + Ignore: `c_VOL` & `CHLA_c` & `PHEO_c`
+  + _Since these values are either present elsewhere, or not used for concentration calculations_
+
++ Populate PARAM_status
+
+```{r}
+CHL1718_04 %<>% mutate(
+  PARAM_status = case_when(
+    Method.GRP == "CHL_hplc" &
+      ParamX %in% c("c_VOL", "CHLA_c", "PHEO_c") ~ "Ignore",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA))
+) %>%
+  arrange(!is.na(PARAM_status), PARAM_status,
+          PROJ_grp, x_MLID, x_SDate, 
+          Method.GRP, ParamX)
+```
+
+```{r}
+CHL1718_04 %>%
+  {addmargins(table(paste(.$Method.GRP, .$ParamX, sep="."),
+                    .$PARAM_status, 
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Of the records where `PARAM_status` `! == "Ignore"`, are not for the "periphyton method", and a sample-extraction-volume value _is present_, how many records have an empty value in `x_RVal.conc` ?
+  + `r CHL1718_04 %>% filter(is.na(PARAM_status) & !is.na(VOL_all_2) & (ParamX != "PERI") & is.na(x_RVal.conc)) %>% nrow(.)`
+
+```{r}
+CHL1718_04 %>% filter(is.na(PARAM_status) & !is.na(VOL_all_2) & (ParamX != "PERI")& is.na(x_RVal.conc))
+```
+
++ The five records listed above have "0.0" provided in the Result.Value fields, and therefore are not usable results.
+
++ **Add `RECORD_STATUS` field**
+
+```{r}
+CHL1718_04 %<>% mutate(RECORD_STATUS = as.character(NA)) %>%
+  select(RECORD_STATUS, everything())
+```
+
++ [from above] reject the records w/ RV = 0
+
+```{r}
+CHL1718_04 %<>% mutate(
+  RECORD_STATUS = case_when(
+    x_RVal == 0 & is.na(x_RVal.conc) ~ "REVIEW_rval",
+    LRL == 0 & is.na(LRL_c) ~ "REVIEW_lrl",
+    MDL == 0 & is.na(MDL_c) ~ "REVIEW_mdl",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)),
+  PARAM_status = case_when(
+    ParamX == "PERI" ~ "review_PERI",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA))
+)
+```
+
++ Also found some records w/ 0.0 in MDL field...
+
+```{r}
+CHL1718_04 %>% {min(.$x_RVal, na.rm=T)}
+CHL1718_04 %>% {min(.$LRL, na.rm=T)}
+CHL1718_04 %>% {min(.$MDL, na.rm=T)}
+```
+
++ re-sort records 
+
+```{r}
+CHL1718_04 %<>%
+  arrange(
+    (!is.na(PARAM_status) | !is.na(RECORD_STATUS) | !is.na(import_status)),
+    PARAM_status, RECORD_STATUS,
+    PROJ_grp, x_MLID, x_SDate, import_status,
+    Method.GRP, ParamX)
+```
+
+```{r}
+CHL1718_04 %>% 
+  {addmargins(table(.$PROJ_grp,
+                    paste(is.na(.$RECORD_STATUS),
+                          is.na(.$PARAM_status),
+                          is.na(.$import_status), sep="|"),
+                    useNA="ifany", deparse.level = 2,
+                    dnn=c("Project", "NULL_rec_param_import")))}
+```
+
+***
+
+### 6.3 Summary
+
++ Records w/ "no-value" (i.e. `NA`) in `RECORD_STATUS` & `PARAM_status` & `import_status` are ready for last cleanup and preparation for dBase import
+  + `r CHL1718_04 %>% filter(is.na(.$RECORD_STATUS) & is.na(.$PARAM_status) & is.na(.$import_status)) %>% nrow(.)` records
+
++ Records with a `RECORD_STATUS` value (only):
+  + `r CHL1718_04 %>% filter(!is.na(.$RECORD_STATUS) & is.na(.$PARAM_status) & is.na(.$import_status)) %>% nrow(.)` records
+
++ Records with a `PARAM_status` value (only):
+  + `r CHL1718_04 %>% filter(is.na(.$RECORD_STATUS) & !is.na(.$PARAM_status) & is.na(.$import_status)) %>% nrow(.)` records
+
++ Records w/ `PARAM_status` & `RECORD_STATUS` values (only):
+  + `r CHL1718_04 %>% filter(!is.na(.$RECORD_STATUS) & !is.na(.$PARAM_status) & is.na(.$import_status)) %>% nrow(.)` records
+
+**Next Steps**
+
+1) By project, review values / calculations
+2) Whole dataset, prepare all AWQMS-Import-Configuration fields
+  + ACT.ID
+  + AWQMS.Key
+
+***
+***
+
+## 7.0 2010-2016 CHL Data
+
+### 7.1 Organize data-fields
+
+```{r}
+CHL1016_02 -> CHL1016_03
+names(CHL1016_03)
+```
+
+_Key field to standardize vs. `CHL1718`_
+
++ "PROJ_grp" = "Proj.Grp"
++ "Proj.nm" = "Project.Name"
++ "x_SDate" = "Sample.Date"
++ "x_STime" = "Sample.Time"
++ "x_MLID" = "MLID4"
++ "x_SNum" = "Sample.Num"
++ "x_RVal" = "RV3"
++ "x_RVal.conc" = "RV3_conc"
++ "x_Units" = "Result.Unit_3"
++ "x_Units.conc" = "RV3_Units"
++ "SKey2" = "SK2_3"
++ _RLs..._
+
+```{r}
+# rename some key fields... [new = old]
+CHL1016_03 %<>% rename("PROJ_grp" = "Proj.Grp", "Proj.nm" = "Project.Name",
+                       "x_SDate" = "Sample.Date", "x_STime" = "Sample.Time",
+                       "x_MLID" = "MLID4","x_SNum" = "Sample.Num","x_RVal" = "RV3",
+                       "x_RVal.conc" = "RV3_conc","x_Units" = "Result.Unit_3",
+                       "x_Units.conc" = "RV3_Units", "SKey2" = "SK2_3",
+                       "LRL" = "LRL.val", "LRL_c" = "LRL.c",
+                       "MDL" = "MDL.val", "MDL_c" = "MDL.c")
+```
+
+_Fields that are not strictly needed (per se)_
+
+```{r}
+ch1016_minor_fields <- c("Result.Unit_2", "Det.Cond",
+                         "TripID2", "Lab.filename", 
+                         "Param.Name", "src", "SK2_PARAM", "param_comnt",
+                         "Samp.MO", "rec_status", "Samp.YR", "n_recs",
+                         "FiltVol_1", "Area_1", "ANY_1", "SK2_fix2_copy",
+                         "Vol.FILT.x", "Area.samp.m2", "Labfile.Date",
+                         "xid", "MLID", "Cost.Code", "Method.Name", "VOLS2",
+                         "in_dat", "PROJECT2", "Result.Value",
+                         "Result.Unit", "RV2", "Lab.Name", "MLID3", "SK2_fix2",
+                         "Stime_vol", "Site.Name", "MLID3_chek", "QC.parent",
+                         "MLID_name", "SSRL.val", "Proj_Use",
+                         "Comments.L", "Notes2", "Site.Type")
+```
+
+```{r}
+CHL1016_03 %<>% 
+  select(-ch1016_minor_fields, everything()) %>%
+  select(import_status = Imported, SKey2:QC_type, MLID.type, PROJ_grp, Sample.Type,
+         x_SDate:PARAM.X, MATRIX.X, Matrix,
+         Prob.Iden, Result.Code,
+         everything())
+```
+
+***
+_Tables_  
+
+```{r}
+CHL1016_03 %>% {table(.$QC_type, useNA = "ifany", deparse.level = 2)}
+CHL1016_03 %>% {table(.$MethodID2, useNA = "ifany", deparse.level = 2)}
+CHL1016_03 %>% {table(.$PARAM.X, useNA = "ifany", deparse.level = 2)}
+CHL1016_03 %>% {table(.$Result.Code, 
+                      .$Non_Detect,
+                      useNA = "ifany", deparse.level = 2)}
+CHL1016_03 %>% {table(.$Matrix, 
+                      .$MATRIX.X,
+                      useNA = "ifany", deparse.level = 2)}
+```
+
+```{r}
+CHL1016_03 %>% select(contains("vol", ignore.case = T)) %>% names(.)
+```
+
+**Need to add / populate `X_status` fields** ::
+
++ Add:
+  + `PARAM_status` : whether calc was performed, if PARAM is appropriate, if param can be imported
+  + `RECORD_STATUS` :
+  + `import_status` : [from "**Imported**"]
+  + `RESULT_status` :
+
+```{r}
+CHL1016_03 %<>% mutate(
+  PARAM_status = as.character(NA)) %>%
+  select(PARAM_status, everything())
+```
+
++ Save Var-names and order
+
+```{r}
+names(CHL1016_03) -> CHL1016_03_vars
+```
+
++ Version datafile
+
+```{r}
+CHL1016_03 -> CHL1016_04
+```
+
+***
+
+### 7.2 Review Vols and Concentration Calcs
+
+```{r}
+CHL1016_04 %<>% arrange(PROJ_grp, x_MLID, x_SDate, MethodID2, PARAM.X)
+```
+
++ Records by Project group
+
+```{r}
+CHL1016_04 %>% {addmargins(table(.$PROJ_grp, .$MethodID2,
+                                 useNA="ifany", deparse.level = 2))}
+```
+
++ Methods & Parameters
+
+```{r}
+CHL1016_04 %>% {table(.$PARAM.X,
+                      .$MethodID2, 
+                      useNA = "ifany", deparse.level = 2)}
+```
+
++ Can ignore `CHLB` for now
++ `PERI` can also wait...
+
++ Bring SKEy2 back into view...
+
+```{r}
+CHL1016_04 %<>% select(RECORD_STATUS:import_status, SKey2, everything())
+```
+
+
++ Summary tables
+
+```{r}
+CHL1016_04 %>%
+  group_by(PROJ_grp,
+           MethodID2, PARAM.X) %>%
+  summarize(n_obs = n(),
+            n_NoVOL = sum(is.na(.data[["Filt.Vol"]]), na.rm=T),
+            n_NoRVal = sum(is.na(.data[["x_RVal"]]), na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|"), caption="", total=F, n.tspanner=c(4,3,4,3,3,1,3,2,2,4,3,3,3,4,2,5,5,1,4,1,4,3,5,3), tspanner=rep("", length(unique(.$PROJ_grp))))
+```
+
+No specific parameter-codes to ignore, but **`CHLA.X`** is ambiguous and should be examined more closely...
+
++ A cursory look at records suggests that a substantial amount of _duplicated records_ still exists
+  + To be reconciled later...
+
++ [190829] Table modified from above, unique sets of records w/o VOLs...etc.
+  + Ignoring CHLB, PERI
+  + Keep Method distinction
+  + _recall that these older records have NO HPLC method_
+
+```{r}
+CHL1016_04 %>%
+  filter(!PARAM.X %in% c("CHLB", "PERI") ) %>%
+  distinct(SKey2, .keep_all=T) %>%
+  group_by(PROJ_grp,
+           MethodID2) %>%
+  summarize(n_obs = n(),
+            n_NoVOL = sum(is.na(.data[["Filt.Vol"]]), na.rm=T),
+            n_NoRVal = sum(is.na(.data[["x_RVal"]]), na.rm=T),
+            n_NoRVconc = sum(is.na(.data[["x_RVal.conc"]]), na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|ccc|"), caption="", total=F, n.tspanner=c(2,2,21), tspanner=rep("", 3))
+```
+
+
+
+```{r}
+CHL1016_04 %>%
+  filter(!PARAM.X %in% c("CHLB", "PERI", "PHEO") ) %>%
+  mutate(PARAM_chl = case_when(
+    PARAM.X %in% c("CHLA.tot", "CHLA.aa", "CHLA.X") ~ "CHLA",
+    TRUE ~ PARAM.X)) %>%
+  distinct(SKey2, PARAM_chl, Non_Detect, .keep_all=T) %>%
+  group_by(PROJ_grp,
+           MethodID2) %>%
+  summarize(n_obs = n_distinct(SKey2),
+            k_NoVOL = n_distinct(.data[["SKey2"]][is.na(.data[["Filt.Vol"]])]),
+            n_NoRVal = sum(is.na(.data[["x_RVal"]]), na.rm=T),
+            n_NoRVconc = sum(is.na(.data[["x_RVal.conc"]]), na.rm=T),
+            n_NonDet = n_distinct(.data[["SKey2"]][!is.na(.data[["Non_Detect"]])])) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rll|c|cccc|"), caption="", total=F)
+
+```
+
+
+***
+
++ **??** Any records w/ "0.0" in Results or RLs 
+  + **Add `RECORD_STATUS` field
+
+```{r}
+CHL1016_04 %<>% mutate(RECORD_STATUS = as.character(NA)) %>%
+  select(RECORD_STATUS, everything())
+```
+
+```{r}
+CHL1016_04 %>% {min(.$x_RVal, na.rm=T)}
+CHL1016_04 %>% {min(.$LRL, na.rm=T)}
+CHL1016_04 %>% {min(.$MDL, na.rm=T)}
+```
+
++ Both LRL and MDL records have 0.0 values present
+  + Code these for review in RECORD_STATUS
+
+```{r}
+CHL1016_04 %<>% mutate(
+  RECORD_STATUS = case_when(
+    x_RVal == 0 & is.na(x_RVal.conc) ~ "REVIEW_rval",
+    LRL == 0 & is.na(LRL_c) ~ "REVIEW_lrl",
+    MDL == 0 & is.na(MDL_c) ~ "REVIEW_mdl",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)),
+  PARAM_status = case_when(
+    PARAM.X == "PERI" ~ "review_PERI",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA))
+) %>% mutate(
+  RECORD_STATUS = case_when(
+    is.na(Filt.Vol) & is.na(RECORD_STATUS) ~ "REVIEW_VOL",
+    is.na(Filt.Vol) & !is.na(RECORD_STATUS) ~ paste(.$RECORD_STATUS,
+                                                    "REVIEW_VOL", sep=";"),
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA))) %>%
+  select(-SKey2, -Sample.Type, -Non_Detect,
+         everything())
+  
+```
+
++ Also, folded `SKey2`, `Sample.Type` & `Non_Detect` to end of DF for easier Visual-Review...
+
+***
+
+### 7.3 Result.Values and Reporting Limits - completeness
+
+1) When `LRL` = 0.700 and `x_Units` = ug/L; copy LRL over to LRL_c...
+
+```{r}
+CHL1016_04 %<>% mutate(
+  Comment_X = case_when(
+    is.na(x_RVal) & is.na(LRL_c) & 
+      LRL == 0.70 & is.na(Comment_X) ~ "RL given as 0.7ug/L",
+    is.na(x_RVal) & is.na(LRL_c) & 
+      LRL == 0.70 & !is.na(Comment_X) ~ paste(.$Comment_X,
+                                              "RL given as 0.7ug/L", sep=";"),
+    !is.na(Comment_X) ~ Comment_X,
+    TRUE ~ as.character(NA)
+  ),
+  LRL_c = case_when(
+    is.na(x_RVal) & is.na(LRL_c) & LRL == 0.70 ~ 0.70,
+    !is.na(LRL_c) ~ LRL_c,
+    TRUE ~ as.numeric(NA))
+)
+```
+
+2) Sometimes, the LRL of 0.70 (older tri-chromatic method) was reported as a `Result.Value` (in this DF as `x_RVal` or `x_RVal.conc`); this should be copied over to `LRL_c` and commented in `Comment_X`
+
+```{r}
+CHL1016_04 %<>% mutate(
+  Comment_X = case_when(
+    is.na(LRL_c) & is.na(LRL) &
+      x_RVal == 0.7 & x_Units %in% c("ug/l", "ug/L") &
+      is.na(Comment_X) ~ "RL in RV column[0.7ug/L]",
+    is.na(LRL_c) & is.na(LRL) &
+      x_RVal == 0.7 & x_Units %in% c("ug/l", "ug/L") &
+      !is.na(Comment_X) ~ paste(.$Comment_X,
+                                "RL in RV column[0.7ug/L]", sep=";"),
+    !is.na(Comment_X) ~ Comment_X,
+    TRUE ~ as.character(NA)),
+  LRL_c = case_when(
+    is.na(LRL_c) & is.na(LRL) &
+      x_RVal == 0.7 & x_Units %in% c("ug/l", "ug/L") ~ 0.7,
+    !is.na(LRL_c) ~ LRL_c,
+    TRUE ~ as.numeric(NA))
+)
+```
+
+3) Should take a closer look at the RL-related comments and update "Result.Code" (as "Non_Detect") for records that need data flags
+
+```{r}
+CHL1016_04 %<>% select(RECORD_STATUS:Result.Code, Non_Detect, everything())
+# CHL1016_04 -> CHL1016_04_copy
+# CHL1016_04_copy -> CHL1016_04
+```
+
+```{r}
+CHL1016_04 %<>% mutate(
+  Comment_X = case_when(
+    is.na(Result.Code) & (x_RVal == 0.7 | LRL == 0.7) &
+      grepl("0.7ug/L", .$Comment_X, ignore.case = T) &
+      is.na(Comment_X) ~ "U-flag added",
+    is.na(Result.Code) & (x_RVal == 0.7 | LRL == 0.7) &
+      grepl("0.7ug/L", .$Comment_X, ignore.case = T) &
+      !is.na(Comment_X) ~ paste(.$Comment_X,
+                                "U-flag added", sep=";"),
+    !is.na(Comment_X) ~ Comment_X,
+    TRUE ~ as.character(NA)),
+  Non_Detect = case_when(
+    is.na(Result.Code) &
+      (x_RVal == 0.7 | LRL == 0.7) &
+      grepl("0.7ug/L", .$Comment_X, ignore.case = T) ~ "U",
+    !is.na(Non_Detect) ~ Non_Detect,
+    !is.na(Result.Code) & 
+      grepl("U", .$Result.Code, ignore.case = T) ~ "U",
+    TRUE ~ as.character(NA))
+)
+```
+
+4) Supply Units for RLs that are in use (active)
+
+```{r}
+CHL1016_04 %<>% 
+  mutate(RL_Units = as.character(NA)) %>%
+  select(RECORD_STATUS:MDL, RL_Units, everything()) %>% mutate(
+  RL_Units = case_when(
+    !is.na(Non_Detect) & 
+      Non_Detect == "U" & !is.na(LRL_c) ~ "ug/L",
+    !is.na(LRL_c) ~ x_Units.conc,
+    !is.na(RL_Units) ~ RL_Units,
+    TRUE ~ as.character(NA))) %>%
+  select(RECORD_STATUS:MDL, RL_Units, everything())
+```
+
+
+> Remember, records with U-flag / Non-Detect should have _NULL_ value in RVal field ("x_RVal.conc")
+
+***
+
+### 7.4 Overall Project-Level Completeness
+
+```{r}
+CHL1016_04 %>% filter(PARAM.X != "PERI") %>%
+  group_by(PROJ_grp, MethodID2, PARAM.X) %>%
+  summarise(n_obs = n(),
+            n_NoVOL = sum(is.na(.data[["Filt.Vol"]]), na.rm=T),
+            k_NoVOL = n_distinct(.data[["SKey2"]][is.na(.data[["Filt.Vol"]])], na.rm = T),
+            n_NoRVal = sum(is.na(.data[["x_RVal.conc"]]), na.rm=T),
+            k_NoRVal = n_distinct(.data[["SKey2"]][is.na(.data[["x_RVal"]])], na.rm = T),
+            n_NonDet = sum(!is.na(.data[["Non_Detect"]]) & .data[["Non_Detect"]] == "U", na.rm=T),
+            k_NonDet = n_distinct(.data[["SKey2"]][!is.na(.data[["Non_Detect"]]) &
+                                                     .data[["Non_Detect"]] == "U"], na.rm = T),
+            n_NoRL = sum(is.na(.data[["LRL_c"]]), na.rm = T),
+            k_NoRL = n_distinct(.data[["SKey2"]][is.na(.data[["LRL_c"]])], na.rm = T)
+            ) %>%
+  {. ->> comp_tab1} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rlll|c|cc|cc|cc|cc|"), caption="", total=F, n.tspanner=c(4,3,4,3,3,1,3,2,2,4,3,3,3,4,1,4,4,1,4,1,4,3,4,2), tspanner=rep("", length(unique(.$PROJ_grp))))
+```
+
++ Working on that table (above)...
+
+```{r}
+comp_tab1 %<>% mutate(
+  p_NoVOL = sprintf("%.f%%",(n_NoVOL/n_obs)*100),
+  p_NoRVal = sprintf("%.f%%",(n_NoRVal/n_obs)*100),
+  p_NonDet = sprintf("%.f%%",(n_NonDet/n_obs)*100),
+  p_NoRL = sprintf("%.f%%",(n_NoRL/n_obs)*100)) %>%
+  select(PROJ_grp:n_NoVOL, p_NoVOL, k_NoVOL,
+         n_NoRVal, p_NoRVal, k_NoRVal,
+         n_NonDet, p_NonDet, k_NonDet,
+         n_NoRL, p_NoRL, k_NoRL)
+```
+
++ Repeat table above, buy w/ "% missing"
+
+```{r}
+comp_tab1 %>% 
+  select(-contains("n_No", ignore.case = T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rlll|c|cc|cc|cc|cc|"), caption="", total=F, n.tspanner=c(4,3,4,3,3,1,3,2,2,4,3,3,3,4,1,4,4,1,4,1,4,3,4,2), tspanner=rep("", length(unique(.$PROJ_grp))))
+```
+
+
+***
+
+### 7.5 Project-Specific Reviews
+
+## [1] BOR
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "BOR") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "BOR") %>% distinct(MethodID2) %>% nrow()`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "BOR") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "BOR") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "BOR") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BOR") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X))) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: BOR - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, size=2.5, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: BOR - RLs for Chlorophyll")
+```
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
+  + These records have values in LRL, but no Volumes were reported...
+
++ Distinct Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol)) %>% distinct(SKey2) %>% nrow()`
+
++ Distinct Records where Filt.Vol is required for CHL-concentration calculation :: `r CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc)) %>% distinct(SKey2) %>% nrow()`
+  + Record:  `r CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc)) %>% {unique(.$SKey2)}`  
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BOR" & PARAM.X != "PHEO") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: BOR - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [2] BRI
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "BRI") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "BRI") %>% distinct(MethodID2) %>% nrow()`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "BRI") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "BRI") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "BRI") %>% {max(.$x_SDate, na.rm=T)}`]
+
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BRI") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X))) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: BRI - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, size=2.5, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: BRI - RLs for Chlorophyll")
+```
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
++ Distinct Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol)) %>% distinct(SKey2) %>% nrow()`
+
++ Distinct Records where Filt.Vol is required for CHL-concentration calculation :: `r CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc)) %>% distinct(SKey2) %>% nrow()`
+
+`r CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc)) %>% {unique(.$SKey2)}`  
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "BRI" & PARAM.X != "PHEO") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: BRI - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [3] CUWJ
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>% {max(.$x_SDate, na.rm=T)}`]
+
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "CUWJ") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: CUWJ - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses*
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: CUWJ - RLs for Chlorophyll (CHLA.X)")
+```
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+**No issue here w/ missing RLs since recent data come from ChemTechFord and results are complete**
+  
++ Distinct Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% distinct(SKey2) %>% nrow()`
+
++ Distinct Records where Filt.Vol is required for CHL-concentration calculation :: `r CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% distinct(SKey2) %>% nrow()`
+
+`r CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% {unique(.$SKey2)}`  
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "CUWJ" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: CUWJ - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [4] FarmB
+
++ Only `r CHL1016_04 %>% filter(PROJ_grp == "FarmB") %>% nrow()` records
++ **No filtration Volumes found**
+
++ If data are needed, field-measures must be completed by DPM
+
+***
+
+## [5] FRNG
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>% {max(.$x_SDate, na.rm=T)}`]
+
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "FRNG") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: FRNG - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "FRNG" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: FRNG - RLs for Chlorophyll")
+```
+
++ **Filtration Volumes appear to be missing from ALL 2015 records**
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "FRNG" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "FRNG" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "FRNG" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "FRNG" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: FRNG - Distribution of RLs and RVs for Chlorophyll")
+```
+
+> **Action** :: Locate and integrate filtration volumes for 2015 FRNG records
+
+***
+
+## [6] GSLWET
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ These are the historical GSL Wetland records, no corrections should be needed
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "GSLWET") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: GSLWET - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "GSLWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: GSLWET - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "GSLWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "GSLWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "GSLWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "GSLWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: GSLWET - Distribution of RLs and RVs for Chlorophyll")
+```
+
+> **Comment:** These records need no correction, but available filtration volumes can be used to (1) calculate effective reporting limits, and (2) estimate Result.Val / RL data distribution for these ecosystem type
+
+***
+
+## [7] HAB
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "HAB") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ These are from 2016 Utah Lake HAB response
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "HAB") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: HAB - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: HAB - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+  + These are from a partial set of Sites x Dates
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% {addmargins(table(.$x_MLID,.$x_SDate, useNA="ifany", deparse.level=2, dnn=c("Site.ID", "Sample.Date where Filt.Vol is missing")))}
+```
+
++ Distinct Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% distinct(SKey2) %>% nrow()`
+
++ Distinct Records where Filt.Vol is required for CHL-concentration calculation :: `r CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% distinct(SKey2) %>% nrow()`
+
+`r CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% {unique(.$SKey2)}`  
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "HAB" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: HAB - Distribution of RLs and RVs for Chlorophyll")
+```
+
+> **Action** :: Locate remaining missing filtration volumes
+
+***
+
+## [8] IW
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ The outlier record (by PARAM.X) is a duplicated result (_this will be corrected next_)
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "IW") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "IW") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: IW - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: IW - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+  + These are from a partial set of Sites x Dates
+
+```{}
+CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% {addmargins(table(.$x_MLID,.$x_SDate, useNA="ifany", deparse.level=2, dnn=c("Site.ID", "Sample.Date where Filt.Vol is missing")))}
+```
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "IW" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: IW - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [9] JRULI
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "JRULI") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: JRULI - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=MethodID2), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Method") +
+  ggtitle("Project: JRULI - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+  + These are from 2010 and 2011, with some 2012 records, where Filt.Vol was not needed
+
+```{r}
+# CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% {addmargins(table(.$x_MLID,paste(lubridate::year(.$x_SDate), lubridate::quarter(.$x_SDate, fiscal_start = 1), sep="."), useNA="ifany", deparse.level=2, dnn=c("Site.ID", "Year-Qtr where Filt.Vol is missing")))}
+```
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "JRULI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: JRULI - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [10] LAKES
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: LAKES - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: LAKES - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% {addmargins(table(.$MLID.type,lubridate::year(.$x_SDate), useNA="ifany", deparse.level=2, dnn=c("Site.ID", "Year-Qtr where Filt.Vol is missing")))}
+```
+
++ Distinct Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% distinct(SKey2) %>% nrow()`
+
++ Distinct Records where Filt.Vol is required for CHL-concentration calculation :: `r CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% distinct(SKey2) %>% nrow()`
+
+`r CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol) & is.na(x_RVal.conc) & is.na(LRL_c)) %>% {unique(.$SKey2)}`  
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: LAKES - Distribution of RLs and RVs for Chlorophyll")
+```
+
+**Some Data-reporting Issues**
+
++ `RECORD_STATUS` issues:
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "LAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% {table(.$RECORD_STATUS, lubridate::year(.$x_SDate), useNA="ifany", deparse.level=2)}
+```
+
+> **Action** :: Records w/ missing filtration volumes should be reviewed and integrated
+
+***
+
+## [11] NPS
+
++ Only `r CHL1016_04 %>% filter(PROJ_grp == "NPS") %>% nrow()` records
++ **No filtration Volumes found**
+
++ If data are needed, field-measures must be completed by DPM
+
+***
+
+## [12] REFWET
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "REFWET") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: REFWET - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "REFWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: REFWET - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "REFWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "REFWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "REFWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects in this project
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "REFWET" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: REFWET - Distribution of RLs and RVs for Chlorophyll")
+```
+
++ This dataset appears to be complete
+
+***
+
+## [13] SBCI
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "SBCI") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: SBCI - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "SBCI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: SBCI - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "SBCI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "SBCI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "SBCI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "SBCI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: SBCI - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [14] TMDLLAKES
+
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: TMDLLAKES - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: TMDLLAKES - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "TMDLLAKES" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: TMDLLAKES - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [15] UBI
+
+
++ Only `r CHL1016_04 %>% filter(PROJ_grp == "UBI") %>% nrow()` records
++ **No filtration Volumes found**
+
++ If data are needed, field-measures must be completed by DPM
+
+***
+
+## [16] UCASE
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "UCASE") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: UCASE - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
+**Note** :: `PERI` refers to AFDM from benthic samples.  **_There will also be some benthic CHL samples here as well !!_** These need to be examined for Sample.Matrix and Result.Unit differences to discriminate b/w water column vs. benthic samples
+
+
++ Reporting Limits over time (_ignoring PHEO and PERI_)
+
+```{r}
+CHL1016_04 %>% 
+  filter(PROJ_grp == "UCASE" & 
+           PARAM.X != "PHEO" &
+           PARAM.X != "CHLB" & PARAM.X != "PERI") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: UCASE - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "UCASE" & PARAM.X != "PHEO" & PARAM.X != "CHLB" & PARAM.X != "PERI") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "UCASE" & PARAM.X != "PHEO" & PARAM.X != "CHLB" & PARAM.X != "PERI") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% 
+  filter(PROJ_grp == "UCASE" & PARAM.X != "PHEO" & PARAM.X != "CHLB" & PARAM.X != "PERI") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
+```{r}
+CHL1016_04 %>% 
+  filter(PROJ_grp == "UCASE" & PARAM.X != "PHEO" & PARAM.X != "CHLB" & PARAM.X != "PERI") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: UCASE - Distribution of RLs and RVs for Chlorophyll")
+```
+
+> **Action**: Discriminate water-column vs. benthic matrices
+
+> _Come back to this project a little later_
+
+***
+
+## [17] Unknown
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "unknown") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "unknown") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: unknown - CHL parameters")
+```
+
+> **This is a mixed bag of projects, and these will need to be corrected once the main projects are finished...**
+
+***
+
+## [18] USFS
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "USFS") %>% {max(.$x_SDate, na.rm=T)}`]
+
+> **These samples are all from 2010.  No filtration volume required**
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "USFS") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: USFS - CHL parameters")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "USFS" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "USFS" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
+> These data can be used to compare frequency of non-detects, if needed
+
+***
+
+## [19] UtahLk
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "UtahLK") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: UtahLK - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "UtahLK" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: UtahLK - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "UtahLK" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "UtahLK" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+> These look to be some early UTLK records sampled prior to Utah Lake main project, and/or from site(s) that are no longer key-monitoring-sites [??]
+
++ Non-Detects
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "UtahLK" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
+> **Action**: 
+
+1) ID sites
+2) find filtration.volumes
+3) make calculations
+
+
+***
+
+## [20] WINTERLAKES
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WINTERLAKES") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WINTERLAKES - CHL parameters")
+```
+
++ A few older lakes samples where filt.vol is not required
+
+***
+
+## [21] WLA
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "WLA") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WLA") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WLA - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WLA" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: WLA - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "WLA" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "WLA" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+
++ Non-Detects
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WLA" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WLA" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: WLA - Distribution of RLs and RVs for Chlorophyll")
+```
+
++ Find volumes for samples from 2015
+
+***
+
+## [22] WRI
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "WRI") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WRI") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WRI - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WRI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: WRI - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "WRI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "WRI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+> **Action**: Need all Filtration Volumes !!
+
++ Non-Detects
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WRI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WRI" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: WRI - Distribution of RLs and RVs for Chlorophyll")
+```
+
+***
+
+## [23] WSpur
+
++ Connect w/ Suzan re: these data and data-integration with all other
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WSpur") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WSpur - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WSpur" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: WSpur - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "WSpur" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "WSpur" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
+> **Action**: Need all Filtration Volumes !!
+
++ Non-Detects
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WSpur" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Many non-detects here
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WSpur" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: WSpur - Distribution of RLs and RVs for Chlorophyll")
+```
+
++ Quite a few benthic records...
++ Need most filtration volumes from 2015 (and others)
+
+***
+
+## [24] WWTP
+
++ Total Records :: `r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% nrow()`
++ Number of CHL-methods ::  `r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% distinct(MethodID2) %>% nrow()`
+  + Methods:: `r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% {unique(.$MethodID2)}`
++ Records by PARAM
+
+`r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% {addmargins(table(.$PARAM.X, .$MethodID2, useNA="ifany", deparse.level=2),1)} %>%  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)`
+
++ Sample Date Range :: [`r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% {min(.$x_SDate, na.rm=T)}`] to [`r CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>% {max(.$x_SDate, na.rm=T)}`]
+
++ PARAMs over time
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WWTP") %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MethodID2)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WWTP - CHL parameters")
+```
+
+**Convert "CHLA.X" to "CHLA.tot" for analyses**  
+**Ignore "CHLB" and "PHEO"**
+
++ Reporting Limits over time (_ignoring PHEO_)
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(x=x_SDate, y=LRL_c, col=PARAM.X), na.rm=T) + theme_bw() +
+  geom_text(na.rm=T, fontface="bold",
+            check_overlap = T,label="J") +
+  scale_x_date(date_labels="%Y",date_breaks = "1 year",
+               limits=c(as.Date("2010-01-01"), NA)) + 
+  scale_y_continuous(limits=c(0, NA)) +
+  labs(x="Sample Date", y="Lower Reporting Limit (ug/L)", col="Parameter") +
+  ggtitle("Project: WWTP - RLs for Chlorophyll")
+```
+
+
++ Records where neither an RVal_conc or RL exist :: `r CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(x_RVal.conc) & is.na(LRL_c)) %>% nrow(.)`
++ Records where CHL filtration volume is missing :: `r CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>% filter(is.na(Filt.Vol)) %>% nrow()`
+
++ Look at MATRIX.X for WC vs. Benthic samples
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.,
+         aes(y=x_SDate, x=factor(PARAM.X),col=MATRIX.X)) + theme_bw() +
+  geom_point(na.rm=T, 
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Parameter") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="1 year",
+               limits=c(as.Date("2010-01-01"), NA)) +
+  coord_flip() +
+  ggtitle("Project: WWTP - CHL parameter x matrix")
+```
+
+
+
++ Non-Detects
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  {addmargins(table(.$PARAM.X, .$Non_Detect, useNA="ifany", deparse.level = 2))}
+```
+
++ Distribution of reporting limits
+
+```{r}
+CHL1016_04 %>% filter(PROJ_grp == "WWTP" & PARAM.X != "PHEO" & PARAM.X != "CHLB") %>%
+  mutate(PARAM.X = recode(.$PARAM.X,
+                          "CHLA.X" = "CHLA_total",
+                          "CHLA.tot" = "CHLA_total",
+                          "CHLA.aa" = "CHLA_corrected")) %>%
+  ggplot(.) + theme_bw() +
+  stat_ecdf(aes(x=LRL_c, col=PARAM.X), na.rm=T, lty=1) +
+  stat_ecdf(aes(x=x_RVal.conc, col=PARAM.X), na.rm=T, lty=2) +
+  labs(x="Lower Reporting Limits (ug/L)", y="% of records below x-Value",
+       col="Parameter") +
+  scale_x_continuous(trans="log10") +
+  scale_y_continuous(labels=percent) +
+  geom_hline(yintercept = c(0.25,0.5,0.75), lty=2, color="gray40") +
+  ggtitle("Project: WWTP - Distribution of RLs and RVs for Chlorophyll")
+```
+
+> **Action**: Do a better accounting of MATRIX.X
+
+***
+
+### 7.6 Project Prioritization
+
+```{r}
+CHL1016_04 %>% distinct(SKey2, .keep_all = T) %>%
+  {addmargins(table(.$PROJ_grp, .$Cost.Code,
+                    useNA="ifany"))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="", total=T)
+```
+
+**Projects to Import to AWQMS**
+
+```{r}
+proj_import <- c("BOR", "BRI", "CUWJ", "JRULI", "LAKES", "NPS", "SBCI", "TMDLLAKES", "UBI",
+                 "UCASE", "USFS", "UtahLK", "WINTERLAKES", "WLA", "WRI")
+proj_wetL <- c("FarmB", "FRNG", "GSLWET", "IW", "REFWET", "WSpur")
+
+CHL1016_04 %>% 
+  distinct(PROJ_grp) %>% 
+  filter(!PROJ_grp %in% proj_import) %>%
+  filter(!PROJ_grp %in% proj_wetL) %>% .[["PROJ_grp"]] -> proj_unk
+
+```
+
+**Remaining Tasks**
+
+1) Cleanup `PROJ_grp` == "unknown"
+2) Clarify and cleanup BENTHIC samples
+3) Locate last set of volumes...
+4) For Non-Detect issues, pay special attention to U-flags from November, 2012 onward.  (_Not sure when this practice was corrected, but sometime around the change ot the new LIMS (2017?)_)
+5) Re-examine and cleanup duplicated records...
+
+***
+
+## Next Steps
+
+[180929] ::
+
+Have a project prioritization table, see `"chl_project_Priority_table_190829.docx"`, summarizing details about projects (as guidelines)
+
+Also - pay special attention to non-detect records in 2013 and 2014 (starting Nov 2012), where many of these do not seem to be reliable
+
++ Move over to **NEW NOTEBOOK**
+
+
+***
+***
+
+## END
+```{r}
+
+CHL1016_03 %>% select(contains("unit", ignore.case = T)) %>% names(.)
+
+
+```
+
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
