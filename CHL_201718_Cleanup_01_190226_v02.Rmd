@@ -1,0 +1,2113 @@
+---
+title: "2017/18 CHL Cleanup [I]"
+author: "T.Hooker"
+date: "20 February, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+### Notes
+
+This notebook compiles three (3) active files containing CHL data for the 2017 to 2018 period, performs cleanup and calculation steps, and prepares these data for import to AWMQS [190220].  Additional files may be used, as needed, to fill major gaps
+
+***
+
+## I: Import and Compile CHL Data
+
+### 1.0 Import CHL-related Datafiles
+
+#### 1.1 Import
+
+```{r }
+# files.01 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+CHL01_00 <- openxlsx::read.xlsx(files.01, sheet=1, colNames=T,
+                                            rowNames=FALSE, check.names = T)
+
+```
+
++ Filename ::  `r basename(files.01)`
++ Path ::  `r dirname(files.01)`  
++ Last Accessed :: [`r file.mtime(files.01)`]
+
+
+```{r }
+# files.02 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+CHL02_00 <- openxlsx::read.xlsx(files.02, sheet=1, colNames=T,
+                                            rowNames=FALSE, check.names = T)
+
+```
+
++ Filename ::  `r basename(files.02)`
++ Path ::  `r dirname(files.02)`  
++ Last Accessed :: [`r file.mtime(files.02)`]
+
+
+```{r }
+# files.03 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+CHL03_00 <- openxlsx::read.xlsx(files.03, sheet=1, colNames=T,
+                                            rowNames=FALSE, check.names = T)
+
+```
+
++ Filename ::  `r basename(files.03)`
++ Path ::  `r dirname(files.03)`  
++ Last Accessed :: [`r file.mtime(files.03)`]
+
+#### 1.2 Examine data structure and align field-names
+
+```{r names}
+nam_CHL01 <- CHL01_00 %>% names(.)
+nam_CHL02 <- CHL02_00 %>% names(.) 
+nam_CHL03 <- CHL03_00 %>% names(.)
+#
+length(nam_CHL01) <- max(length(nam_CHL01), length(nam_CHL02), length(nam_CHL03))
+length(nam_CHL02) <- max(length(nam_CHL01), length(nam_CHL02), length(nam_CHL03))
+length(nam_CHL03) <- max(length(nam_CHL01), length(nam_CHL02), length(nam_CHL03))
+#
+CHL_names <- as.data.frame(cbind(nam_CHL01, nam_CHL02, nam_CHL03))
+#
+openxlsx::write.xlsx(CHL_names, file="CHLfile_varnames_190220.xlsx")
+```
+
++ Update Key name-fields
+
+```{r field_names}
+# comments <- readClipboard()
+# Samp_set <- readClipboard()
+# MethPar <- readClipboard() # ParamX = PARAM [new = old]
+# SampleCollection <- readClipboard() # MLID2 = MLID
+# ResultID <- readClipboard()
+# Result_val <- readClipboard() # result.Value_MG = Result.Value ; Units2 = Units
+# SampKeys <- readClipboard() # SKey6 = SKey2
+
+
+## the remaining fields can just be maintained or separated (versioned) out
+
+# comments
+# Samp_set
+# MethPar2 <- MethPar[MethPar != "PARAM"]
+# SampleCollection2 <- SampleCollection[SampleCollection != "MLID2"]
+# ResultID
+# Result_val2 <- Result_val[Result_val != c("Result.Value_MG", "Units2")]
+# SampKeys
+```
+
+#### 1.3 Extract Required fields
+
+1) Dataset 01 :: CHL01_00
+
++ No field-name changes needed for this dataset
+
+```{r}
+CHL01_01 <- CHL01_00 %>% mutate(FILE="CH01")
+```
+
+
+2) Dataset 02 :: CHL02_00
+
+```{r}
+CHL02_01 <- CHL02_00 %>% select(MLID_old = MLID, MLID = MLID2, everything()) %>% 
+    mutate(FILE="CH02", Project.Comment = as.character(Project.Comment))
+```
+
+3) Dataset 03 :: CHL03_00
+
+```{r}
+CHL03_01 <- CHL03_00 %>% select(ParamX = PARAM, Result.Value = Result.Value_MG,
+                                Units.old = Units, Units = Units2, SKey2 = SKey6,
+                                everything()) %>% 
+    mutate(FILE="CH03", Project.Comment = as.character(Project.Comment))
+```
+
+#### 1.4 Bind Datafiles
+
+```{r}
+CHL04_00 <- bind_rows(CHL02_01, CHL01_01, CHL03_01)
+
+# class(CHL01_01$Project.Comment)
+# class(CHL02_01$Project.Comment)
+# class(CHL03_01$Project.Comment)
+
+CHL04_00 %<>% select(FILE, Samp_set, SampleCollection2, ResultID,
+                     MethPar2, Result_val2, SampKeys, comments, everything())
+##
+```
+
+
+#### 1.5 Review Variables
+
+```{r DataVar_review}
+# data.file <- CHL04_00
+data.file <- CHL04_01
+# 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+```
+
+
+#### 1.6 Align Variables
+
+0) Remove non-CHL related records
+
+```{r}
+CHL04_00 %>% distinct(Method.ID) %<>% arrange(.)
+CHL04_00 %>% {table(.$Method.ID, .$FILE, useNA="ifany")} %>% 
+    htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+CHL_meth <- c("10200H", "10300C", "HPLC", "HPLCmod", "HPLCMOD")
+##
+CHL04_01 <- CHL04_00 %>% filter(Method.ID %in% CHL_meth)
+# re-organize fields
+CHL04_01 %<>% select(-Agency.Bill.Code, -Chain.of.Custody, -Collector, -Cost.Code,
+                     -Sample.Type, everything())
+```
+
+
+1) Trips to Projects
+    + Remove : TripID_x, Proj_nm
+
+```{r}
+unique(CHL04_01$Trip.ID)
+unique(CHL04_01$TripID.3)
+unique(CHL04_01$TripID_x)
+
+CHL04_01 %>% {table(is.na(.$Trip.ID), is.na(.$TripID.3), useNA="ifany", deparse.level = 2)}
+CHL04_01 %>% {table(is.na(.$Trip.ID), is.na(.$TripID_x), useNA="ifany")}
+CHL04_01 %>% {table(is.na(.$TripID_x), is.na(.$TripID.3), useNA="ifany")}
+```
+
+```{r}
+CHL04_01 %<>% mutate(Trip_root = as.character(NA)) %>% mutate(
+    Trip_root = case_when(
+        !is.na(Trip.ID) ~ substr(.$Trip.ID, 1, 
+                                 (stringr::str_locate(.$Trip.ID,
+                                                      "[0-9]")[,1])-1),
+        !is.na(TripID.3) ~ substr(.$TripID.3, 1, 
+                                 (stringr::str_locate(.$TripID.3,
+                                                      "[0-9]")[,1])-1),
+        !is.na(TripID_x) ~ substr(.$TripID_x, 1, 
+                                 (stringr::str_locate(.$TripID_x,
+                                                      "[0-9]")[,1])-1),
+        TRUE ~ as.character(NA)) ) %>% select(FILE:SType2, Trip_root, everything())
+CHL04_01 %<>% mutate(Trip_root = gsub(" ", "", .$Trip_root))
+
+CHL04_01 %>% {sort(unique(.$Trip_root))}
+
+CHL04_01 %<>% select(-TripID.2, -TripID_x, -Proj_nm, -Proj_GRP, everything())
+```
+
++ Re-code any Trips similar to _Utah Lake_ to `UTLK`
+
+```{r}
+utlk_trips <- c("UTLK", "UTAHLAKE", "UTAHLAKES", "UL")
+#
+CHL04_01 %<>% mutate(
+    Trip_root = case_when(
+        !is.na(Trip_root) & Trip_root %in% utlk_trips ~ "UTLK",
+        !is.na(Trip_root) & Trip_root == "LAKEES" ~ "LAKES",
+        !is.na(Trip_root) ~ Trip_root,
+        is.na(Trip_root) ~ as.character(NA)) )
+CHL04_01 %>% {sort(unique(.$Trip_root))}
+#
+CHL04_01 %>% {addmargins(table(.$Trip_root, .$FILE, useNA="ifany", deparse.level = 2))} %>% 
+    htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+```{r}
+CHL04_01 %>% filter(is.na(Trip_root))
+```
+
++ Sample Times will need to be re-aligned... (re-formatted)
+
+2) Station.ID : MLID : MLID_x (chl_method_corrected)
+    + Build Order :: Station.ID, MLID, MLID_x
+    + Move QC and MLID.type and MLID_name to back
+        + Will Re-lookup these from MonLoc later
+
+```{r}
+CHL04_01 %<>% select(FILE:Sample.Date, Station.ID, MLID, MLID_x, everything())
+
+CHL04_01 %>% filter(is.na(Station.ID)) %>% 
+    {addmargins(table(.$MLID, is.na(.$Station.ID), useNA="ifany"))}
+
+```
+
++ When `MLID` == "CHL_samp" :: Record is a re-analysis using a 2nd CHL method
++ MLID & MLID_x can be combinateD(mutually exclusive), _iff_ `Station.ID` == _NULL_
+    + Convert all to **MLID_00** (from MLID_x or Station.ID)
+
+```{r}
+CHL04_01 %<>% mutate(MLID_00 = as.character(NA)) %>% mutate(
+    MLID_00 = case_when(
+        !is.na(Station.ID) ~ as.character(Station.ID),
+        !is.na(MLID) ~ as.character(MLID),
+        !is.na(MLID_x) ~ as.character(MLID_x),
+        TRUE ~ as.character(NA))) %>% 
+    select(FILE:Sample.Date, MLID_00, everything()) %>%
+    select(-Station.ID, -MLID, -MLID_x, -QC.parent, everything())
+# Looks like no records w/ missing `MLID_00`
+sum(is.na(CHL04_01$MLID_00))
+```
+
+
+3) Sample.Number : SNum_x (chl_method_corrected)
+    + Make sure that SampNums are extracted from Sample.Descriptions
+
+```{r}
+# no records are missing Sample.Number
+sum(is.na(CHL04_01$Sample.Number))
+# unique(CHL04_01$Sample.Number)
+max(nchar(CHL04_01$Sample.Number))
+sd(nchar(CHL04_01$Sample.Number))
+##
+CHL04_01 %<>% select(-MLID.type, -MLID_name, -Sample.Description, everything()) %>%
+    select(FILE:Sample.Number, SNum_x, everything())
+```
+
+#### 1.61 Align Vars (2)
+
+4) Align Method.IDs
+    + Integrate Sample.Matrix / Samp.Matrix (_or drop_)
+    + Populate ParamX
+
+```{r}
+CHL04_01 %>% {table(.$Method.ID, .$Method.GRP, useNA="ifany")}
+#
+CHL04_02 <- mutate(CHL04_01,
+    Method.GRP = case_when(
+        is.na(Method.GRP) & Method.ID == "10200H" ~  "CHL",
+        is.na(Method.GRP) & Method.ID == "10300C" ~  "Filter",
+        is.na(Method.GRP) & Method.ID == "HPLC" ~  "CHL_hplc",
+        is.na(Method.GRP) & Method.ID == "HPLCmod" ~  "CHL_hplc",
+        is.na(Method.GRP) & Method.ID == "HPLCMOD" ~  "CHL_hplc",
+        !is.na(Method.GRP) ~ Method.GRP,
+        TRUE ~ as.character(NA)))
+#
+CHL04_02 %>% {table(.$Method.ID, .$Method.GRP, useNA="ifany")}
+```
+
+```{r}
+# little cleanup
+CHL04_02 %<>% select(-Method_x, -Method.Description, -Method.Agency, everything())
+```
+
+```{r}
+CHL04_02 %>% {table(.$Sample.Matrix, .$FILE, useNA="ifany")}
+CHL04_02 %>% {table(.$Samp.Matrix, .$FILE, useNA="ifany")}
+CHL04_02 %>% {table(.$Matrix.Description, .$FILE, useNA="ifany")}
+#
+CHL04_02 %<>% mutate(
+    Sample.Matrix = recode(Matrix.Description, "Filter" = "X")) %>%
+    select(-Matrix.Description, -Samp.Matrix, -TripID.3, -Dilution.Factor, 
+           -Replicate.Number, everything())
+```
+
+```{r}
+# Any missing Parameter names?
+sum(is.na(CHL04_02$Param.Description))
+# Any missing parameter-name conversions?
+sum(is.na(CHL04_02$ParamX))
+CHL04_02 %>% {table(.$Param.Description, .$ParamX, useNA="ifany")}
+# CHL04_01 %>% {table(.$Param.Description, .$FILE, useNA="ifany")}
+CHL04_02 %>% {table(.$Param.Description, .$Method.GRP, useNA="ifany")}
+```
+
++ Need to develop a more consistent conversion of parameter names, regardless of method
+
+```{r}
+# CHL04_01 %<>% mutate(
+    # ParamX = recode(ParamX, "CHLa" = "CHLA","CHLA.aa" = "CHLA_aa","CHLA.ba" = "CHLA_ba",
+    #                 "CHLa_c" = "CHLA_c","Pheo" = "PHEO"))
+##
+## Build from Param.Description instead (of above)
+##
+CHL04_02 %<>% mutate(
+    ParamX = recode(ParamX,
+                    "Chlorophyll-a" = "CHLA",
+                    "CHLOROPHYLL-A" = "CHLA",
+                    "Chlorophyll-a (conc)" = "CHLA_c",
+                    "CHLOROPHYLL-A (CONC)" = "CHLA_c",
+                    "Chlorophyll-A After Acid" = "CHLA",
+                    "CHLOROPHYLL-A AFTER ACID" = "CHLA",
+                    "Chlorophyll-A Before Acid" = "CHL.tot",
+                    "CHLOROPHYLL-A BEFORE ACID" = "CHL.tot",
+                    "Filtered Volume" = "c_VOL",
+                    "FILTERED VOLUME" = "c_VOL",
+                    "Periphyton" = "PERI",
+                    "PERIPHYTON" = "PERI",
+                    "Pheophytin" = "PHEO",
+                    "PHEOPHYTIN" = "PHEO",
+                    "Pheophytin-a" = "PHEO",
+                    "PHEOPHYTIN-A" = "PHEO",
+                    "Pheophytin-a (conc)" = "PHEO_c",
+                    "PHEOPHYTIN-A (CONC)" = "PHEO_c",
+                    "CHLa" = "CHLA",
+                    "CHLA.aa" = "CHLA",
+                    "CHLA.ba" = "CHL.tot",
+                    "CHLa_c" = "CHLA_c",
+                    "Pheo" = "PHEO",
+                    "PHEOA" = "PHEO",
+                    "CHL_vol" = "c_VOL"
+                    ) )
+##
+CHL04_02 %>% {table(.$Param.Description, .$ParamX, useNA="ifany")}
+```
+
+
+5) Filtration Volumes
+    + Benthic & Filt.Vol.LUT & VOL_filt
+
+```{r}
+CHL04_02 %>% {addmargins(table(is.na(.$VOL_filt), is.na(.$Filt.Vol.LUT), useNA="ifany"))}
+CHL04_02 %>% {addmargins(table(is.na(.$Filt.Vol.LUT), .$FILE,useNA="ifany"))}
+CHL04_02 %>% {addmargins(table(is.na(.$VOL_filt), .$FILE,useNA="ifany"))}
+#
+CHL04_03 <- mutate(CHL04_02,
+    VOL_filt = case_when(
+        is.na(VOL_filt) & !is.na(Filt.Vol.LUT) & (Filt.Vol.LUT != 0) ~ as.character(Filt.Vol.LUT),
+        !is.na(VOL_filt) ~ as.character(VOL_filt))) %>%
+    mutate(VOL_filt = as.numeric(VOL_filt)) %>%
+    select(-Filt.Vol.LUT, everything())
+CHL04_03 %>% {addmargins(table(.$VOL_filt, .$FILE,useNA="ifany"))}
+```
+
+```{r}
+CHL04_03 %>% {addmargins(table(.$Benthic, .$FILE, useNA="ifany"))}
+```
+
+
+6) Result.Value : RV2_ug && Units
+
++ Working dataframe :: `CHL04_03` [190221]
+
++ Note: `Units.old` applies only to CH03 file
+
+```{r}
+select(CHL04_03, contains("Unit", ignore.case = T)) %>% names(.)
+CHL04_03 %<>% select(FILE:Units, Units.old, everything())
+#
+CHL04_03 %>% {addmargins(table(is.na(.$Result.Value), is.na(.$RV2_ug), useNA="ifany"))}
+CHL04_03 %>% {addmargins(table(is.na(.$RV2_ug), .$Units, useNA="ifany"))}
+CHL04_03 %>% {addmargins(table(is.na(.$RV2_ug), .$Units.old, useNA="ifany"))}
+CHL04_03 %>% {addmargins(table(is.na(.$Result.Value), .$Units, useNA="ifany"))}
+CHL04_03 %>% {addmargins(table(is.na(.$Result.Value), .$Units.old, useNA="ifany"))}
+CHL04_03 %>% {addmargins(table(.$Units, .$Units.old, useNA="ifany", deparse.level = 2))}
+CHL04_03 %>% {addmargins(table(paste(.$Units.old, .$Units, sep="_"), .$FILE, useNA="ifany", deparse.level = 2))}
+#
+CHL04_03 %>% filter(FILE != "CH03" & Units == "MG") %>%
+{hist(.$Result.Value)}
+CHL04_03 %>% filter(Units == "MG") %>%
+    {hist(.$Result.Value)}
+CHL04_03 %>% filter(FILE != "CH03" & Units == "MG") %>% {summary(.$Result.Value)}
+CHL04_03 %>% filter(FILE != "CH03" & Units == "ML") %>% {summary(.$Result.Value)}
+CHL04_03 %>% filter(Units == "ML") %>% {summary(.$Result.Value)}
+# CHL04_03 %>% filter(Units == "UG" & is.na(Units.old)) %>% arrange(Result.Value)
+# %>% {summary(.$Result.Value)}
+CHL04_03 %>% filter(Units == "UG" & is.na(Units.old) & Result.Value > 0) %>%
+{hist(log(.$Result.Value))}
+#
+CHL04_03 %>% filter(Units == "UG"  & Result.Value > 0) %>%
+{table(.$Units.old, .$FILE, useNA = "ifany")}
+CHL04_03 %>% filter(Units == "UG"  & Result.Value > 0) %>%
+{table(.$Method.GRP, .$FILE, useNA = "ifany")}
+```
+
++ Patterns for Result Value conversion ::
+
+```{r}
+CHL04_03 %<>% mutate(
+    RV2_ug = case_when(
+        Units == "MG" & is.na(Units.old) ~ signif(Result.Value*1000, digits=5),
+        Units.old == "MG" ~ signif(Result.Value*1000, digits=5),
+        Units == "UG"  ~ signif(Result.Value, digits=5),
+        TRUE ~ as.numeric(NA)),
+    Units_X = case_when(
+        Units %in% c("MG", "UG") ~ "UG",
+        TRUE ~ as.character(NA))) %>%
+    select(FILE:Result.Value, Units, RV2_ug, Units_X, everything())
+```
+
+
+7) Correct Dates
+
+```{r}
+select(CHL04_03, contains("Date", ignore.case = F)) %>% names(.) -> date_vars
+# date_vars <- c( "Sample.Date","Date.Match","Sample.Received.Date","Analysis.Date")
+#
+CHL04_03 %<>% mutate_at(
+    .vars = date_vars,
+    .funs = funs(as.Date(., origin="1899-12-30")))
+```
+
++ Version datafile
+
+```{r}
+CHL04_04 <- CHL04_03
+```
+
+
+#### 1.62 Align Vars (3)
+
+8) Re-Calc Sample.Keys (1,2, 6[?])
+    + Push SKey6 to back
+
+```{r}
+# sum(is.na(CHL04_01$SKey2))
+# max(nchar(CHL04_01$SKey1))
+
+CHL04_04 %<>% mutate(
+    SKey1 = paste(.$MLID_00,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  sep="."),
+    SKey2 = paste(.$MLID_00,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Number,
+                  sep="."))
+CHL04_04 %<>% select(-SKey6, -ACT.ID, everything())
+```
+
+**Remember that these Sample.Keys will need to be re-built after the SDate_x, MLID_x, and SNum_x values are extracted**
+
+
+9) Integrate Comments
+    + `Project.Comment` :: **REMOVE** (no info)
+    + `Comment_02` :: Add to `Result.Comment` (only 1 value)
+    + `Sample.Comment` :: Add to `Activity.Comment` (only 1 value)
+    + `Test.Comment` :: Add to `Result.comment` (only 2 values)
+    + `Note` :: left **as is**
+    + `Comment` :: left **as is**
++ Keep ::
+    + `Activity.Comment`
+    + `Comment`
+    + `Result.Comment`
+    + `Note`
+    
+```{r}
+CHL04_04 %>% select(comments) %>% distinct() %>% as.data.frame(.) -> Comments_uniq
+# openxlsx::write.xlsx(Comments_uniq, file="CHL_comments_190220.xlsx")
+```
+
+```{r}
+CHL04_04 %<>% mutate(
+    Result.Comment = case_when(
+        !is.na(Test.Comment) & is.na(Result.Comment) ~ Test.Comment,
+        !is.na(Test.Comment) & !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                                              .$Test.Comment,
+                                                              sep=". "),
+        !is.na(Comment_02) & is.na(Result.Comment) ~ Comment_02,
+        !is.na(Comment_02) & !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                                            .$Comment_02,
+                                                            sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Activity.Comment = case_when(
+        !is.na(Sample.Comment) & is.na(Activity.Comment) ~ Sample.Comment,
+        !is.na(Sample.Comment) & !is.na(Activity.Comment) ~ paste(.$Activity.Comment,
+                                                                  .$Sample.Comment,
+                                                                  sep=". "),
+        !is.na(Activity.Comment) ~ Activity.Comment,
+        is.na(Activity.Comment) ~ as.character(NA))) %>%
+    select(-Comment_02, -Project.Comment, -Sample.Comment, -Test.Comment, everything())
+```
+
+***
+
+#### 1.7 Version Datafile
+
+```{r}
+CHL05_01 <- CHL04_04
+# openxlsx::write.xlsx(CHL05_01, file="CHL05_00_190221.xlsx")
+```
+
+
+## II: Metadata Cleanup
+
+### 2.0 Identify Unique Records and Split-samples
+
+#### 2.1 Boost Sample Key to account for parameters
+
++ SKey3 :: MLID + SDate + SNum + ParamX
+
+
+```{r}
+
+CHL05_01 %<>% mutate(SKey3 = as.character(NA)) %>% mutate(
+    SKey3 = paste(.$MLID_00, 
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Number,
+                  .$ParamX, 
+                  sep=".")) %>%
+    select(FILE:SKey2, SKey3, 
+           RECORD_status, RESENT_status, dupe_rec,
+           everything())
+
+
+table(CHL05_01$RECORD_status, useNA = "ifany")
+
+```
+
++ In order to find the split samples, need to make sure that any / all duplicate records are identified and accounted for...
+
+#### 2.2 Find Duplicate Records
+
+```{r}
+CHL05_01 %>% {table(.$SKey3, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    {table(.$Freq)}
+
+CHL05_01 %>% {table(.$SKey3, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) -> dupe_SK3
+```
+
++ Add Method.GRP to Keys as `SKey4`
+
+```{r}
+CHL05_01 %<>% mutate(SKey4 = as.character(NA)) %>% mutate(
+    SKey4 = paste(.$MLID_00, 
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Number,
+                  .$ParamX,
+                  .$Method.GRP,
+                  sep=".")) %>%
+    select(-Batch.Number, -Test.Number, -MethPar.Key, 
+           -Sample.Matrix, everything()) %>%
+    select(FILE:SKey3, SKey4, everything())
+```
+
+```{r}
+CHL05_01 %>% {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>%
+    {table(.$Freq)}
+
+CHL05_01 %>% {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) -> dupe_SK4
+```
+
++ After re-coding of ParamX, have found more sets of duplicated records (190221)
+
++ REmove "_DIFF_" vars from DF, then re-calculate for SK4 dupes
+
+```{r}
+select(CHL05_01, contains("DIFF", ignore.case = T)) %>% names(.) -> DIFF_vars
+#
+CHL05_02 <- select(CHL05_01, -DIFF_vars)
+```
+
+
+```{r}
+# keep order of SKey for matchup
+dupe_SK4  %<>% arrange(Var1) 
+CHL05_02 %<>% arrange(SKey4)
+#
+CharDIFF <- data.frame(); NumDIFF <- data.frame()
+#
+for (j in dupe_SK4$Var1) {
+    DUPE.j <- CHL05_02[CHL05_02$SKey4 == j,]
+# numeric fields
+    DIFF.rv <- ifelse(
+                var(c(DUPE.j$Result.Value), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.sampnum <- ifelse(
+                var(as.numeric(c(DUPE.j$Sample.Number)), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.samptype <- ifelse(
+                var(c(DUPE.j$SType2), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.testnum <- ifelse(
+                var(c(DUPE.j$Test.Number), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.lrl <- ifelse(
+                var(c(DUPE.j$Lower.Report.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.mdl <- ifelse(
+                var(c(DUPE.j$Method.Detect.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.VOL <- ifelse(
+                var(c(DUPE.j$VOL_filt), na.rm=TRUE) > 0, "YES", "no")
+    NumDIFF <- rbind(NumDIFF, data.frame(KEY.1 = j, DIFF.rv, DIFF.sampnum, DIFF.samptype, DIFF.testnum, DIFF.lrl, DIFF.mdl, DIFF.VOL))
+    ## character fields
+    for (k in 1:nrow(DUPE.j)) {
+        DIFF.labfile <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.projnm <- ifelse(
+            as.logical(setequal(DUPE.j$Project.Name[k], DUPE.j$Project.Name)),
+            "no", "YES")
+        DIFF.batchnum <- ifelse(
+            as.logical(setequal(DUPE.j$Batch.Number[k], DUPE.j$Batch.Number)),
+            "no", "YES")
+        DIFF.anldate <- ifelse(
+            as.logical(setequal(DUPE.j$Analysis.Date[k], DUPE.j$Analysis.Date)),
+            "no", "YES")
+        DIFF.FILE <- ifelse(
+            as.logical(setequal(DUPE.j$FILE[k], DUPE.j$FILE)),
+            "no", "YES")
+        DIFF.METHid <- ifelse(
+            as.logical(setequal(DUPE.j$Method.ID[k], DUPE.j$Method.ID)),
+            "no", "YES")
+        DIFF.METHgrp <- ifelse(
+            as.logical(setequal(DUPE.j$Method.GRP[k], DUPE.j$Method.GRP)),
+            "no", "YES")
+        DIFF.ParamX <- ifelse(
+            as.logical(setequal(DUPE.j$ParamX[k], DUPE.j$ParamX)),
+            "no", "YES")
+        CharDIFF <- rbind(CharDIFF, data.frame(KEY.1 = j, DIFF.labfile, DIFF.projnm, DIFF.batchnum, DIFF.anldate, DIFF.FILE, DIFF.METHid, DIFF.METHgrp, DIFF.ParamX)) }  
+    DIFFs <- merge(CharDIFF, NumDIFF)  }
+## bring it all together
+DIFFs %<>% distinct(.)
+CHL05_compareDupes <- left_join(CHL05_02, distinct(DIFFs),
+                                by = c("SKey4" = "KEY.1"))
+
+```
+
+```{r}
+CHL05_compareDupes %<>% mutate(DIFF.all = as.character(NA)) %>% mutate(
+    DIFF.all = 
+        paste(
+            paste(.$DIFF.labfile, 
+                  .$DIFF.projnm,
+                  .$DIFF.batchnum,
+                  .$DIFF.anldate,
+                  .$DIFF.FILE,
+                  .$DIFF.METHid,
+                  .$DIFF.METHgrp,
+                  .$DIFF.ParamX, sep="."),
+            paste(.$DIFF.rv,
+                  .$DIFF.sampnum,
+                  .$DIFF.samptype,
+                  .$DIFF.testnum,
+                  .$DIFF.lrl,
+                  .$DIFF.mdl,
+                  .$DIFF.VOL, sep="."), sep="_"))
+##
+CHL05_compareDupes %<>% mutate(
+    DIFF.all = case_when(
+        DIFF.all == "NA.NA.NA.NA.NA.NA.NA.NA_NA.NA.NA.NA.NA.NA.NA" ~ as.character(NA),
+        !is.na(DIFF.all) ~ DIFF.all,
+        is.na(DIFF.all) ~ as.character(NA))) %>%
+    select(-DIFF.all, everything())
+#
+CHL05_compareDupes %>% distinct(DIFF.all) %>% nrow(.)-1
+# CHL05_compareDupes %>% distinct(DIFF.all) %>% arrange(DIFF.all)
+CHL05_compareDupes %>% {addmargins(table(.$DIFF.all, !is.na(.$FILE), useNA = "ifany"),1)}
+```
+
+```{r}
+# openxlsx::write.xlsx(CHL05_compareDupes, file="CHL05_DupeCompare_190221.xlsx")
+```
+
++ Boost `dupe_SK4` w/ dupe-info
+
+```{r}
+for (j in dupe_SK4$Var1) {
+    dupe_SK4$DIFF.all[dupe_SK4$Var1 == j] <- unique(CHL05_compareDupes$DIFF.all[CHL05_compareDupes$SKey4 == j])
+}
+#
+dupe_sk4.rep3 <- dupe_SK4 %>% filter(Freq > 2)
+#
+dupe_sk4.rep3 %>% distinct(DIFF.all)
+```
+
+
+
++ [190221; pm] Working out new set of Dupe_SK4 issues...
+
+#### 2.3 Fix Duplicate Records
+
++ Working dataframe is now `CHL05_compareDupes`
+
++ Label duplicate records
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    dupe_rec = case_when(
+        SKey4 %in% dupe_SK4$Var1 ~ "dupe",
+        TRUE ~ as.character(NA)))
+```
+
++ Fix Set [1] :: `no.no.no.no.no.no.no.no_no.no.NA.YES.NA.NA.NA`
+
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "no.no.no.no.no.no.no.no_no.no.NA.YES.NA.NA.NA" &
+            dupe_rec == "dupe" & Test.Number == "10256328" ~ "drop_TestN",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+# CHL05_compareDupes %>%
+#     filter(DIFF.all == "no.no.no.no.no.no.no.no_no.no.NA.YES.NA.NA.NA")
+
+```
+
+
++ Fix Set [2+3] :: `no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA` _OR_ `no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no` : Keep FILE-03 or 
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE == "CH03" &
+            SKey4 %in% dupe_sk4.rep3$Var1[dupe_sk4.rep3$Freq > 2] &
+            (is.na(PROJECT.x) | PROJECT.x != PROJECT.y) ~ "drop_proj",
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE != "CH03" &
+            SKey4 %in% dupe_sk4.rep3$Var1[dupe_sk4.rep3$Freq > 2] &
+            (is.na(PROJECT.x)) ~ "drop_proj",
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE != "CH03" &
+            (!SKey4 %in% dupe_sk4.rep3$Var1[dupe_sk4.rep3$Freq > 2]) ~ "drop_proj",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
++ Fix Set [4] :: `no.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA` 
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "no.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA" &
+            is.na(VOL_filt) ~ "drop_grp",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+
+```
+
++ **Note** :: Will Need to _ignore_ `RECORD_status` for these duplicated records, and rely on `RESENT_status` instead
+
++ Fix Set [5] :: `YES.no.no.no.no.no.no.no_no.no.NA.no.no.no.NA`
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "YES.no.no.no.no.no.no.no_no.no.NA.no.no.no.NA" &
+            Lab.filename == "UDWQ_EDD_20170816.txt" ~ "drop_LabF",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
++ Fix Set [6,7] :: `YES.no.no.no.no.YES.no.no_no.no.NA.no.NA.NA.NA` _OR_ `YES.no.no.no.no.YES.no.no_no.no.NA.no.no.no.NA`
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all %in% c("YES.no.no.no.no.YES.no.no_no.no.NA.no.NA.NA.NA",
+                        "YES.no.no.no.no.YES.no.no_no.no.NA.no.no.no.NA") &
+            Method.ID == "HPLC" ~ "drop_LabF",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
+
++ Fix Set [8] :: `YES.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA`
+
+```{r}
+CHL05_compareDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "YES.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA" &
+        SKey4 %in% dupe_sk4.rep3$Var1[dupe_sk4.rep3$Freq > 2] &
+        FILE != "CH03" ~ "drop_labF",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
+
++ Summary of Duplicated Records
+
+```{r}
+CHL05_compareDupes %>% filter(!is.na(dupe_rec)) %>%
+    {addmargins(table(.$DIFF.all, .$RESENT_status, useNA="ifany"))} %>%
+    htmlTable::htmlTable(., 
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+
+#### 2.4 Version dataframe after duplicate records accounted for
+
++ Working dataset has ::
+    + **RESENT_status == _NULL_**
+
+```{r}
+CHL06_01 <- CHL05_compareDupes
+
+# openxlsx::write.xlsx(CHL06_01, file="CHL06_00_190222.xlsx")
+```
+
++ Duplicates found and fixed; 190222
+
+***
+
+### 3.0 Cleanup Split-Sample metadata and results
+
+#### 3.1 Integrate first and second CHL-method analyses
+
+UPHL-LIMS has a limitation on running a sample under two methods for the same analyte, apparently they must be re-enterred in to the LIMS, such that the result from the second analysis has incorrect (inaccurate) MLID, SDate information, and the Sample.Numbers must be matched up to the original sample record
+
+
+```{r}
+CHL06_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    {addmargins(table(.$SKey1, .$Method.GRP,useNA="ifany"),1)} %>%
+    as.data.frame.matrix(.) %>%
+    tibble::rownames_to_column(., var="SKey1") -> SK1_MethGrps
+#
+SK1_MethGrps %<>% mutate(
+    Meth_sets = case_when(
+        CHL > 0 & CHL_hplc > 0 ~ "Both",
+        TRUE ~ as.character(NA)
+    )
+)
+
+SK1_MethGrps %>% {table(.$Meth_sets, useNA="ifany")}
+
+```
+
++ ~~[190221] : Need to go back to Parameter conversions, redo, then proceed w/ better ParamX x Param.Description alignment (Sect. 1.6 #5)~~
+    + Completed [190222]
+
++ Sets that include Field/Equip Blanks need a closer look...
+
+***
+
+#### 3.2 Identify Re-sampled CHL records and assign correct sample-collection-metadata
+
++ _Review prior CHL-resample matchup script and replicate here..._
+
+```{r}
+CHL06_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    filter(!grepl("[[:digit:]]", .$MLID_00)) -> NoMLID_ch6
+
+NoMLID_ch6 %<>% select(MLID_00, Sample.Date, Sample.Time, Sample.Number, 
+                       Sample.Description, SampDesc, SNum_x,
+                       Analysis.Date, Method.ID:Method.GRP, ParamX,
+                       Batch.Number, Test.Number)
+
+# NoMLID_ch6 %>% {sort(unique(.$Sample.Description))}
+
+class(NoMLID_ch6$SampDesc)
+
+CHL06_01 %<>% select(-FILE, -Lab.filename, everything()) %>%
+    select(Sample.Description, everything())
+
+```
+
++ 2nd Set CHL-records have non-integer `MLID_00` [_this needs cleanup_]
+
+```{r}
+CHL06_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    filter(!grepl("[[:digit:]]", .$MLID_00)) %>% 
+    {addmargins(table(.$MLID_00, .$Method.GRP,useNA="ifany"))}
+```
+
++ `MLID_00` == "_missing_"  [18 records]
+    + 4 sites; 2 w/ extractable MLIDs and 2 w/ OTLK-related _presumed_ MLIDs
+
+```{r}
+CHL06_01 %<>% mutate(
+    MLID_00 = case_when(
+        MLID_00 == "missing" & 
+            Trip_root == "UCASE" ~ substr(.$Sample.Description,1,7),
+        MLID_00 == "missing" &
+            Sample.Description == "PROVO RIVER DELTA RESTORATION" ~ "4917343",
+         MLID_00 == "missing" &
+            Sample.Description == "LINDON DRAIN" ~ "4995120",
+        !is.na(MLID_00) ~ MLID_00,
+        is.na(MLID_00) ~ as.character(NA)
+        ))
+```
+
++ `MLID_00` == "NoMLID"
+    + DWQ-USGS collaborative project on San juan / Colorado R. / Lake Powell
+
+```{r}
+CHL06_01 %<>% mutate(
+    MLID_00 = case_when(
+        MLID_00 == "NoMLID" ~ paste("USGS",
+                                    .$Sample.Description,
+                                    sep=""),
+        !is.na(MLID_00) ~ MLID_00,
+        is.na(MLID_00) ~ as.character(NA)
+        ))
+# CHL06_01 %>% filter(MLID_00 == "NoMLID")
+```
+
++ `MLID_00` ~ "CHL_$"  {CHL_samp; CHL_test}
+    + These records have a Sample.Number in the Sample.Description field
+    
++ Use `SNum_x` as the _Integrated_ Sample.Number field
+    + For the `CHL_...` samples, the value in the Sample.Description goes into `SNum_x`
+
+```{r}
+CHL06_01 %<>% mutate(
+    SNum_x = case_when(
+        is.na(RESENT_status) &
+            grepl("CHL_", .$MLID_00) ~ Sample.Description,
+        !is.na(SNum_x) ~ SNum_x,
+        is.na(SNum_x) ~ as.character(NA)
+        ))
+```
+
+#### 3.3 Extract Parent-metadata usiung `SNum_x`
+
++ Records where a Sample.Number is provided in the `Sample.Description` field need to have MLID, Sample.Date, Sample.Time, Sample.Number, and TripID updated based on the parent ID
+
++ Formatting
+
+```{r}
+select(CHL06_01, contains("_x", ignore.case = T)) %>% names(.)
+#
+CHL06_01 %<>% select(Sample.Description:Trip.ID, TripID_x,
+                     Sample.Date, SDate_x,Sample.Time,
+                     MLID_00, MLID_x, 
+                     Sample.Number, SNum_x, 
+                     Method.ID, Method.GRP, 
+                     Analysis.Date, ParamX, Benthic, VOL_filt,
+                     everything())
+```
+
++ When `Sample.Description` $<$ "_2199999_", and SNum_x is _NULL_, then apply that value to SNum_x
+
+```{r}
+# CHL06_01 -> CHL06_01_copy
+
+CHL06_01 %<>% mutate(SNum_x = as.character(NA)) %>% mutate(
+    SNum_x = case_when(
+        (!is.na(Sample.Description) & 
+             Sample.Description < "2199999") ~ Sample.Description,
+        !is.na(SNum_x) ~ SNum_x,
+        is.na(SNum_x) ~ as.character(NA)
+        ))
+```
+
++ When SNum_x != _NULL_, apply parent info to 2nd-record
+
+```{r}
+CHL_2nd <- CHL06_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    filter(!is.na(Sample.Description) & Sample.Description < "2199999") %>%
+    select(Sample.Description, Sample.Number, MLID_00) %>% distinct(.)
+
+
+CHL_parent <- CHL06_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    filter(is.na(Sample.Description) | !Sample.Description < "2199999") %>%
+    select(Sample.Date, Sample.Number, MLID_00, 
+           Trip_root, Method.ID) %>% distinct(.)
+
+
+# setdiff(CHL_2nd_oo, CHL_2nd)
+
+# length(unique(CHL_parent$MLID_00))
+length(unique(CHL06_01$SNum_x))
+
+```
+
+```{r}
+
+for (j in unique(CHL06_01$SNum_x[!is.na(CHL06_01$SNum_x)])) {
+    CHL06_01$MLID_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+        unique(CHL06_01$MLID_00[CHL06_01$Sample.Number == j])
+    CHL06_01$SDate_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+        unique(CHL06_01$Sample.Date[CHL06_01$Sample.Number == j])
+    CHL06_01$TripID_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+        unique(CHL06_01$Trip.ID[CHL06_01$Sample.Number == j])
+    CHL06_01$Trip_root[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+        unique(CHL06_01$Trip_root[CHL06_01$Sample.Number == j])
+}
+# for (j in unique(CHL06_01$SNum_x[!is.na(CHL06_01$SNum_x)])) {
+#     CHL06_01$MLID_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+#         paste(unique(CHL06_01$MLID_00[CHL06_01$Sample.Number == j]), sep="/")
+#     CHL06_01$SDate_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+#         paste(unique(CHL06_01$Sample.Date[CHL06_01$Sample.Number == j]), sep="/")
+#     CHL06_01$TripID_x[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+#         paste(unique(CHL06_01$Trip.ID[CHL06_01$Sample.Number == j]), sep="/")
+#     CHL06_01$Trip_root[!is.na(CHL06_01$SNum_x) & CHL06_01$SNum_x == j] <- 
+#         paste(unique(CHL06_01$Trip_root[CHL06_01$Sample.Number == j]), sep="/")
+# }
+# CHL06_01 %>% filter(
+#     is.na(RESENT_status) &
+#             (!is.na(Sample.Description) & Sample.Description < "2199999"))
+# CHL06_01 %>% {table(.$TripID_x, useNA="ifany")} %>%
+#     as.data.frame(.) %>% 
+#     {table(.$Freq)}
+# length(unique(CHL06_01$TripID_x))
+# nchar("UTAHLAKE091117")
+# max(nchar(CHL06_01$SNum_x), na.rm=T)
+# max(nchar(CHL06_01$SDate_x), na.rm=T)
+# max(nchar(CHL06_01$TripID_x), na.rm=T)
+# max(nchar(CHL06_01$Trip_root), na.rm=T)
+# max(nchar(CHL06_01$SNum_x), na.rm=T)
+```
+
++ Patch holes in SDate_x, MLID_x, and SNum_x among records
+
+```{r}
+nrow(CHL06_01)
+sum(is.na(CHL06_01$Sample.Date))
+sum(is.na(CHL06_01$SDate_x))
+sum(is.na(CHL06_01$MLID_00))
+sum(is.na(CHL06_01$MLID_x))
+sum(is.na(CHL06_01$Sample.Number))
+sum(is.na(CHL06_01$SNum_x))
+CHL06_01 %>% filter(!is.na(Sample.Description) & is.na(SDate_x)) %>% nrow(.)
+# CHL06_01 %>% filter(!is.na(Sample.Description) & is.na(SDate_x))
+```
+
+**Version datafile**
+
+```{r}
+# CHL06_02 <- CHL06_01
+```
+
++ Fill gaps for CHL-records (after 2nd-record cleanup)
+
+```{r}
+CHL06_02 %<>% mutate(
+    SDate_x = case_when(
+        is.na(SDate_x) ~ Sample.Date,
+        !is.na(SDate_x) ~ SDate_x),
+    MLID_x = case_when(
+        is.na(MLID_x) ~ MLID_00,
+        !is.na(MLID_x) ~ MLID_x),
+    SNum_x = case_when(
+        is.na(SNum_x) ~ as.character(Sample.Number),
+        !is.na(SNum_x) ~ SNum_x))
+```
+
+**Export File**
+
+```{r}
+# openxlsx::write.xlsx(CHL06_02, file="201718_CHL06_v02_11_190222.xlsx")
+```
+
+
+#### 3.4 Re-calculate Sample Keys
+
++ First, organize fields into sensible pattern
+
+```{r}
+CHL06_03 <- CHL06_02 %>% 
+    select(-Sample.Description, -TripID_x, -Method_x, -QC_type, -Param.Description,
+           -SType2, -Units.old, everything()) %>%
+    select(-contains("DIFF", ignore.case = )) %>%
+    select(FILE, Lab.filename, Project.Name, Sample.Received.Date,
+           Trip_root, Trip.ID, Sample.Date:VOL_filt, everything())
+```
+
+**Sample Keys based on updated [corrected] Sample-metadata**
+
+```{r}
+CHL06_03 %<>% mutate(
+    SKey1 = paste(.$MLID_x,
+                  as.numeric(trunc(.$SDate_x) - as.Date("1899-12-30")),
+                  sep="."),
+    SKey2 = paste(.$MLID_x,
+                  as.numeric(trunc(.$SDate_x) - as.Date("1899-12-30")),
+                  .$SNum_x,
+                  sep="."),
+    SKey3 = paste(.$MLID_x, 
+                  as.numeric(trunc(.$SDate_x) - as.Date("1899-12-30")),
+                  .$SNum_x,
+                  .$ParamX, 
+                  sep="."),
+    SKey4 = paste(.$MLID_x, 
+                  as.numeric(trunc(.$SDate_x) - as.Date("1899-12-30")),
+                  .$SNum_x,
+                  .$ParamX,
+                  .$Method.GRP,
+                  sep="."))
+```
+
+```{r}
+CHL06_03 %>% {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>% {table(.$Freq, useNA="ifany", deparse.level = 2)}
+#
+CHL06_03 %>% {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) -> dupe_SK4.x
+##
+CHL06_03 %>% filter(is.na(RESENT_status)) %>% {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>% {table(.$Freq, useNA="ifany", deparse.level = 2)}
+#
+CHL06_03 %>% filter(is.na(RESENT_status)) %>% 
+    {table(.$SKey4, useNA = "ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) -> dupe_SK4.x2
+```
+
++ Even though Dupe-records have already been evaluated, the changes made to MLID, SDate and SNumx could increase or decrease the frequency of those dupes.  As such, the duplicate-record examination and correction procedures should be repeated here
+
+#### 3.5 Repeat Duplicate-Record exmaination
+
+```{r}
+# Assign datafiles to working objects
+CHL06_03 -> data_file
+dupe_SK4.x -> dupe_key
+# keep order of SKey for matchup
+dupe_key  %<>% arrange(Var1) 
+data_file %<>% arrange(SKey4)
+#
+CharDIFF <- data.frame(); NumDIFF <- data.frame()
+#
+for (j in dupe_key$Var1) {
+    DUPE.j <- data_file[data_file$SKey4 == j,]
+# numeric fields
+    DIFF.rv <- ifelse(
+                var(c(DUPE.j$Result.Value), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.sampnum <- ifelse(
+                var(as.numeric(c(DUPE.j$Sample.Number)), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.samptype <- ifelse(
+                var(c(DUPE.j$SType2), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.testnum <- ifelse(
+                var(c(DUPE.j$Test.Number), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.lrl <- ifelse(
+                var(c(DUPE.j$Lower.Report.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.mdl <- ifelse(
+                var(c(DUPE.j$Method.Detect.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.VOL <- ifelse(
+                var(c(DUPE.j$VOL_filt), na.rm=TRUE) > 0, "YES", "no")
+    NumDIFF <- rbind(NumDIFF, data.frame(KEY.1 = j, DIFF.rv, DIFF.sampnum, DIFF.samptype, DIFF.testnum, DIFF.lrl, DIFF.mdl, DIFF.VOL))
+    ## character fields
+    for (k in 1:nrow(DUPE.j)) {
+        DIFF.labfile <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.projnm <- ifelse(
+            as.logical(setequal(DUPE.j$Project.Name[k], DUPE.j$Project.Name)),
+            "no", "YES")
+        DIFF.batchnum <- ifelse(
+            as.logical(setequal(DUPE.j$Batch.Number[k], DUPE.j$Batch.Number)),
+            "no", "YES")
+        DIFF.anldate <- ifelse(
+            as.logical(setequal(DUPE.j$Analysis.Date[k], DUPE.j$Analysis.Date)),
+            "no", "YES")
+        DIFF.FILE <- ifelse(
+            as.logical(setequal(DUPE.j$FILE[k], DUPE.j$FILE)),
+            "no", "YES")
+        DIFF.METHid <- ifelse(
+            as.logical(setequal(DUPE.j$Method.ID[k], DUPE.j$Method.ID)),
+            "no", "YES")
+        DIFF.METHgrp <- ifelse(
+            as.logical(setequal(DUPE.j$Method.GRP[k], DUPE.j$Method.GRP)),
+            "no", "YES")
+        DIFF.ParamX <- ifelse(
+            as.logical(setequal(DUPE.j$ParamX[k], DUPE.j$ParamX)),
+            "no", "YES")
+        CharDIFF <- rbind(CharDIFF, data.frame(KEY.1 = j, DIFF.labfile, DIFF.projnm, DIFF.batchnum, DIFF.anldate, DIFF.FILE, DIFF.METHid, DIFF.METHgrp, DIFF.ParamX)) }  
+    DIFFs <- merge(CharDIFF, NumDIFF)  }
+## bring it all together
+DIFFs %<>% distinct(.)
+CHL06_compDupes <- left_join(data_file, distinct(DIFFs),
+                                by = c("SKey4" = "KEY.1"))
+
+```
+
+```{r}
+CHL06_compDupes %<>% mutate(DIFF.all = as.character(NA)) %>% mutate(
+    DIFF.all = 
+        paste(
+            paste(.$DIFF.labfile, 
+                  .$DIFF.projnm,
+                  .$DIFF.batchnum,
+                  .$DIFF.anldate,
+                  .$DIFF.FILE,
+                  .$DIFF.METHid,
+                  .$DIFF.METHgrp,
+                  .$DIFF.ParamX, sep="."),
+            paste(.$DIFF.rv,
+                  .$DIFF.sampnum,
+                  .$DIFF.samptype,
+                  .$DIFF.testnum,
+                  .$DIFF.lrl,
+                  .$DIFF.mdl,
+                  .$DIFF.VOL, sep="."), sep="_"))
+##
+CHL06_compDupes %<>% mutate(
+    DIFF.all = case_when(
+        DIFF.all == "NA.NA.NA.NA.NA.NA.NA.NA_NA.NA.NA.NA.NA.NA.NA" ~ as.character(NA),
+        !is.na(DIFF.all) ~ DIFF.all,
+        is.na(DIFF.all) ~ as.character(NA))) %>%
+    select(-DIFF.all, everything())
+#
+CHL06_compDupes %>% distinct(DIFF.all) %>% nrow(.)-1
+# CHL06_compDupes %>% distinct(DIFF.all) %>% arrange(DIFF.all)
+CHL06_compDupes %>% {addmargins(table(.$DIFF.all, !is.na(.$FILE), useNA = "ifany"),1)}
+```
+
+```{r}
+# openxlsx::write.xlsx(CHL06_compDupes, file="CHL06_DupeCompare_190222.xlsx")
+```
+
++ Boost `dupe_SK4` w/ dupe-info
+
+```{r}
+for (j in dupe_SK4.x$Var1) {
+    dupe_SK4.x$DIFF.all[dupe_SK4.x$Var1 == j] <- unique(CHL06_compDupes$DIFF.all[CHL06_compDupes$SKey4 == j])
+}
+#
+dupe_sk4x.rep3 <- dupe_SK4.x %>% filter(Freq > 2)
+#
+dupe_sk4x.rep3 %>% {table(.$DIFF.all, .$Freq, useNA="ifany")}
+```
+
+***
+
+#### 3.6 Fix Duplicated Records (_again_)
+
+
++ Working dataframe is now `CHL06_compDupes`
+
++ Label duplicate records
+
+```{r}
+CHL06_compDupes %<>% mutate(
+    dupe_rec = case_when(
+        SKey4 %in% dupe_SK4.x$Var1 ~ "dupe",
+        TRUE ~ as.character(NA)))
+```
+
++ Fix Set [1] :: `no.no.no.no.no.no.no.no_no.no.NA.YES.NA.NA.NA`
+    + Records already corrected
+
+```{r}
+# CHL06_compDupes %<>% mutate(
+#     RESENT_status = case_when(
+#         DIFF.all == "no.no.no.no.no.no.no.no_no.no.NA.YES.NA.NA.NA" &
+#             dupe_rec == "dupe" & Test.Number == "10256328" ~ "drop_TestN",
+#         !is.na(RESENT_status) ~ RESENT_status,
+#         is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
+
++ Fix Set [2+3] :: `no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA` _OR_ `no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no` 
+    + Triplicates in this set (6) have already been corrected
+
+```{r}
+CHL06_compDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE == "CH03" &
+            SKey4 %in% dupe_SK4.x$Var1[dupe_SK4.x$Freq > 2] &
+            (is.na(PROJECT.x) | PROJECT.x != PROJECT.y) ~ "drop_proj",
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE != "CH03" &
+            SKey4 %in% dupe_SK4.x$Var1[dupe_SK4.x$Freq > 2] &
+            (is.na(PROJECT.x)) ~ "drop_proj",
+        DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+                        "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+            FILE != "CH03" &
+            (!SKey4 %in% dupe_SK4.x$Var1[dupe_SK4.x$Freq > 2]) ~ "drop_proj",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+# CHL06_compDupes %>%
+#      filter(DIFF.all %in% c("no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA",
+#                         "no.no.no.no.YES.no.no.no_no.no.NA.no.no.no.no") &
+#             FILE != "CH03" &
+#             (!SKey4 %in% dupe_SK4.x$Var1[dupe_SK4.x$Freq > 2]))
+
+```
+
++ Fix Set [4] :: `no.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA` 
+
+```{r}
+CHL06_compDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "no.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA" &
+            FILE != "CH03" ~ "drop_grp",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+# CHL06_compDupes %>%
+#     filter(DIFF.all == "no.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA" & 
+#                !is.na(VOL_filt))
+
+```
+
+
++ Fix Set [5] :: `YES.no.no.no.no.no.no.no_no.no.NA.no.no.no.NA`
+    + Already corrected
+
+```{r}
+# CHL06_compDupes %<>% mutate(
+#     RESENT_status = case_when(
+#         DIFF.all == "YES.no.no.no.no.no.no.no_no.no.NA.no.no.no.NA" &
+#             Lab.filename == "UDWQ_EDD_20170816.txt" ~ "drop_LabF",
+#         !is.na(RESENT_status) ~ RESENT_status,
+#         is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
++ Fix Set [6] :: `YES.no.no.no.no.YES.no.no_no.no.NA.no.NA.NA.NA`
+    + Already corrected
+
+```{r}
+# CHL06_compDupes %<>% mutate(
+#     RESENT_status = case_when(
+#         DIFF.all == "YES.no.no.no.no.YES.no.no_no.no.NA.no.NA.NA.NA" &
+#             Method.ID == "HPLC" ~ "drop_LabF",
+#         !is.na(RESENT_status) ~ RESENT_status,
+#         is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
++ Fix Set [7] :: `YES.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA`
+    + Already corrected
+
+```{r}
+# CHL06_compDupes %<>% mutate(
+#     RESENT_status = case_when(
+#         DIFF.all == "YES.no.no.no.YES.no.no.no_no.no.NA.no.no.no.NA" &
+#             FILE != "CH03" ~ "drop_LabF",
+#         !is.na(RESENT_status) ~ RESENT_status,
+#         is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
++ Fix Set [8] :: `YES.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA`
+    + All triples
+
+```{r}
+CHL06_compDupes %<>% mutate(
+    RESENT_status = case_when(
+        DIFF.all == "YES.no.no.no.YES.YES.no.no_no.no.NA.no.no.no.NA" &
+        FILE != "CH03" ~ "drop_labF",
+        !is.na(RESENT_status) ~ RESENT_status,
+        is.na(RESENT_status) ~ as.character(NA)))
+
+```
+
+
++ Summary of Duplicated Records
+
+```{r}
+CHL06_compDupes %>% filter(!is.na(dupe_rec)) %>%
+    {addmargins(table(.$DIFF.all, .$RESENT_status, useNA="ifany"))} %>%
+    htmlTable::htmlTable(., 
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+#### 3.7 Version Datafile & Export
+
+```{r}
+CHL07_01 <- CHL06_compDupes
+# openxlsx::write.xlsx(CHL06_compDupes, file="CHL06_compDupes_190222.xlsx")
+```
+
+***
+***
+## III: Data Completeness (Volumes)
+
+### 4.0 Filtration Volume Cleanup
+
+12) How many record-sets are missing Volumes ?  Find & Fix
+
+#### 4.1 Review Vols
+
++ SKey2 should be appropriate to identify Filtration Volumes associated w/ each site-visit / sample-collection
+    + This may _not_ be strictly true, since both methods get the same filtration treatment
+
++ REmember to apply `RESENT_status` = _NULL_
+
+```{r}
+
+CHL07_sk2 <- CHL07_01 %>% 
+    filter(is.na(RESENT_status)) %>%
+    distinct(SKey2) 
+#
+for (j in CHL07_sk2$SKey2) {
+    CHL07_sk2$VOL_filt[CHL07_sk2$SKey2 == j] <- 
+        if(length(unique(
+            CHL07_01$VOL_filt[CHL07_01$SKey2 == j & 
+                              !is.na(CHL07_01$VOL_filt)])) > 0) {unique(
+                                  CHL07_01$VOL_filt[CHL07_01$SKey2 == j &
+                                                        !is.na(CHL07_01$VOL_filt)])
+            } else (NA)
+    CHL07_sk2$VOL_par[CHL07_sk2$SKey2 == j] <- 
+        if(length(unique(
+            CHL07_01$Result.Value[CHL07_01$ParamX == "c_VOL" &
+                                  CHL07_01$SKey2 == j])) > 0) {unique(
+                                      CHL07_01$Result.Value[CHL07_01$ParamX == "c_VOL" &
+                                                                CHL07_01$SKey2 == j])
+            } else (NA)
+    }
+## compile volumes
+
+CHL07_sk2 %<>% mutate(VOL_all = as.numeric(NA)) %>% mutate(
+    VOL_all = case_when(
+        !is.na(VOL_filt) & is.na(VOL_par) ~ VOL_filt,
+        is.na(VOL_filt) & !is.na(VOL_par) ~ VOL_par,
+        !is.na(VOL_filt) & !is.na(VOL_par) &
+            (VOL_filt == VOL_par) ~ VOL_par,
+        !is.na(VOL_filt) & !is.na(VOL_par) &
+            (VOL_filt != VOL_par) ~ as.numeric(NA),
+        is.na(VOL_filt) & is.na(VOL_filt) ~ as.numeric(NA),
+        !is.na(VOL_all) ~ VOL_all,
+        is.na(VOL_all) ~ as.numeric(NA)
+        ))
+
+```
+
++ Found some record-sets where volumes provided _differ_
+
+```{r}
+CHL07_sk2 %>% filter(is.na(VOL_all) & 
+                         (!is.na(VOL_filt) & !is.na(VOL_par)))
+```
+
++ "4917365.43011.2115460" :: I am finding that the information on the lab sheet IS NOT reflected in the EDD (filt.Vol = 250 mL on Lab sheet, provided aas 500 mL in EDD)
+    + 2115461 = 250 mL
+    + 2115463 = 250 mL
+    + 5115460 = 500 mL; _These are in triplicate and should be the same_
++ "4917600.42901.2064483" :: Lab Sheet == 150 mL; EDD = 350 mL
+    + 2064483 = 350 mL
++ "4917600.42901.2064484" :: Lab Sheet == 150 mL; EDD = 350 mL
+    + 2064484 = 350 mL; only for HPLC, no reading for UVVIS
++ "4923960.42866.2056233" :: Lab Sheet == 500 mL; EDD = 250 mL
++ "4939133.43018.2091526" :: Lab Sheet says benthic CHL (CH-A(Algae)) for 2091526 [2091546 is PERI asdm and 2091519 is CHL-waterCol] 
+    + 2091519 = 500 mL both
+    + 2091529 = 500 mL VOL_filt, 250 mL hplc [param]
++ "5971010.42985.2085137" :: Lab Sheet == 500 mL; EDD says 500 mL too! [??]
++ "5971936.42977.2082649" :: Lab Sheet == 350 mL; EDD says 350 mL too! [??]
++ "5971936.42999.2087231" :: Lab Sheet == 200 mL; EDD says 200 mL too! [??]
+
+**These need some manual correction / examination**
+
+#### 4.15 Volume-discrepancy corrections
+
+Broadly, for the records with inconsistent-volumes identified above, presume the Lab Sheet volume is correct, and make an annotation to `CHL07_sk2` 
+
+```{r}
+CHL07_sk2 %<>% mutate(Vol_comment = as.character(NA)) %>% mutate(
+    Vol_comment = case_when(
+        SKey2 == "4917365.43011.2115460" ~ "Use Lab.cheet Vol [250 mL]",
+        SKey2 == "4917600.42901.2064483" ~ "Use Lab.cheet Vol [150 mL]",
+        SKey2 == "4917600.42901.2064484" ~ "Use Lab.cheet Vol [150 mL]",
+        SKey2 == "4923960.42866.2056233" ~ "Use Lab.cheet Vol [500 mL]",
+        SKey2 == "4939133.43018.2091526" ~ "[Benthic] Vol [25 mL from 500 mL comp.]",
+        SKey2 == "4939133.43018.2091519" ~ "[WC] Vol [500 mL]",
+        SKey2 == "4939133.43018.2091546" ~ "[PERI] Vol [25 mL from 500 mL comp.]",
+        SKey2 == "5971010.42985.2085137" ~ "Use Lab.cheet Vol [500 mL]",
+        SKey2 == "5971936.42977.2082649" ~ "Use Lab.cheet Vol [350 mL]",
+        SKey2 == "5971936.42999.2087231" ~ "Use Lab.cheet Vol [200 mL]",
+        !is.na(Vol_comment) ~ Vol_comment,
+        is.na(Vol_comment) ~ as.character(NA)),
+    VOL_all = case_when(
+        SKey2 == "4917365.43011.2115460" ~ 250,
+        SKey2 == "4917600.42901.2064483" ~ 150,
+        SKey2 == "4917600.42901.2064484" ~ 150,
+        SKey2 == "4923960.42866.2056233" ~ 500,
+        SKey2 == "4939133.43018.2091526" ~ 25,
+        SKey2 == "4939133.43018.2091519" ~ 500,
+        SKey2 == "4939133.43018.2091546" ~ 25,
+        SKey2 == "5971010.42985.2085137" ~ 500,
+        SKey2 == "5971936.42977.2082649" ~ 350,
+        SKey2 == "5971936.42999.2087231" ~ 200,
+        !is.na(VOL_all) ~ VOL_all,
+        TRUE ~ as.numeric(NA))
+)
+```
+
++ Now Apply these corrections the the DF
+
+```{r}
+CHL07_02 <- left_join(CHL07_01,
+                      select(CHL07_sk2,
+                             SKey2, VOL_all, Vol_comment),
+                      by = "SKey2") %>%
+    select(FILE:VOL_filt, VOL_all, Result.Code:Note, Vol_comment, everything())
+```
+
++ And fold `Vol_comment` into `Comment` field...
+
+```{r}
+CHL07_02 %<>% mutate(
+    Comment = case_when(
+        !is.na(Vol_comment) & is.na(Comment) ~ Vol_comment,
+        !is.na(Vol_comment) & !is.na(Comment) ~ paste(.$Comment,
+                                                              .$Vol_comment,
+                                                              sep=". "),
+        !is.na(Comment) ~ Comment,
+        is.na(Comment) ~ as.character(NA))) %>%
+    select(-Vol_comment, everything())
+
+```
+
+
+#### 4.2 Identify Missing Volumes
+
++ Records where no Filtration Volume information was available
+
+```{r}
+CHL07_sk2 %>% filter(is.na(VOL_all) & 
+                         (is.na(VOL_filt) & is.na(VOL_par)))
+##
+CHL07_sk2 %>% filter(is.na(VOL_all) & 
+                         (is.na(VOL_filt) & is.na(VOL_par))) -> CHL07_sk2_NoVOL
+##
+CHL07_02 %>% filter(is.na(RESENT_status) &
+                        SKey2 %in% CHL07_sk2_NoVOL$SKey2) -> CHL07_data_NoVOL
+
+# openxlsx::write.xlsx(CHL07_data_NoVOL, file="CHL07_skey2_data_NoVols_190225.xlsx")
+
+```
+
+```{r}
+CHL07_data_NoVOL %>% {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany" ))}
+## Same Table couting unique levels of SKey1 (MLID x SDate)
+CHL07_data_NoVOL %>%
+    distinct(SKey1, .keep_all = T) %>%
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany" ))}
+```
+
++ Records missing Vol for CHL/CHL_hplc by Year
+
+```{r}
+CHL07_data_NoVOL %>%
+    filter(Method.GRP != "Filter") %>% 
+    {addmargins(table(.$Trip_root, lubridate::year(.$Sample.Date), 
+                      useNA="ifany", deparse.level = 2))}
+## Same Table couting unique levels of SKey1 (MLID x SDate)
+CHL07_data_NoVOL %>%
+    filter(Method.GRP != "Filter") %>% 
+    distinct(SKey1, .keep_all = T) %>%
+    {addmargins(table(.$Trip_root, lubridate::year(.$Sample.Date), 
+                      useNA="ifany", deparse.level = 2))}
+```
+
+***
+
+#### 4.3 Apply Missing Volumes (found) to Datafile
+
++ [190225] :: Not yet found // looked for
+
+***
+
+#### 4.4 Review Vols based on SKey1 (MLID x SDate)
+
++ Working from `CHL07_02` dataframe
+
+```{r}
+
+CHL07_sk1 <- CHL07_02 %>% 
+    filter(is.na(RESENT_status)) %>%
+    distinct(SKey1) 
+#
+for (j in CHL07_sk1$SKey1) {
+    CHL07_sk1$VOL_filt[CHL07_sk1$SKey1 == j] <- 
+        if(length(unique(
+            CHL07_02$VOL_filt[CHL07_02$SKey1 == j & 
+                              !is.na(CHL07_02$VOL_filt)])) > 0) {unique(
+                                  CHL07_02$VOL_filt[CHL07_02$SKey1 == j &
+                                                        !is.na(CHL07_02$VOL_filt)])
+            } else (NA)
+    CHL07_sk1$VOL_par[CHL07_sk1$SKey1 == j] <- 
+        if(length(unique(
+            CHL07_02$Result.Value[CHL07_02$ParamX == "c_VOL" &
+                                  CHL07_02$SKey1 == j])) > 0) {paste(unique(
+                                      CHL07_02$Result.Value[CHL07_02$ParamX == "c_VOL" &
+                                                                CHL07_02$SKey1 == j]),
+                                      collapse = " / ")
+            } else (NA)
+    CHL07_sk1$VOL_all[CHL07_sk1$SKey1 == j] <- 
+        if(length(unique(
+            CHL07_02$VOL_all[CHL07_02$SKey1 == j & 
+                              !is.na(CHL07_02$VOL_all)])) > 0) {unique(
+                                  CHL07_02$VOL_all[CHL07_02$SKey1 == j &
+                                                        !is.na(CHL07_02$VOL_all)])
+            } else (NA)
+    }
+
+
+# j <- "4907000.43033"
+
+## compile volumes
+
+CHL07_sk1 %<>% mutate(VOL_all_2 = as.numeric(NA)) %>% mutate(
+    VOL_all_2 = case_when(
+        !is.na(VOL_filt) & is.na(VOL_all) ~ VOL_filt,
+        is.na(VOL_filt) & !is.na(VOL_all) ~ VOL_all,
+        !is.na(VOL_filt) & !is.na(VOL_all) &
+            (VOL_filt == VOL_all) ~ VOL_all,
+        !is.na(VOL_filt) & !is.na(VOL_all) &
+            (VOL_filt != VOL_all) ~ as.numeric(NA),
+        is.na(VOL_filt) & is.na(VOL_filt) ~ as.numeric(NA),
+        !is.na(VOL_all_2) ~ VOL_all_2,
+        is.na(VOL_all_2) ~ as.numeric(NA)
+        ))
+
+```
+
++ Found a few records where Volume values differ
+
+```{r}
+CHL07_sk1 %>% filter(is.na(VOL_all_2) & 
+                         (!is.na(VOL_filt) & !is.na(VOL_par) & !is.na(VOL_all)))
+```
+
+#### 4.41 Annotate and Apply fixes
+
+```{r}
+CHL07_sk1 %<>% mutate(Vol_comment2 = as.character(NA)) %>% mutate(
+    Vol_comment2 = case_when(
+        SKey1 == "5971936.42999" ~ "Use Lab.sheet Vol [200 mL]",
+        SKey1 == "5971936.42977" ~ "Use Lab.sheet Vol [350 mL]",
+        SKey1 == "5971010.42985" ~ "Use Lab.sheet Vol [500 mL]",
+        SKey1 == "4917365.43011" ~ "Use  Vol [250 mL] for other replicates",
+        !is.na(Vol_comment2) ~ Vol_comment2,
+        is.na(Vol_comment2) ~ as.character(NA)),
+    VOL_all_2 = case_when(
+        SKey1 == "5971936.42999" ~ 200,
+        SKey1 == "5971936.42977" ~ 350,
+        SKey1 == "5971010.42985" ~ 500,
+        SKey1 == "4917365.43011" ~ 250,
+        !is.na(VOL_all_2) ~ VOL_all_2,
+        TRUE ~ as.numeric(NA))
+)
+```
+
++ Now Apply these corrections the the DF
+
+```{r}
+CHL07_03 <- left_join(CHL07_02,
+                      select(CHL07_sk1,
+                             SKey1, VOL_all_2, Vol_comment2),
+                      by = "SKey1") %>%
+    select(FILE:VOL_all, VOL_all_2, Result.Code:Vol_comment, Vol_comment2, everything())
+##
+CHL07_03 %<>% mutate(
+    Comment = case_when(
+        !is.na(Vol_comment2) & is.na(Comment) ~ Vol_comment2,
+        !is.na(Vol_comment2) & !is.na(Comment) ~ paste(.$Comment,
+                                                              .$Vol_comment2,
+                                                              sep=". "),
+        !is.na(Comment) ~ Comment,
+        is.na(Comment) ~ as.character(NA))) %>%
+    select(-Vol_comment2, everything())
+```
+
+#### 4.42 ID Missing Vols and summarize (SKey1 is better than SKey2)
+
+```{r}
+CHL07_sk1 %>% filter(is.na(VOL_all_2) & 
+                         (is.na(VOL_filt) & is.na(VOL_filt) & is.na(VOL_all)))
+##
+CHL07_sk1 %>% filter(is.na(VOL_all) & 
+                         (is.na(VOL_filt) & is.na(VOL_filt) & is.na(VOL_all))) -> CHL07_sk1_NoVOL
+##
+CHL07_03 %>% filter(is.na(RESENT_status) &
+                        SKey1 %in% CHL07_sk1_NoVOL$SKey1) -> CHL07_data_SK1_NoVOL
+
+# openxlsx::write.xlsx(CHL07_data_SK1_NoVOL, file="CHL07_skey1_data_NoVols_190225.xlsx")
+
+```
+
+```{r}
+CHL07_data_SK1_NoVOL %>% {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany" ))}
+## Same Table couting unique levels of SKey1 (MLID x SDate)
+CHL07_data_SK1_NoVOL %>%
+    distinct(SKey1, .keep_all = T) %>%
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany" ))}
+```
+
++ Records missing Vol for CHL/CHL_hplc by Year
+
+```{r}
+CHL07_data_SK1_NoVOL %>%
+    filter(Method.GRP != "Filter") %>% 
+    {addmargins(table(.$Trip_root, lubridate::year(.$Sample.Date), 
+                      useNA="ifany", deparse.level = 2))}
+## Same Table couting unique levels of SKey1 (MLID x SDate)
+CHL07_data_SK1_NoVOL %>%
+    filter(Method.GRP != "Filter") %>% 
+    distinct(SKey1, .keep_all = T) %>%
+    {addmargins(table(.$Trip_root, lubridate::year(.$Sample.Date), 
+                      useNA="ifany", deparse.level = 2))}
+```
+
+
+#### 4.8 Version Datafile
+
+```{r}
+CHL07_04 <- CHL07_03
+#
+# openxlsx::write.xlsx(CHL07_04, file="CHL07_v04_00_190225.xlsx")
+```
+
+***
+***
+
+## IV: Concentration Calculations
+
+### 5.0 Datafile & Environment Cleanup
+
++ Backup .Environ
++ Trim DFs
+
++ Working Environment :: "190225-2.RData"
+
+
+#### 5.1 Simplify and Tidy dataframe
+
+_Goal_:  Quite a few fields are no longer useful and can be removed from subsequent df-version.  Can also specifically flag records where volume is currently missing
+
++ Look at Vars / Fields
+
+```{r CHL0703_DataVar_review}
+data.file <- CHL07_04
+# 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+rm(data.file)
+```
+
++ Briefly, annotate changes for record-keeping
+
+```{r}
+DataVars_CHL0704 <- Data.Vars
+#
+DataVars_CHL0704$Note <- as.character(NA)
+#
+var_drop <- c("MLID_old", "TripID2", "CAS.Number",
+              "MethDescPar.key", "ParamMeth", "Proj2", "Proj_SET",
+              "dupe_sk3", "SKey5", "dupe_sk6", "ISSUE", "FIX",
+              "GRP", "new", "import", "AWQMS.Key", "Trip.MLID.date_Key",
+              "Proj_GRP", "Proj_nm", "TripID.2", "MLID", "TripID.3",
+              "SType2", "Method_x", "RECORD_status", "PARAM_status", "UQL.Value",
+              "status_Key", "RESULT_status", "AWQMS.Key_TRIM", "SampDesc",
+              "PROJECT.x", "PROJECT.y", "Samp.Matrix", "Filt.Vol.LUT", "SKey6",
+              "Comment_02", "Project.Comment", "Sample.Comment", "Test.Comment",
+              "TripID_x")
+#
+DataVars_CHL0704 %<>% mutate(
+    Note = case_when(
+        name_i %in% var_drop ~ "Drop Field",
+        grepl("DIFF", .$name_i) ~ "Drop Field",
+        !is.na(Note) ~ Note,
+        TRUE ~ as.character(NA))
+)
+#
+DataVars_CHL0704 %>% 
+    select(-i) %>%
+    htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align=c("rccccccl"))
+#
+Drop_fields <- DataVars_CHL0704 %>% 
+    filter(!is.na(Note)) %>% 
+    {unique(.$name_i)}
+```
+
+```{r}
+CHL08_00 <- CHL07_04 %>% 
+    select(-Drop_fields)
+#
+
+```
+
+***
+
+### 6.0 CHL Concentration Calculations
+
++ Explicitly identify records w/ no Volume available
+
+```{r}
+CHL08_01 <- CHL08_00 %>% mutate(
+    No_VOL = case_when(
+        is.na(VOL_all_2) ~ "No_VOL",
+        TRUE ~ as.character(NA))) %>%
+    select(-VOL_all, everything()) %>%
+    select(FILE:VOL_all_2, No_VOL, everything())
+#
+# openxlsx::write.xlsx(CHL08_01, file="CHL08_01_190225.xlsx")
+```
+
+#### 6.1 Concentration Parameters
+
+```{r}
+
+CHL08_01 %>%
+    filter(is.na(RESENT_status)) %>%
+    {addmargins(table(.$ParamX, .$Method.GRP, .$No_VOL, 
+                      useNA = "ifany", deparse.level = 2), c(1,2))}
+# Unique Levels of SKey1,  by Method.GRP
+CHL08_01 %>%
+    filter(is.na(RESENT_status)) %>%
+    distinct(SKey1, Method.GRP, 
+             .keep_all = T) %>% 
+             {addmargins(table(.$No_VOL, .$Method.GRP, useNA = "ifany", deparse.level = 2))}
+# Unique Levels of SKey1, NoVol x project
+CHL08_01 %>%
+    filter(is.na(RESENT_status)) %>%
+    distinct(SKey1, Method.GRP, 
+             .keep_all = T) %>% 
+    {addmargins(table(.$Trip_root, .$No_VOL,useNA = "ifany", deparse.level = 2))}
+```
+
+***
+
+#### 6.2 Concentration Calculations
+
++ Add calculated concentrations as _new field_ for simpler formatting...
+
+```{r}
+CHL08_01 %<>% mutate(RV3_conc = as.numeric(NA),
+                     RV3_c_Units = as.character(NA),
+                     LRL_c = as.numeric(NA),
+                     MDL_c = as.numeric(NA), 
+                     RL_Units = as.character(NA)) %>%
+    select(-FILE, -Lab.filename, -Sample.Date, -MLID_00, -Sample.Number, 
+           -SKey3, -SKey4, everything()) %>%
+    select(Project.Name:Units_X, RV3_conc, RV3_c_Units, 
+           LRL = Lower.Report.Limit, LRL_c, 
+           MDL = Method.Detect.Limit, MDL_c, RL_Units, everything()) %>%
+    rename(R.Code = Result.Code, Prob.Iden = Problem.Identifier)
+```
+
++ Filters
+    + `RESENT_status` == NA
+    + `No_VOL` == NA
+
++ Water Column CHL concentrations (ug/L)
+
+```{r}
+CHL08_01 %<>% mutate(
+    RV3_conc = case_when(
+        is.na(RESENT_status) & 
+            !is.na(RV2_ug) &
+            !is.na(VOL_all_2) ~ signif((RV2_ug)/(VOL_all_2/1000), digits=4),
+        TRUE ~ as.numeric(NA)),
+    RV3_c_Units = case_when(
+        is.na(RESENT_status) & 
+            !is.na(RV2_ug) &
+            !is.na(VOL_all_2) ~ "ug/L",
+        TRUE ~ as.character(NA))
+)
+#
+
+```
+
++ Water Column CHL LRL/MDL concentrations (ug/L)
+
+```{r}
+CHL08_01 %>% filter(Method.GRP == "CHL" & ParamX == "CHLA") %>%
+{summary(.$LRL)}
+
+CHL08_01 %>% filter(is.na(RESENT_status) & Method.GRP == "CHL" & ParamX == "CHLA") %>% {unique(.$Units)}
+
+CHL08_01 %>% filter(Method.GRP == "CHL_hplc" & ParamX == "CHLA") %>%
+{summary(.$LRL)}
+
+CHL08_01 %>% filter(is.na(RESENT_status) & Method.GRP == "CHL_hplc" & ParamX == "CHLA") %>% {unique(.$Units)}
+```
+
+
+```{r}
+CHL08_01 %<>% mutate(
+    LRL_c = case_when(
+        is.na(RESENT_status) & ParamX != "PERI" &
+            !is.na(LRL) &
+            !is.na(VOL_all_2) &
+            (Method.GRP == "CHL") ~ 
+            signif((LRL*1000)/(VOL_all_2/1000), digits=2),
+        is.na(RESENT_status) & ParamX != "PERI" &
+            !is.na(LRL) &
+            !is.na(VOL_all_2) &
+            (Method.GRP == "CHL_hplc") ~ 
+            signif((LRL)/(VOL_all_2/1000), digits=2),
+        TRUE ~ as.numeric(NA)),
+    MDL_c = case_when(
+        is.na(RESENT_status) & ParamX != "PERI" &
+            !is.na(MDL) &
+            !is.na(VOL_all_2) &
+            (Method.GRP == "CHL" ) ~ 
+            signif((MDL*1000)/(VOL_all_2/1000), digits=2),
+        is.na(RESENT_status) & ParamX != "PERI" &
+            !is.na(MDL) &
+            !is.na(VOL_all_2) &
+            (Method.GRP == "CHL_hplc") ~ 
+            signif((MDL)/(VOL_all_2/1000), digits=2),
+        TRUE ~ as.numeric(NA)),
+    RL_Units = case_when(
+        is.na(RESENT_status) & ParamX != "PERI" &
+            (!is.na(LRL) | !is.na(MDL)) &
+            !is.na(VOL_all_2) ~ "ug/L",
+        TRUE ~ as.character(NA))
+)
+```
+
+
++ This needs to be summarized, and reviewed
+
+***
+
+#### 6.3 Datafile Summary
+
++ Version Datafile
+```{r}
+# CHL08_02 <- CHL08_01
+```
+
++ Current Working Datafile :: `CHL08_02`
+    + `r nrow(CHL08_02)` records in dataset
+    + `r CHL08_02 %>% filter(is.na(RESENT_status)) %>% nrow(.)` records that are **not** duplicates
+    + `r CHL08_02 %>% filter(is.na(RESENT_status) & is.na(No_VOL)) %>% nrow(.)` records that _also_ have Volumes associated with sample
+    + `r CHL08_02 %>% filter(is.na(RESENT_status) & is.na(No_VOL)) %>% filter(., !is.na(RV3_conc)) %>% nrow(.)` records where a `Result.Value` was calculated for CHL concentration    
+    
++ Filter `CHL08_02` to ::
+    + **Not-Duplicated Records**
+
+**Note** :: A set of records from USGS has no `Trip_root` :: fixed
+
+```{r}
+# CHL08_02 %<>% mutate(
+#     Trip_root = case_when(
+#         Trip.ID == "USGS" ~ "USGS",
+#         !is.na(Trip_root) ~ Trip_root,
+#         TRUE ~ as.character(NA))
+# )
+```
+
+
+```{r}
+CHL08_02 %>% filter(is.na(RESENT_status)) -> CHL08_03
+#
+CHL08_03 %<>% select(-VOL_filt, -Result.Value, -Units, -dupe_rec, -Sample.Detect.Limit,
+                     -Sample.Report.Limit, everything())
+```
+
++ Records by Project w/ CHL-results available
+    + Params :: CHL.tot, CHLA, PHEO
+
+```{r}
+CHL08_03 %>% 
+    filter(!is.na(RV2_ug)) %>% 
+    filter(ParamX %in% c("CHL.tot", "CHLA", "PHEO")) %>% 
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany", deparse.level = 2))} %>%
+    htmlTable::htmlTable(., 
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="CHL available records by major project-group and by Method, for 2017-2018 period [CHL08_03]")
+```
+
++ The above table identifies the number of records for (CHL.tot, CHLA, and PHEO) parameters for sample-collection-events that are _not duplicated_ and _have a CHL weight_ result value available.  Some of these records are still missing filtration volumes.
+
++ Below, the same table as above, but enumerating the _number of unique sampling events_ (as `SKey1` : MLID + SDate)
+
+```{r}
+CHL08_03 %>% 
+    filter(!is.na(RV2_ug)) %>% 
+    filter(ParamX %in% c("CHL.tot", "CHLA", "PHEO")) %>% 
+    distinct(SKey1, Method.GRP, .keep_all = TRUE) %>%
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany", deparse.level = 2))} %>%
+    htmlTable::htmlTable(., 
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Sample Collections with CHL available records by major project-group and by Method, for 2017-2018 period [CHL08_03]")
+```
+
+***
+
++ Records by Project where CHL-concentrations are _currently_ available
+    + Params :: CHL.tot, CHLA, PHEO
+    + Result Units :: ug/L
+
+```{r}
+CHL08_03 %>% 
+    filter(!is.na(RV2_ug)) %>% 
+    filter(ParamX %in% c("CHL.tot", "CHLA", "PHEO")) %>% 
+    filter(!is.na(RV3_conc)) %>%
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany", deparse.level = 2))} %>%
+    htmlTable::htmlTable(., 
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Available CHL-concentration records by major project-group and Method, for 2017-2018 period [CHL08_03]")
+```
+
++ Simlar to above, but presents the number of sample collection events (as `SKey1` [MLID + SDate]) for CHL-concentrations...
+
+```{r}
+CHL08_03 %>% 
+    filter(!is.na(RV2_ug)) %>% 
+    filter(ParamX %in% c("CHL.tot", "CHLA", "PHEO")) %>% 
+    filter(!is.na(RV3_conc)) %>%
+    distinct(SKey1, Method.GRP, .keep_all = TRUE) %>%
+    {addmargins(table(.$Trip_root, .$Method.GRP, useNA="ifany", deparse.level = 2))} %>%
+    htmlTable::htmlTable(., 
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Available sampleing events with CHL-concentrations, by major project-group and Method, for 2017-2018 period [CHL08_03]")
+```
+
+
+***
+***
+
++ Export Working Datafiles
+
+```{r}
+# openxlsx::write.xlsx(CHL08_02, file="CHL201718_CHL08_02_dat_190226.xlsx")
+# #
+# openxlsx::write.xlsx(CHL08_03, file="CHL201718_CHL08_03_noDup_dat_190226.xlsx")
+```
+
+
+**Start New Notebook**
+
+
+## WORK
+ 
+```{r sandbox}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# table(Lakes$ACT.type, Lakes$SampType_x)
+# Lakes %>% {addmargins(table(.$QC_type,.$Import_type,useNA="ifany",deparse.level = 2))}
+# LabRef$Sample.Date <- as.Date(LabRef$Sample.Date, origin="1899-12-30")
+# select(data09_X, contains("Equipment", ignore.case = T)) %>% names(.)
+```
+
+***
+
+## END
+
+```{r lastwork}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
