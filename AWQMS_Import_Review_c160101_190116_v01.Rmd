@@ -1,0 +1,378 @@
+---
+title: "AWQMS Import Review : 1/1/16 to present"
+author: "T.Hooker"
+date: "16 January, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+## Notes
+
+[190116] :: Review of recent data Imported to AWQMS (UTAHDWQ_WQX) for project tracking
+
+**Working Datasets**
+
+1) Activity [review] export file for records imported (or last changed) since 1/1/2016
+    + `ActivitiesExport_c160101_DL_190116.xlsx`
+
+***
+
+## I: Data Import and Cleanup
+
+### 1.0 Import AWQMS-imported Activity.IDs
+
+```{r ImportConfig_import}
+# file.01 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# awqms_importdata01 <- openxlsx::read.xlsx(file.01, sheet=1, colNames=T,
+#                                             rowNames=FALSE, check.names = T)
+
+```
+
++ Filename ::  `r basename(file.01)`
++ Path ::  `r dirname(file.01)`  
++ Last Accessed :: [`r file.mtime(file.01)`]  
+  
++ Data Structure
+    + `r format(nrow(awqms_importdata01), big.mark=",")` records
+    + `r ncol(awqms_importdata01)` fields
+
+***
+
+### 2.0 Dataframe Cleanup
+
+#### 2.1 Fix Date-format
+
+```{r cleandates01}
+awqms_importdata01 %<>% mutate(
+    Activity.Start.Date = as.Date(.$Activity.Start.Date, origin="1899-12-30"),
+    Created = as.Date(.$Created, origin="1899-12-30"),
+    Last.Changed = as.Date(.$Last.Changed, origin="1899-12-30"))
+```
+
++ Sample Dates range from :: `r min(awqms_importdata01$Activity.Start.Date, na.rm=T)` to `r max(awqms_importdata01$Activity.Start.Date, na.rm=T)`
++ AWQMS-record Creation Dates range from :: `r min(awqms_importdata01$Created, na.rm=T)` to `r max(awqms_importdata01$Created, na.rm=T)`
++ AWQMS-record Latest-Change Dates range from :: `r min(awqms_importdata01$Last.Changed, na.rm=T)` to `r max(awqms_importdata01$Last.Changed, na.rm=T)`
+
+
+#### 2.2 Truncate DF and field-names
+
++ Working DF copied to ::  `df01`
++ Field-names truncated
++ 'Media.Subdivision` removed as field (no information, unneccesary)
+
+```{r fix_df01}
+df01 <- awqms_importdata01
+colnames(df01) <- 
+    c("ORG.id", "MLID", "MLID.name", "ACT.ID",
+      "SDate", "ACT.type", "Media", "Media2",
+      "Created", "VrsnDte")
+df01 %<>% select(-Media2)
+
+```
+
++ Working dataset :: **`df01`**
+
+***
+
+### 3.0 Activity.ID Review
+
+#### 3.1 Decompose Activity.ID
+
++ All [text] to _UPPERCASE_
++ Create SKey2 (MLID + SDAte + SType)
+
+```{r dat01, message=FALSE, warning=FALSE}
+df01 %<>% 
+    mutate(data_type = NA, SampType = NA, ACT_trunc = NA,
+           TripID = NA, Proj_GRP = NA, WYqtr = NA,
+           ACT.ID = toupper(.$ACT.ID)) %>%
+    mutate(data_type = stringr::str_split(.$ACT.ID, "-", simplify=T)[,5],
+           SampType = sprintf("%.2i", as.integer(
+               stringr::str_split(.$ACT.ID, "-", simplify=T)[,4])),
+           ACT_trunc = paste(
+               stringr::str_split(.$ACT.ID, "-", simplify=T)[,1],
+               stringr::str_split(.$ACT.ID, "-", simplify=T)[,2],
+               stringr::str_split(.$ACT.ID, "-", simplify=T)[,3],
+               sep="-"),
+           TripID = stringr::str_split(.$ACT.ID, "-", simplify=T)[,1]) %>%
+    mutate(SampType = 
+               case_when(
+                   SampType == "" ~ "unk",
+                   SampType == "NA" ~ toupper(stringr::str_split(
+                       .$ACT.ID, "-", simplify=T)[,4]),
+                   TRUE ~ SampType),
+           Proj_GRP = toupper(substr(
+               .$TripID, 1,(stringr::str_locate(.$TripID, "[0-9]")[,1])-1)),
+           data_type = 
+               case_when(
+                   data_type == "" ~ as.character(NA),
+                   data_type %in% c("A", "C", "D", "F") ~ data_type,
+                   (is.na(data_type) | data_type == "") & (ACT.type == "Field Msr/Obs") ~
+                       "F",
+                   (is.na(data_type) | data_type == "") & (ACT.type == "Sample-Routine") ~
+                       "C",
+                   (is.na(data_type) | data_type == "") & (ACT.type == "Sample-Integrated Vertical Profile") ~ "F",
+                   (is.na(data_type) | data_type == "") & (ACT.type == "Sample-Composite Without Parents") ~ "Bio",
+                   is.na(data_type) ~ as.character(NA),
+                   TRUE ~ data_type)) %>%
+    mutate(ACT.ID = toupper(ACT.ID), SKey2 = NA) %>%
+    mutate(SKey2 = paste(.$MLID,
+                         as.numeric(.$SDate - as.Date("1899-12-30")),
+                         .$SampType,
+                         sep=".")) %>%
+    mutate(Proj_GRP = case_when(
+        is.na(Proj_GRP) ~ TripID,
+        TRUE ~ Proj_GRP)) %>%
+    mutate(WYqtr = case_when(
+        SDate > "2016-09-30" & SDate < "2017-04-01" ~ "2017.q1q2",
+        SDate > "2017-03-31" & SDate < "2017-10-01" ~ "2017.q3q4",
+        SDate > "2017-09-30" & SDate < "2018-04-01" ~ "2018.q1q2",
+        SDate > "2018-03-31" & SDate < "2018-10-01" ~ "2018.q3q4",
+        SDate > "2018-09-30" & SDate < "2019-04-01" ~ "2019.q1q2",
+        SDate > "2015-09-30" & SDate < "2016-04-01" ~ "2016.q1q2",
+        SDate > "2016-03-31" & SDate < "2016-10-01" ~ "2016.q3q4",
+        SDate > "2014-09-30" & SDate < "2015-04-01" ~ "2015.q1q2",
+        SDate > "2015-03-31" & SDate < "2015-10-01" ~ "2015.q3q4",
+        SDate > "2013-09-30" & SDate < "2014-04-01" ~ "2014.q1q2",
+        SDate > "2014-03-31" & SDate < "2014-10-01" ~ "2014.q3q4",
+        SDate > "2012-09-30" & SDate < "2013-04-01" ~ "2013.q1q2",
+        SDate > "2013-03-31" & SDate < "2013-10-01" ~ "2013.q3q4",
+        SDate > "2011-09-30" & SDate < "2012-04-01" ~ "2012.q1q2",
+        SDate > "2012-03-31" & SDate < "2012-10-01" ~ "2012.q3q4",
+        TRUE ~ "PriorData")) %>%
+    mutate(SKey1 = paste(.$MLID,
+                         as.numeric(.$SDate - as.Date("1899-12-30")),
+                         sep="."))
+```
+
++ Any fields w/ missing information  ??
+    + data_type :: `r sum(is.na(df01$data_type))`
+    + SampType :: `r sum(is.na(df01$SampType))`
+    + ACT_trunc :: `r sum(is.na(df01$ACT_trunc))`
+    + TripID :: `r sum(is.na(df01$TripID))`
+    + Proj_GRP :: `r sum(is.na(df01$Proj_GRP))` :: levels = `r length(unique(df01$Proj_GRP))`
+    + SKey2 :: `r sum(is.na(df01$SKey2))`
+    + SKey1 :: `r sum(is.na(df01$SKey1))`
+    + WYqtr :: `r sum(is.na(df01$WYqtr))`
+
+
+#### 3.2 Initial review tables
+
+```{r dat01_tab01}
+df01 %>% {table(.$WYqtr, .$data_type, useNA = "ifany", deparse.level=2)}
+df01 %>% {table(.$SampType, .$WYqtr, useNA = "ifany", deparse.level=2)}
+```
+
++ One record has a weird Sample.Type ("4/1"); this will be corrected manually
+
+```{r dat01_fix01}
+# df01$ACT.ID[grepl("/", df01$SampType)] -> weird01
+df01 %<>% 
+    mutate(SampType = 
+               case_when(grepl("/[[:digit:]]", SampType) ~ gsub("/[[:digit:]]", "", SampType),
+                         TRUE ~ SampType),
+           SKey2 = 
+               case_when(grepl("/[[:digit:]]", SKey2) ~ gsub("/[[:digit:]]", "", SKey2),
+                         TRUE ~ SKey2))
+# "29/2"
+# gsub("/[[:digit:]]", "", "BORLP071813-5952430-0718-29/2-C")
+# gsub("/[[:digit:]]", "", "29/2")
+# gsub("/[[:digit:]]", "", "5952430.41473.29/2")
+```
+
+
+#### 3.3 Cleanup & Simplify `Proj_GRP`
+
++ Too many slight changes to root of TripIDs (Proj_GRP)
+
+```{r dat02}
+# Projects <- df01 %>% arrange(Proj_GRP) %>% distinct(Proj_GRP) %>% data.frame()
+# openxlsx::write.xlsx(Projects, file="proj_list02.xlsx")
+file.proj <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+Projects <- openxlsx::read.xlsx(file.proj, sheet=1, colNames=T,
+                                            rowNames=FALSE, check.names = T)
+df02 <- left_join(df01, Projects,
+                  by = "Proj_GRP")
+df02 %<>% select(everything(), Proj_GRP = proj01, -proj01)
+```
+
++ Initial levels of project-groups (`r length(unique(Projects$Proj_GRP))`) reduced to (`r length(unique(Projects$proj01))`)
+
++ Run WY x Proj_GRP table w/ simplified Projects
+
+```{r dat02_tab01}
+df02 %>% {addmargins(table(.$Proj_GRP, .$WYqtr, useNA = "ifany", deparse.level=2))}
+```
+
++ Trim Project groups down to "Sets"
+    + Intensives
+    + Lakes
+    + Special.Studies
+    + TMDL / NPS 
+    + COOPs
+    + [other] (wells, etc.)
+
+```{r dat02_tab02}
+df02 %>% {addmargins(table(.$Proj_SET, .$WYqtr, useNA = "ifany", deparse.level=2))}
+```
+
+#### 3.4 Uniqueness 
+
+**Levels of uniqueness for database- (ACTID) and derived-keys**
+
++ Data records :: `r format(nrow(df02), big.mark=",")`
++ ACT.ID :: `r format(length(unique(df02$ACT.ID)), big.mark=",")` :: Full Key
++ ACT_trunc :: `r format(length(unique(df02$ACT_trunc)), big.mark=",")` :: Excludes Sample-type and Data-type
++ TripID :: `r length(unique(df02$TripID))`
++ Proj_GRP :: `r length(unique(df02$Proj_GRP))`
++ Proj_SET :: `r length(unique(df02$Proj_SET))`
++ SKey2 :: `r format(length(unique(df02$SKey2)), big.mark=",")` :: Excludes Data-type & Project
++ SKey1 :: `r format(length(unique(df02$SKey1)), big.mark=",")` :: Excludes Data-type & Sample.Type & Project
+    + Little difference b/w SKey1 and ACT_trunc; differences may be due to same MLID sampled on same day for different projects, or variability in TripID within an Activity, by data-type.  Will use SKey1 and SKey2 here, as they are cleaner to generate and interpret
+
+
+### 4.0 Review imported-Activities
+
++ Scattered records from WY2016 were updated in early 2018
++ _These records are considered complete and will be ignored hereafter_
+
+#### 4.1 Build SKey1 x Data-type comparison table
+
++ _Add MLID.types to data to screen out QC samples [sites]_
+
+```{r QC01}
+df02 %<>% mutate(
+    MLID.type = case_when(
+        grepl("Quality Control", .$ACT.type, ignore.case = T) ~ "QCsite",
+        TRUE ~ as.character(NA)))
+```
+
++ Records from QC sites (Blanks and Field Replicates), as unique ACT.IDs (`r nrow(df02[!is.na(df02$MLID.type),])`) 
+    + Unique Visits (`SKey1`) (`r length(unique(df02$SKey1[!is.na(df02$MLID.type)]))`)  
+      
+***
+
++ Cast / translate dataset to identify combinations of
+    + [C]hem
+    + [F]ield-probe
+    + [D]ischarge, and 
+    + [PR]ofile results
+
+_Build & Annotate Table_
+
+```{r compare01}
+comp01 <- df02 %>% {table(.$SKey1, .$data_type,
+                          useNA = "ifany", deparse.level = 2)} %>%
+    as.data.frame.matrix(.) %>% tibble::rownames_to_column("SKey1") %>%
+    setNames(., c("SKey1", "A", "C", "D", "F", "na")) %>%
+    left_join(.,
+              distinct(select(df02,
+                              SKey1, WYqtr, Proj_SET, Proj_GRP, SDate, MLID.type)),
+              by = "SKey1") %>%
+    arrange(WYqtr, Proj_SET, Proj_GRP, SKey1) %>% select(SKey1, WYqtr:MLID.type, everything())
+# comp01$SKey1[duplicated(comp01$SKey1)]
+```
+
++ Review Comparison / Completeness table
+    + Omit records pre-2017 water year
+    + Omit QC sites from `MLID.type` (_This field is also omitted from the table below_)
+
+```{r compare02}
+comp02 <- 
+    filter(comp01, SDate > as.Date("2014-09-30") & is.na(MLID.type)) %>%
+    mutate(C_F_match = case_when(
+        (C > 0 & F > 0) ~ "pair",
+        TRUE ~ as.character(NA))) %>% select(-MLID.type)
+```
+
+
+
++ Note that in full comparison table [`comp02`] (records = `r nrow(comp02)`), values for C and F greater than 1 represent Lakes with multiple depths sampled for field and/or chemistry measurements
+
++ Recall that QC sites are omitted from these summary tables (these collections are unbalanced, and do not reflect the completeness of C and F observations)
+
+***
+
+#### 4.2 Summarize Project-Group Completeness
+
+```{r compare02_tab01}
+comp02 %>%
+{addmargins(table(.$Proj_SET, .$WYqtr, .$C_F_match, useNA="ifany", deparse.level = 2),c(1,2))}
+
+
+```
+
+```{r compare02_tab02}
+comp02 %>% {addmargins(table(.$Proj_SET, .$C_F_match, useNA = "ifany"))}
+comp02 %>% {addmargins(table(.$WYqtr, .$C_F_match, useNA = "ifany"))}
+comp02 %>% {addmargins(table(paste(.$Proj_SET, .$WYqtr, sep="_"), .$C_F_match, useNA = "ifany"))}
+
+```
+
+
+```{r compare03, message=FALSE, warning=FALSE}
+comp02 %>% {table(.$SKey1, .$C_F_match, useNA="ifany")} %>%
+    as.data.frame.table(.) -> comp03
+colnames(comp03) <- c("SKey1", "C_F_match", "Freq")
+comp03_x <- reshape2::dcast(comp03,
+                            SKey1 ~ C_F_match, value.var = "Freq")
+comp03_x <- left_join(comp03_x,
+                      distinct(select(comp02,
+                                      SKey1, WYqtr, Proj_SET, Proj_GRP, SDate)),
+                      by = "SKey1")
+comp03_x %<>% select(SKey1, WYqtr:SDate, C_F_match = pair, Incomplete = "NA") %>%
+    arrange(WYqtr, Proj_SET, Proj_GRP, SKey1)
+```
+
+
+```{r compare03_tab01}
+comp03_x %>% {table(.$WYqtr, (.$C_F_match == 1), .$Proj_SET, useNA="ifany",deparse.level = 2)}
+
+
+```
+
+#### 4.3 Export Completeness Summary for Review
+
++ 190112:  `comp02` and `df02` export to xls
+
+```{r export_comp02}
+export01 <- list("SummTable01" = comp02, "Activities190116" = df02)
+openxlsx::write.xlsx(export01, file=paste("awqms_ACT_CompSummary_02_",
+                                          format(Sys.Date(), "%y%m%d"),
+                                          ".xlsx", sep=""))
+```
+
+
+
+## END
+
+```{r lastwork}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
