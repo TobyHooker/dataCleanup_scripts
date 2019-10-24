@@ -1,0 +1,787 @@
+---
+title: "PFAS Data Review (SLC Airport Event [190912]"
+subtitle: "<u>Version 02</u>"
+author: "T.Hooker"
+date: "30 September, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+***
+```{r STARTUP, include=FALSE}
+#options(table_counter=FALSE)
+tidy_package <- c("dplyr", "tidyr", "magrittr", "htmlTable", "tidyverse")
+# 
+if(!all(tidy_package %in% (.packages()))) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!all(graph_package %in% (.packages()))) {invisible(lapply(graph_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F, verbose = F))))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=87)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## Project Notes
+
+Testing / build area for reviewing PFAS results, including QA sample evaluation
+
+Goal: Look at results from first sampling of SLC-airport PFAS release w/ context of QC samples
+
+[191001] :: New version, re-organizing review and cleaning data upfront
+
+***
+
+### Current Work
+
+1) Import data
+2) Evaluate results
+3) Summarize results
+
+***
+
+## 1.0 Data Import and Cleanup
+
+```{r}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.CSV]", multi = FALSE)
+data01 <- read.csv(file.01, skip = 0,
+                   check.names = T,
+                   stringsAsFactors = F)
+```
+
++ Filename ::  `r basename(file.01)`
++ Path ::  `r dirname(file.01)`
++ Datafile has :: `r nrow(data01)` records & `r ncol(data01)` fields
++ Record Data Range :: From `r min(data01$Collected)` to `r max(data01$Collected)`
+
+**Initial Cleanup Tasks**  
+
++ Convert blanks to NAs
++ Re-code sample IDs for explicit naming in few variables
++ Find and flag dupes
++ Clean Result values to numeric and flag non-detects (separately)
++ Clarify data.types (concentrations vs. %recovery for surrogates...)
++ Keep summary tables terse
+
+```{r}
+data01 %<>% mutate(
+  Footnotes = case_when(
+    Footnotes == as.character("") ~ as.character(NA),
+    TRUE ~ Footnotes))
+```
+
+
+### 1.1 Data Element Review [metadata]
+
+```{r Data_chars01}
+data.file <- data01
+# 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+#
+##
+htmlTable::htmlTable(Data.Vars, caption ="Structure of AWQMS Standard-Export-File", align = c("clc|c"), css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.8em;", times=ncol(Data.Vars)), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.8em;",ncol=ncol(Data.Vars), nrow=nrow(Data.Vars))), rnames = FALSE, header = c("Field No.", "Field Name", "Class","NAs", "Levels", "Blanks", "Obs"))
+```
+
++ Variables where "_Blanks_" are distinct from `NA`s ::
+  + `r if(nrow(Data.Vars %>% filter(num.NAs != num.blanks)) > 0)  {Data.Vars %>% filter(num.NAs != num.blanks) %>% distinct(name_i) %$% name_i} else {"All fields are okay"}`
+
+***
+
++ Check unique levels of `Components` [analyte name] vs. `CAS`
+
+```{r}
+# unique(paste(data01$Component, data01$CAS, sep="_"))
+data01 %>% distinct(Component, CAS) %>% arrange(CAS) %>% 
+  group_by(CAS, Component) %>% 
+  mutate(Note = as.character(NA)) %>%
+  mutate(Note = if_else(CAS %in% .$CAS[duplicated(.$CAS)], "Dupe CAS", as.character(NA))) %>%
+  ungroup() %>%
+  mutate(Note = case_when(
+    grepl("^STL", .$CAS) & is.na(Note) ~ "Surrogate",
+    !is.na(Note) ~ Note,
+    TRUE ~ as.character(NA))) %>% arrange(as.integer(CAS)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlrc", n.tspanner=c(33,20), tspanner=c("",""))
+```
+
++ **Q**: How many records associated with the duplicated CAS / Component-name ?
+
+```{r}
+# data01 %>% distinct_at(vars(-Component), .keep_all = T) %>% select(Client.ID, Component, CAS, Result)
+setdiff(data01, 
+        data01 %>% distinct_at(vars(-Component), .keep_all = T)) %>% 
+  select(Client.ID, Component, CAS, Result) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ For the records above where records are duplicated for CAS numbers but distinct for an `Analyte-name` (Component), exclude the outlier name :: `Perfluorooctadecanoic acid`
+  + Add field:  `record_exclude`  (Y or NA)
+
+
+```{r}
+data01 %<>% mutate(
+  record_exclude = if_else(Component == "Perfluorooctadecanoic acid" & CAS == "16517116",
+                           "Y", as.character(NA)))
+```
+
+> When the isotopically-labeled surrogate compounds are removed, there are `r data01 %>% filter(!grepl("^STL", .$CAS) & is.na(record_exclude)) %>% distinct(Component) %>% nrow()` analytes in the dataset
+
++ Look for records where the `Result` may differ but `Component` and `CAS` and `aliquot/client.ID` are the same
+
+```{r}
+# data01 %>% distinct(Aliquot, Client.ID, Component, CAS, .keep_all=T)
+# records with duplicate keys but different result values...
+setdiff(data01, 
+        data01 %>% distinct(Aliquot, Client.ID, Component, CAS, .keep_all=T)) %>%
+  {. ->> dupe_set} %>% select(Aliquot, Client.ID, Component, CAS, Result) 
+```
+
++ Full set of dupe-recs from above
++ Sample "OUTFALL# 4" has 3 records for Surrogate 13C-PFOS
+  + This occurred because this sample required multiple sets of dilution in order to quantify this analyte
+
+```{r}
+data01 %>% filter(
+  paste(.$Aliquot, .$Client.ID, .$Component, .$CAS) %in%
+    (paste(dupe_set$Aliquot, dupe_set$Client.ID, dupe_set$Component, dupe_set$CAS))) %>%
+  select(Aliquot, Client.ID, Component, CAS, Result, Units, QCLot) %>% arrange(QCLot)
+```
+
++ Only the last record (QCLot == "320-324897") is correct; the other records represent analysis from insufficiently diluted sample with very high PFOS (nat. abund.) concentration
+  + **Exclude the prior two records**
+
+
+```{r}
+data01 %<>% mutate(
+  record_exclude =case_when(
+    paste(.$Aliquot, .$Client.ID, .$Component, .$CAS) %in%
+      (paste(dupe_set$Aliquot, dupe_set$Client.ID, 
+             dupe_set$Component, dupe_set$CAS)) &
+      QCLot != "320-324897" ~ "Y",
+    !is.na(record_exclude) ~ record_exclude,
+    TRUE ~ as.character(NA)))
+# Summarize excluded records
+data01 %>% filter(!is.na(record_exclude)) %>%
+  {addmargins(table(paste(.$Aliquot, .$Client.ID, .$Component, .$CAS),
+                       .$record_exclude, 
+                       useNA="ifany", deparse.level=2))}
+```
+
+**Bottom Line**  
+
++ 5 records excluded from dataset due to rejected result
+  + 3 records for duplicate Component names
+  + 2 records for Surrogate recovery of 1 analyte where the QCLot does not match the analytical result QCLot AND the surrogate recoveries are not in control (see review steps below)
+
+***
+
+### 1.2 Review Var combinations and "levels"
+
++ Already looked at `Component` and `CAS` (above)
+
++ How many Sample numbers ?
+
+  `r data01 %>% distinct(SampleNumber) %>% arrange(SampleNumber) %$% SampleNumber`
+  + `NA` in SampleNumber refers to QC samples
+
++ Aliquots ?
+
+  `r data01 %>% distinct(Aliquot) %>% arrange(Aliquot) %$% Aliquot`
+  + `SA` in Aliquot refers to submitted samples
+
++ Client.ID ?
+
+  `r data01 %>% {table(.$Client.ID, useNA="ifany", deparse.level=2)} %>% as.data.frame() %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc")`
+  + Can see evidence for some additional records for an LCS, LCSD, and MB QC-samples, as well as additional reported results from OUTFALL #4
+
+
++ Method  ?
+
+  `r data01 %>% select(Method) %>% distinct(.) %>% arrange(.) %$% Method`
+
++ Spiked ?
+  + Spike levels (ng/L) can vary depending on exact sample volume in bottle
+
++ Footnotes ?
+
+  `r data01 %>% {table(.$Footnotes, useNA="ifany", deparse.level=2)} %>% as.data.frame() %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc")`
+
+**B** :: Compound found in Blank and Sample  
+
+**J** :: Result was between MDL and RL, thus the Result-value is approximate [_estimated_]  
+
+**I** :: Value is `EMPC` (estimated maximum possible concentration);  
+_"The transition mass-ratio for the analyte was outside the established ratio limits"_.  
+_`Thus, there may be some uncertainty in analyte identification`_
+
+**_NA_** :: These records may have reportable results, **OR** result have been _Not Detected_  with **ND** shown in the result column
+
++ Units ?
+
+  `r data01 %>% {table(.$Units, useNA="ifany", deparse.level=2)} %>% as.data.frame() %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc")`
+
+**%REC** :: Recovery of isotopically labeled surrogate compounds
+
+### Simplify data-types, result-values, and sample-name classes
+
+**Samp_ID** :: combination of Aliquot (for QC samples) and Client.ID (for field samples) that provide unique identifiers for all "sample" types
+
++ Also, **re-code** SampleNumber, so that Lab-QC samples (where SampleNumber is NA) are explicitly labeled
+
+```{r}
+data01 %<>% mutate(
+  Samp_ID = if_else(Aliquot == "SA", Client.ID, Aliquot),
+  SampleNumber = ifelse(is.na(SampleNumber), "QC", SampleNumber)) %>%
+  select(-LabName, -LotID, -Received, -Prepped, -Analyzed, -Method,
+         -Matrix, -QCRun, -Dilution, -X.Water, everything()) %>%
+  select(record_exclude, Samp_ID, everything())
+```
+
++ Extract QC-batch info from Client.ID of QC samples, as `Samp_grp`
++ Add `Samp_type` to ID field-samples vs. _any_ blanks or QC
+
+```{r}
+data01 %<>% mutate(Samp_grp = sub(".*- *(.*?) */.*", "\\1", Client.ID)) %>%
+  mutate(
+    Samp_type = case_when(
+      Aliquot == "SA" & !grepl("BLANK", .$Client.ID) ~ "f_samp",
+      Aliquot == "SA" & grepl("BLANK", .$Client.ID) ~ "f_qc",
+      Aliquot != "SA" ~ "lab_qc")) %>%
+  select(record_exclude, Samp_type, Samp_grp, everything())
+```
+
+
+***
+
+### 1.3 Organize data-records for visual review
+
+```{r}
+data01 %<>% arrange(CAS, SampleNumber, Aliquot, Client.ID, LotID)
+```
+
++ **Add `VALUE` as  data-type**  [_based on "Units"_]
+
+```{r}
+data01 %<>% mutate(VALUE = as.character(NA)) %>% mutate(
+  VALUE = case_when(
+    Units == "%REC" ~ "Recovery",
+    Units == "ng/L" ~ "Conc",
+    TRUE ~ as.character(NA))) %>% 
+  select(record_exclude:Footnotes, VALUE, everything())
+```
+
+***
+
+### 1.4 Convert results to numeric and add ND dataflags
+
+```{r}
+data01 %<>% mutate(
+  Result.Value = as.numeric(Result),
+  Result_flag = case_when(
+    Result == "ND" ~ "U",
+    TRUE ~ as.character(NA))) %>%
+  select(record_exclude:Result,
+         Result.Value, Spiked, Result_flag, everything())
+```
+
+```{r}
+data01 %>% filter(is.na(record_exclude)) %>%
+  {addmargins(table(.$Footnotes, .$Result_flag, useNA="ifany", deparse.level = 2))}
+```
+
+***
+
+## 2.0 Data Review
+
+### Review Criteria and Actions
+
+1) **Method Blanks** :: _Lab Reagent Blank_
+
++ MB should be below detection **OR** < 1/3 of MRL (_for target analytes_)
++ If MB $\geq$ MRL, then Field Blank needed
++ For any Blank (including MB (or LRB)), if RV > MDL (_i.e. detected_), but analyte is NOT Detected in the accompanying sample, the Non-Detects do not need to be qualified
+
+2) **Lab Control Sample** [LCS] & **Duplicates** [LCSD] :: _Lab Fortified Blank_
+
++ % Recovery ::  > 70% AND $\leq$ 130% ($\pm$ 30%)  (_for both LCS and LCSD_)
++ % Relative Percent Difference (%RPD) :: < 30%
+
+3) **Surrogate** recovery
+
++ A test for matrix effects _or_ efficiency of analytical method
++ Recovery $\pm$ 30%
++ Should include Blanks here (MD)
+
+4) Review **Sample-Blanks** :: _Field Blanks_ or _Trip Blank_
+
+5) Compare results across field-samples
+
+***
+
+
+***
+
+### 2.1 Method Blanks
+
++ Initially, for single sample-submission-sets, compare all MBs by Analyte
+  + Ignore Surrogate compounds here
+
+```{r}
+data01 %>% filter(Aliquot == "MB") %>% filter(!grepl("^STL", .$CAS)) %>%
+  {addmargins(table(.$Component, is.na(.$Result.Value), 
+                    useNA = "ifany", deparse.level = 2,
+                    dnn=c("Analyte", "Result Not detected")),1)} %>% 
+  as.data.frame(stringsAsFactors=F) %>%
+  spread(Result.Not.detected, Freq) %>%
+  setNames(., c("Analyte", "Detected", "Not Detected")) %>%
+  filter(Detected > as.double(0)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlcc", total=T, caption="Analytes where Method-Blanks had at least 1 detectable result")
+```
+
+
+```{r}
+# data01 -> data01_copy
+# data01 <- data01_copy
+```
+
++ Analytes where at least 1 Method-Blank had a detectable result
+  + For MBs w/ a detection, were Result.Values $\gt \frac{1}{3}$ of MRL ?
+
+```{r}
+data01 %>% filter(Aliquot == "MB" & !grepl("^STL", .$CAS)) %>% filter(!is.na(Result.Value)) %>%
+  select(Client.ID, Component, Result.Value, RL, Units) %>%
+  mutate(Blank_flag = if_else(Result.Value > (RL/3), "B", as.character(NA))) %>%
+  arrange(Component) %>%
+   htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="llrrlc", n.tspanner=c(3,2,1,1), tspanner=rep("",4), caption="Record IDs where an analyte was detected in Method Blanks", tfoot="Blank flag (B) identifies records where analyte in MB was detected AND result was > 1/3 of MRL")
+```
+
+**Sample QCLot associated with the B-flagged MB (for PFOS)** ::  
+
+  + `r data01 %>% filter(Aliquot == "MB" & !grepl("^STL", .$CAS)) %>% filter(!is.na(Result.Value)) %>% mutate(Blank_flag = if_else(Result.Value > (RL/3), "B", as.character(NA))) %>% filter(!is.na(Blank_flag)) %>% select(QCLot) %$% QCLot`
+
+```{r}
+data01 %<>% mutate(
+  Blank_flag = case_when(
+    Aliquot == "MB" & 
+      !grepl("^STL", .$CAS) & 
+      !is.na(Result.Value) & Result.Value > (RL/3) ~ "B",
+    TRUE ~ as.character(NA))) %>%
+  select(record_exclude:Footnotes, Blank_flag, everything())
+```
+
+
++ The following sample-records have a B-flag associated with this hit on the MB-PFOS
+
+```{r}
+data01 %>% filter(is.na(record_exclude)) %>% filter(QCLot %in% (data01 %>% filter(Aliquot == "MB" & !grepl("^STL", .$CAS)) %>% filter(!is.na(Result.Value)) %>% mutate(Blank_flag = if_else(Result.Value > (RL/3), "B", as.character(NA))) %>% filter(!is.na(Blank_flag)) %>% select(QCLot) %$% QCLot)) %>% filter(CAS == "1763231") %>% select(Samp_grp, Samp_ID, Component, Result.Value, Result_flag, Footnotes, RL, MDL, Units) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlll|rrc|rr|c", caption="Records associated with the MB-PFOS detection")
+```
+
+
++ The above sample records may have a positive bias in PFOS concentrations...
+
+  + Field blanks were collected at each sampling locations, in addition to a Trip Blank, so field-sample results can be reviewed further for evidence of possible bias
+
+***
+
+### 2.2 Lab Control Samples (_lab spikes_)
+
++ Calculate %Recovery for LCS and LCSD samples for all analytes
+
+```{r}
+data01 %>% filter(is.na(record_exclude)) %>% 
+  filter(Samp_ID %in% c("LCS", "LCSD")) %>% 
+  filter(!grepl("^STL", .$CAS)) %>%
+  group_by(Component, Samp_ID) %>%
+  mutate(Recovery = signif(Result.Value / as.numeric(Spiked), digits=2)*100) %>%
+  mutate(Recov_flag = if_else((Recovery > 130), "Bias-high", as.character(NA)),
+         Recov_flag = if_else((Recovery < 70), "Bias-lo", as.character(NA))) %>%
+  summarise(avg_Recovery = ceiling(mean(Recovery, na.rm = T))) %>%
+  spread(Samp_ID, avg_Recovery) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|rr", caption="Average recovery (over three QC-groups) of Lab-Control-Samples and LCS-duplicates (spike ~ 40 ng/L)", tfoot="LCS control limits are &plusmn; 30%")
+```
+
++ Number of records where %Recovery is outside 100 &plusmn; 30% ::  `r if(length(data01 %>% filter(Aliquot %in% c("LCS", "LCSD")) %>% filter(!grepl("^STL", .$CAS)) %>% group_by(Component) %>% mutate(Recovery = signif(Result.Value / as.numeric(Spiked), digits=2)*100) %>% filter((Recovery < 70 | Recovery > 130)) %$% Component) > 0) data01 %>% filter(Aliquot %in% c("LCS", "LCSD")) %>% filter(!grepl("^STL", .$CAS)) %>% group_by(Component) %>% mutate(Recovery = signif(Result.Value / as.numeric(Spiked), digits=2)*100) %>% filter((Recovery < 70 | Recovery > 130)) %$% Component else("No records found")`
+
+#### **Precision of LCS sets (analytical repeatability)**
+
+```{r}
+data01 %>% filter(is.na(record_exclude)) %>%
+  filter(Aliquot %in% c("LCS", "LCSD") & !grepl("^STL", .$CAS)) %>% 
+  group_by(Component) %>%
+  mutate(Recovery = signif(Result.Value / as.numeric(Spiked), digits=2)*100) %>%
+  select(Samp_grp, Samp_ID, Component, Recovery) %>% 
+  group_by(Component, Samp_grp) %>%
+  summarize(grp_Recov = round(mean(Recovery, na.rm=T), digits=1)) %>%
+  group_by(Component) %>%
+  summarize(Avg_Recov = round(mean(grp_Recov, na.rm=T), digits=1),
+            sd_recov = round(sd(grp_Recov, na.rm=T), digits = 1)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlcc", header=c("Analyte", "Avg % Recovery", "StdDev"), caption="Aggregate (avg) recovery across LCS and LCSD QC-samples for 3 QC lots")
+```
+
++ **All Lab Control Samples (spikes) have recovery within control limits**
+  + Instrument is functioning sufficiently, and analytes are readily identified and quantified at 40 ng/L (nominal) level
+
+***
+
+### 2.3 Recovery of Surrogates
+
++ Lab Method-Blanks (MB)
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  filter(Samp_ID == "MB") %>%
+  group_by(Component) %>%
+  summarize(Obs = n(),
+            min_Recov = min(Result.Value, na.rm=T),
+            max_Recov = max(Result.Value, na.rm=T),
+            Poor_Recov = sum(Result.Value > 130 | Result.Value < 70)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|cccc", caption="Surrogate recovery for Method-Blank samples")
+```
+> Surrogate recoveries for Method-Blanks are within limits
+
++ Lab Control Samples (LCS)
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  filter(grepl("LCS", .$Samp_ID)) %>%
+  group_by(Component) %>%
+  summarize(Obs = n(),
+            min_Recov = min(Result.Value, na.rm=T),
+            max_Recov = max(Result.Value, na.rm=T),
+            Poor_Recov = sum(Result.Value > 130 | Result.Value < 70)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|cccc", caption="Surrogate recovery for Lab-Control [spike] samples")
+```
+> Surrogate recoveries for Lab-control-samples are within limits
+
++ Field-Blanks
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_ID)) %>%
+  group_by(Component) %>%
+  summarize(Obs = n(),
+            min_Recov = min(Result.Value, na.rm=T),
+            max_Recov = max(Result.Value, na.rm=T),
+            Poor_Recov = sum(Result.Value > 130 | Result.Value < 70)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|cccc", caption="Surrogate recovery for Field-Blank samples")
+```
+> Surrogate recoveries for Field-Blanks are within limits
+
++ Field-Samples
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  filter(!grepl("BLANK", .$Samp_ID) & !Samp_ID %in% c("LCS", "LCSD", "MB")) %>%
+  group_by(Component) %>%
+  summarize(Obs = n(),
+            min_Recov = min(Result.Value, na.rm=T),
+            max_Recov = max(Result.Value, na.rm=T),
+            Poor_Recov = sum(Result.Value > 130 | Result.Value < 70)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|cccc", caption="Surrogate recovery for Field Samples")
+```
+
+> A total of `r data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>% filter(!grepl("BLANK", .$Samp_ID) & !Samp_ID %in% c("LCS", "LCSD", "MB")) %>% filter((Result.Value > 130 | Result.Value < 70)) %>% distinct(Samp_grp, Component) %>% nrow()` records had surrogate recoveries beyond control limits
+
+***
+
+```{r}
+data01 %>% filter(is.na(record_exclude)) %>% filter(grepl("^STL", .$CAS)) %>%
+  select(-LotID, -Collected, -Matrix, 
+         -Result, -Spiked, -(Footnotes:VALUE), -(RL:Method), -(Dilution:X.Water), -QCRun) %>%
+  arrange(desc(SampleNumber), Component, Aliquot, Client.ID) %>%
+  select(-SampleNumber, -Client.ID, -CAS, -Aliquot, -record_exclude, -Result_flag) %>%
+  mutate(Surr_flag = if_else(Result.Value > 130, "Bias-high",
+                             if_else(Result.Value < 70, "Bias-lo", as.character(NA)))) %>%
+  filter(!is.na(Surr_flag)) %>% arrange(Component) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlcc", caption="Records where recovery of isotopically-labeled surrogates exceeded control limits", tfoot="Surrogate-rcovery control limits are &plusmn; 30%")
+```
+
+> Surrogate recovery is one way to evaluate potential **Matrix Effects**.  It may be that the surface water of the "Surplus Canal" contains other-chemical constituents that affect recovery of labeled PFAS compounds
+
+```{r}
+data01 %<>% mutate(
+  Surr_flag = case_when(
+    is.na(record_exclude) & 
+      grepl("^STL", .$CAS) & Result.Value > 130 ~ "Bias-high",
+    is.na(record_exclude) & 
+      grepl("^STL", .$CAS) & Result.Value < 70 ~ "Bias-lo",
+    TRUE ~ as.character(NA))) %>% select(record_exclude:Blank_flag, Surr_flag, everything())
+```
+
+***
+
++ Mean surrogate-recovery by Sample ID (_can ignore Lab QC samples here_)
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  select(Samp_grp, everything()) %>%
+  group_by(Samp_ID) %>%
+  summarize(Avg_SURR_recov = round(mean(Result.Value, na.rm=T)), 
+            sd = round(sd(Result.Value, na.rm=T), digits=1)) %>% ungroup() %>%
+  arrange(match(Samp_ID, c("UPSTREAM","UPSTREAM BLANK","DOWNSTREAM","DOWNSTREAM BLANK",
+                             "OUTFALL# 4","OUTFALL# 4 BLANK","TRIP BLANK","LCS","LCSD","MB" ))) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlrr", n.tspanner=c(7,3), tspanner=c("",""), caption="Average surrogate recovery by sample-ID for all analytes")
+```
+
+**Evidence of a Matrix Effect ?**  
+
+> Average surrogate recoveries center around 100%, but variance in greater for the non-blank samples, suggesting a matric effect for at elast some PFAS
+
+#### **FIG**: Surrogate Recovery
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & grepl("^STL", .$CAS)) %>%
+  select(Samp_grp, everything()) %>%
+  group_by(Samp_ID) %>%
+  summarize(Avg_SURR_recov = round(mean(Result.Value, na.rm=T)), 
+            sd = round(sd(Result.Value, na.rm=T), digits=1)) %>% ungroup() %>%
+  ggplot(.) + theme_bw() + theme(plot.title=element_text(hjust=0.5)) +
+  geom_hline(yintercept=100, lty=2, col="black") +
+  geom_hline(yintercept=c(70, 130), lty=2, col="darkred", size=1.5) +
+  geom_col(aes(x=Samp_ID, y=Avg_SURR_recov), alpha=0.7) +
+  labs(x=NULL, y="Average Surrogate Recovery (%)") +
+  geom_errorbar(aes(x=Samp_ID, ymax=(sd+Avg_SURR_recov), ymin=(Avg_SURR_recov-sd)),
+                width=0.5) +
+  scale_x_discrete(labels=scales::wrap_format(12),
+                   limits=c("DOWNSTREAM", "DOWNSTREAM BLANK",
+                            "OUTFALL# 4", "OUTFALL# 4 BLANK",
+                            "UPSTREAM", "UPSTREAM BLANK","TRIP BLANK",
+                            "MB", "LCS", "LCSD")) +
+  scale_y_continuous(breaks=c(0, 50, 80, 90, 100, 110, 120)) +
+  geom_vline(xintercept = c(6.5, 7.5), size=c(1, 1.5), col="darkgreen") +
+  coord_flip() + ggtitle("Average recovery of PFAS surrogate compounds from Field\n and Lab/Field-QC samples")
+```
+
+
+> While mean surrogate recovery remains centered around 100% across all lab and field samples, some evidence of a matrix effect from these field samples may be found in the higher variance of surrogate-recovery compared to QC-blanks
+
+***
+***
+
+### 2.4 Sample Blanks
+
++ Examine hits from field-blanks
+
++ By Site
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>%
+  group_by(Samp_grp) %>%
+  summarize(Obs = n(),
+            Hits = sum(!is.na(Result.Value)), 
+            p_Hits = sprintf("%.f%%", (Hits / Obs)*100)) %>%
+   htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlccr", caption="Occurence of PFAS-analyte hits by Sample-Location from field-blanks (190911)")
+```
+
+***
+
++ By Analyte
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>%
+  group_by(Component) %>%
+  summarize(Obs = n(),
+            Hits = sum(!is.na(Result.Value)), 
+            p_Hits = sprintf("%.f%%", (Hits / Obs)*100)) %>%
+  filter(Hits > 0) %>%
+  arrange(desc(Hits)) %>%
+   htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlccr", caption="Occurence of PFAS-analyte hits by Analyte from field-blanks (190911 samples)")
+```
+
++ Of the 4 field-blank samples, two analytes were detected in 3 of 4 sites, two analytes detected in 2 of 4 sites, and 1 analyte detected in 1 site
+  + In a general sense, more frequent blank-detections were found for smaller C-chain (lower molecular weight) analytes
+
+***
+
++ Site x Analyte
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>% 
+  filter(!is.na(Result.Value)) %>%
+  {addmargins(table(.$Component, .$Samp_grp, useNA="ifany", deparse.level = 2))} %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="l|cccc|c", caption="Occurence of PFAS-analyte hits by Analyte and Site from field-blanks (190911 samples)")
+```
+
+> Also notable, `r data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>% filter(grepl("BLANK", .$Samp_grp)) %>% filter(!is.na(Result.Value)) %>% filter(grepl("B", .$Footnotes)) %>% nrow()` of the `r data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>% filter(grepl("BLANK", .$Samp_grp)) %>% filter(!is.na(Result.Value)) %>% nrow()` field-blank _Hits_ also were associated with evidence of positive-bias from laboratory method blanks (i.e. "B" flag)
+
+***
+
+#### **Magnitude of Field-Blank hits**
+
+> Result.Value(Method-Blank(PFAS)) / MDL(Method-Blank(PFAS)) = magnitude of blank above detection (i.e. MDL)
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>% 
+  filter(!is.na(Result.Value)) %>%
+  group_by(Samp_ID, Component) %>%
+  summarise(Obs = n(),
+            magn_blank_mdl = sprintf("%.2f", (Result.Value / MDL)),
+            magn_blank_rl = sprintf("%.2f", Result.Value / RL),
+            B_Flag = sum(grepl("B", Footnotes), na.rm=T),
+            RVal_est = sum(grepl("J", Footnotes), na.rm=T)) %>% ungroup() %>% 
+  arrange(match(Samp_ID, c("UPSTREAM","UPSTREAM BLANK","OUTFALL# 4","OUTFALL# 4 BLANK",
+                           "DOWNSTREAM","DOWNSTREAM BLANK",
+                           "TRIP BLANK","LCS","LCSD","MB"))) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rll|c|cc|cc", caption="Magnitude of field-blank hits, by sample and analyte", header=c("Sample name", "Analyte", "Obs", "Blank vs MDL", "Blank vs RL", "Blank Flag?", "J-Flag?"), n.tspanner=c(4,1,4,2), tspanner=rep("", 4))
+```
+
++ Potentially the most significant blank-contaminant was observed from the `OUTFALL# 4 BLANK` for **PFOS**, which had no B-flag, and the **result was `r round((data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS) & grepl("BLANK", .$Samp_grp) & !is.na(Result.Value)) %>% filter(is.na(Footnotes)) %$% Result.Value) / (data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS) & grepl("BLANK", .$Samp_grp) & !is.na(Result.Value)) %>% filter(is.na(Footnotes)) %$% RL), digits=1)` times the `Reporting limit`**
+  + This blank hit may be indicative of the high ambient environmental concentrations of PFOS during the storm event and AFF-contaminant release
+
+***
+
+### Add Synonyms for Components
+
++ Need to add acronyms for all analytes
+
+```{r}
+data01 %<>% mutate(Nym=sub(".*\\( *(.*?) *\\).*", "\\1", Component)) %>%
+  select(record_exclude:Component, Nym, everything())
+```
+
+
+
+#### **FIG**: Field-blank PFAS hits
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>% 
+  filter(!is.na(Result.Value)) %>%
+  select(Samp_grp, Component, Nym, Result.Value, Result_flag, Footnotes, VALUE, 
+         Units, RL, MDL) %>%
+  complete(Samp_grp, Nym, fill = list(Result.Value=0)) %>%
+  ggplot(.) + theme_bw() + theme(plot.title=element_text(hjust=0.5)) +
+  geom_col(aes(x=factor(Nym), y=Result.Value, fill=Samp_grp),
+           position=position_dodge2(preserve="single"), col="black") +
+  geom_errorbar(aes(x=factor(Nym), ymin=RL, ymax=RL, group=Samp_grp),
+                col="black", na.rm=T, lty=2) +
+  ggtitle("PFAS concentrations found in field-blanks\n dashed lines represent RLs for that analyte") +
+  labs(x=NULL, y="PFAS concentration (ng/L)", fill="Field-Sample")
+```
+
+```{r, fig.height=7, fig.asp=1.15}
+# fig.height=8, fig.width=7
+# fig.asp=1.15
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS)) %>%
+  filter(grepl("BLANK", .$Samp_grp)) %>% 
+  select(Samp_grp, Component, Nym, Result, Result.Value, Result_flag, Footnotes, VALUE, 
+         Units, RL, MDL) %>%
+  ggplot(.) + theme_bw() + 
+  theme(plot.title=element_text(hjust=0.5),
+        axis.text.x=element_text(angle=90, hjust=1, vjust=0.5)) +
+  facet_grid(Samp_grp ~ ., 
+             labeller=labeller(Samp_grp = label_wrap_gen(10))) +
+  geom_col(aes(x=factor(Nym), y=Result.Value),
+           position=position_dodge2(preserve="single", width=0.9), col="black",
+           width=0.5, na.rm=T, fill="yellow") +
+  labs(x=NULL, y="PFAS concentration (ng/L)", fill="Field-Sample") +
+  geom_segment(aes(x=as.numeric(factor(Nym))-0.2, y=RL, 
+                   xend=as.numeric(factor(Nym))+0.2, yend=RL), na.rm=T,
+               col="red") +
+  geom_segment(aes(x=as.numeric(factor(Nym))-0.2, y=MDL, 
+                   xend=as.numeric(factor(Nym))+0.2, yend=MDL), na.rm=T,
+               col="blue") +
+  scale_y_continuous(trans="sqrt", limits=c(0, NA),
+                     breaks=c(0.2,2, 5, 10, 15, 20, 25)) +
+  ggtitle("PFAS concentrations found in field-blanks\n dashed lines represent MDL(blue)/RL(red) values")
+```
+
+***
+
+### 2.5 Review Site Results
+
+#### **FIG**: Site Results
+
+```{r, fig.height=7, fig.asp=1.1}
+# 
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS) & SampleNumber != "QC") %>%
+  filter(!grepl("BLANK", .$Samp_grp)) %>%
+  select(Samp_grp, Component, Nym, Result.Value, Result_flag, Footnotes, VALUE, 
+         Units, RL, MDL) %>%
+  mutate(Samp_grp = factor(Samp_grp, levels=c("UPSTREAM", "OUTFALL# 4", "DOWNSTREAM"))) %>%
+  ggplot(.) + theme_bw() + 
+  theme(plot.title=element_text(hjust=0.5),
+        axis.text.x = element_text(angle=90, hjust=1, vjust=0.5)) +
+  facet_grid(Samp_grp ~ ., 
+             labeller=labeller(Samp_grp = label_wrap_gen(12))) +
+  geom_col(aes(x=factor(Nym), y=Result.Value), na.rm=T,
+           position=position_dodge2(preserve="single"), col="black",
+           width=0.5, fill="yellow") +
+  geom_segment(aes(x=as.numeric(factor(Nym))-0.2, y=RL, 
+                   xend=as.numeric(factor(Nym))+0.2, yend=RL), na.rm=T,
+               col="red") +
+  geom_text(aes(x=factor(Nym), y=MDL, label=Result_flag), na.rm=T,
+            size=3, vjust=1, hjust=0.4, check_overlap = T, col="red") +
+  geom_text(aes(x=factor(Nym), y=50, label=Footnotes), na.rm=T, fontface="bold",
+            size=2.5, vjust=1, hjust=0.4, check_overlap = T, col="black") +
+  labs(x=NULL, y="PFAS concentration (ng/L)", fill="Field-Sample") +
+  scale_y_continuous(name="PFAS concentration (ng/L)", oob=squish,
+                     trans="sqrt", 
+                     breaks=c(0.01, 1, 20, 100, 200, 400, 1000),
+                     limits=c(NA, NA)) +
+  coord_cartesian(ylim=c(0.01, 200)) +
+  ggtitle("PFAS concentrations found in Samples (190911) \ndashed lines represent RL(red) values")
+```
+
+
+
+
+### 2.6 Compare Site values
+
+```{r}
+data01 %>% filter(is.na(record_exclude) & !grepl("^STL", .$CAS) & SampleNumber != "QC") %>%
+  group_by(Samp_grp) %>%
+  summarize(Obs=n(),
+            NonDetect=sum(!is.na(Result_flag), na.rm=T),
+            B_flag=sum(grepl("B", Footnotes), na.rm=T),
+            Total_PFAS=sprintf("%.1f", sum(Result.Value, na.rm=T))) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rl|c|cc|r", caption="Total quantified PFAS per field-sample (ng PFAS/L)")
+```
+
+
+
+***
+***
+***
+
+## END
+
+```{r}
+# CHL1016_09 %>% select(contains("status", ignore.case = T)) %>% names(.)
+# CHL1016_05 %>% {addmargins(table(.$PROJ_grp, .$RECORD_STATUS,
+#                                  useNA="ifany", deparse.level = 2))}
+# CHL1016_07 %>% distinct(RECORD_STATUS) %$% RECORD_STATUS
+```
+
+
+
+``` {r CLOSEOUT}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

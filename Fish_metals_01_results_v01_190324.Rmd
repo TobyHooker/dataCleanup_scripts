@@ -1,0 +1,223 @@
+---
+title: "RLs from Fish Metals"
+author: "T.Hooker"
+date: "24 March, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](U:\INFODATA\Sampling\Data_Cleanup_Scripts\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+### Notes
+
+Examination of Fish Se/Hg RLs from currently available data
+
+***
+
+
+### 1.0 Data
+
+```{r ImportConfig_import}
+# file_00 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# DAT_00 <- openxlsx::read.xlsx(file_00, sheet="Master list", colNames=T, startRow = 8,
+#                                             rowNames=FALSE, check.names = T)
+#
+# DAT_00 <- DAT_00[-c(4719, 4720),]
+dat0 <- DAT_00
+```
+
++ Filename ::  `r basename(file_00)`
++ Path ::  `r dirname(file_00)`  
++ Last Accessed :: [`r file.mtime(file_00)`]
+
+***
+
+
+#### 1.1 Dataset characteristics
+
+```{r}
+class(dat0$Hg.Result.ug.g)
+class(dat0$Se.Result.ug.g)
+
+```
+
++ Convert RVs w/ "<" to U-flag
++ Also remove footnotes [!!]
+
+```{r message=FALSE, warning=FALSE}
+dat0 %<>% mutate(Hg_flag = as.character(NA), 
+                 HG_rv2 = as.numeric(NA)) %>% mutate(
+    Hg_flag = case_when(
+        grepl("<", .$Hg.Result.ug.g) ~ "U",
+        TRUE ~ as.character(NA)),
+    #
+    HG_rv2 = case_when(
+        !is.na(as.numeric(.$Hg.Result.ug.g)) ~ as.numeric(Hg.Result.ug.g),
+        grepl("[[:punct:]]", .$Hg.Result.ug.g) & 
+            is.na(Hg_flag) ~ 
+            as.numeric(
+                stringr::str_split(
+                    .$Hg.Result.ug.g, 
+                    " ", 2, simplify = T)[,1]),
+        grepl("[[:punct:]]", .$Hg.Result.ug.g) &
+            !is.na(Hg_flag) ~ 
+            as.numeric(
+                stringr::str_split(
+                    gsub("<", "", .$Hg.Result.ug.g),
+                    " ", 2, simplify = T)[,1],
+                TRUE ~ as.numeric(NA))
+    )) %>%
+    select(Site.Code:Year.Sampled, Hg_flag, Hg.Result.ug.g, HG_rv2,
+           everything())
+```
+
++ Se_results are all numeric, and okay
+
+
+#### 1.2 Non-Detects
+
++ `r dat0 %>% filter(!is.na(Hg_flag)) %>% nrow(.)` Hg results were below detection, out of `r sum(!is.na(dat0$HG_rv2))`
+
++ Analyses for Hg by Lab
+
+```{r}
+dat0 %>% 
+    {addmargins(table(.$Lab.Tested, is.na(.$HG_rv2), useNA="ifany", deparse.level=2))}
+```
+
++ 9 labs in dataset, to date
+
+```{r work01}
+dat0 %>%
+    {addmargins(table(.$Lab.Tested, is.na(.$Hg_flag), useNA="ifany", deparse.level=2))}
+
+```
+
++ Only two labs have reported `Non-Detect` values (_U-flag_) for Hg results, ACZ and EPA
+
+```{r fig.height=4, fig.width=5.5}
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+
+dat0 %>% 
+    filter(!is.na(Hg_flag)) %>%
+    ggplot(., aes(y = HG_rv2, x=Lab.Tested)) + theme_bw() +
+    geom_point(position= position_jitter(width=0.2), col="red", shape="U", size=2, stroke=2) +
+    ggtitle("Reporting Limits for Non-Detect records, Fish Hg conc.") +
+    xlab("Laboratory") + ylab("Fish tissue Hg concentrations (mg/kg)") +
+    scale_y_continuous(limits = c(0,0.1))
+
+# geom_boxplot(outlier.colour = "red", width=0.3, col="darkblue", fill="darkblue")
+
+```
+
++ RLs versus Quantitated results by laboratory
+
+```{r}
+
+dat0 %>%
+    filter(!is.na(HG_rv2)) %>%
+    filter(is.na(Hg_flag)) %>%
+    ggplot(., aes(y = HG_rv2, x = Lab.Tested)) + theme_bw() +
+    geom_point(position= position_jitter(width=0.4), 
+               fill="darkgreen", col="darkgreen", shape=19,  size=1.5, na.rm=T) +
+    geom_point(data=filter(dat0, !is.na(HG_rv2) & !is.na(Hg_flag)), 
+               aes(y = HG_rv2, x = Lab.Tested),
+               col="red", shape="U", size=1, stroke=2, na.rm=T,
+               position= position_jitter(width=0.15, height=0.01)) +
+    labs(title= expression("Fish Hg conc. by Lab"),
+         subtitle=expression(italic('Action Level shown as dashed line (0.3 mg/kg)'))) +
+    xlab("Laboratory") + ylab("Fish tissue Hg concentrations (mg/kg)") +
+    scale_y_continuous(limits = c(NA,NA), trans="log10") +
+    scale_x_discrete(labels=wrap_format(10)) +
+    geom_hline(yintercept=0.3, lty=2, col="blue")
+
+
+# coord_flip()
+# labels=function(x) stringr::str_wrap(x, width=10)
+```
+
++ Working from a Hg-in-Fish tissue action level of 0.3 mg/kg, and applying a 5x rule for reporting levels relative to the action level, RLs should be _at most_ 0.06 mg/kg
+
++ Similarly, for Se-in-Fish tissue action levels of 11.3 mg/kg and applying the same 5x RL rule, RLs should be _at most_ 2.26 mg/kg (_a better level of quantitation would require RLs no more than 1.13 mg/kg_)
+
++ Only EPA Lab provided results for SE
+
+```{r}
+
+dat0 %>%
+    filter(!is.na(Se.Result.ug.g)) %>%
+    ggplot(., aes(y = Se.Result.ug.g, x = Year.Sampled)) + theme_bw() +
+    geom_point(position= position_jitter(width=0.4), 
+               fill="darkgreen", col="darkgreen", shape=19,  size=1.5, na.rm=T) +
+    labs(title= expression("Fish Se conc. by Lab"),
+         subtitle=expression(italic('Action Level shown as dashed line (11.3 mg/kg)'))) +
+    xlab("Year Sampled") + ylab("Fish tissue Se concentrations (mg/kg)") +
+    scale_y_continuous(limits = c(NA,NA)) +
+    geom_hline(yintercept=11.3, lty=2, col="blue")
+
+
+# coord_flip()
+# labels=function(x) stringr::str_wrap(x, width=10)
+```
+
+**Note :: The action levels reported are on dry-weight basis.  These ALs need to be re-scaled..., see WORD doc**
+
+
+
+
+## WORK
+ 
+```{r sandbox}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# table(Lakes$ACT.type, Lakes$SampType_x)
+# Lakes %>% {addmargins(table(.$QC_type,.$Import_type,useNA="ifany",deparse.level = 2))}
+# x$SKey1_x[duplicated(x$SKey1_x)]
+### options for loading .RData files and getting either (i) known df-names, or (ii) finding df-names
+## (i)  obj2 <- get(load("201718wy_FLDimport_FLOW_import04_181211.RData"))
+## (ii) obj <- load("201718wy_FLDimport_FLOW_import04_181211.RData")
+## (ii-cont) obj  ## this line gives the name of the imported / loaded DF
+# LabRef$Sample.Received.Date <- as.Date(LabRef$Sample.Received.Date, origin="1899-12-30")
+# LabRef$Sample.Date <- as.Date(LabRef$Sample.Date, origin="1899-12-30")
+# as.Date(42871, origin="1899-12-30")
+# select(data06, contains("SDate", ignore.case = T))
+# select(data08_rename, contains("Comment", ignore.case = T)) %>% names(.)
+# select(data09_X, contains("Equipment", ignore.case = T)) %>% names(.)
+# openxlsx::write.xlsx(Data.Vars, file=paste("wy201718_data07_dVARS_",
+#                                            format(Sys.Date(),"%y%m%d"),
+#                                            ".xlsx", sep=""))
+```
+
+***
+
+## END
+
+```{r lastwork}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

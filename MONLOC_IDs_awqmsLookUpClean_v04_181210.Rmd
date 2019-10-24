@@ -1,0 +1,151 @@
+---
+title: "Master GeoFile Lookup (awqms)"
+author: "T.Hooker"
+date: "29 June, 2018"
+output: 
+    html_notebook:
+        df_print: paged
+        toc: yes
+        toc_depth: 4
+        toc_float: FALSE
+        theme: flatly
+        highlight: default
+        smart: TRUE
+ 
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+# packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "dplyr")
+# lapply(packge.set, library, character.only=T)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+options(scipen = 999, digits=4)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+Download Monitoring Location (MonLoc or Geofile) file from AWQMS
+
+[181210] :: New Script version; removed Web Services and cleaned up processing
+
+### 1.0 Import File
+
+#### 1.1 Download Monitoring Locations ID file from AWQMS 
+
+Go to :  https://awqms.utah.gov/Homepage.aspx  
+Login as: thooker // pw  
+Navigate :
+
+1) Metadata  
+2) Monitoring Locations  
+3) [select] Search  
+4) [select] Export to Excel  
+5) -complete-  
+
+***
+
+~~**Use Web Services [api]**~~
+~~`"https://awqms.utah.gov/api/MonitoringLocationsVer1?OrganizationIdentifiersCsv=UTAHDWQ_WQX"`~~
+
+> Web Services for AWQMS Monitoring Locations does not provide a complete of metadata for sites, better to access MonLoc info manually.
+
+#### 1.2 Import Monitoring Locations from AWQMS export
+
+```{r Import_MonLoc, eval=F}
+# file.monloc <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+MonLoc <- openxlsx::read.xlsx(file.monloc, sheet=1, startRow = 1, rowNames=FALSE)
+MonLoc$Latitude <- format(MonLoc$Latitude, nsmall=5)
+MonLoc$Longitude <- format(MonLoc$Longitude, nsmall=5)
+```
+
+```{r Clean_MonLoc}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+drop.fields_mlid <- c("HUC.12", "Date.Established", "Tribal.Land?", "Tribal.Land.Name", "Township/Range/Section",  "Horizontal.Accuracy", "Horizontal.Accuracy.Unit", "Horizontal.Reference.Datum", "Horizontal.Collection.Method", "Source.Map.Scale", "Vertical.Measure", "Vertical.Measure.Unit", "Vertical.Reference.Datum", "Vertical.Collection.Method", "Well.Type", "Well.Formation.Type", "Well.Aquifer.Name", "Well.Hole.Depth", "Well.Hole.Depth.Unit", "Alternate.ID.1", "Alternate.Context.1", "Alternate.ID.2", "Alternate.Context.2", "Alternate.ID.3", "Alternate.Context.3", "Reach.Code", "Waterbody.Name", "Private?", "Project.ID.1", "Project.ID.2", "Project.ID.3", "Project.ID.4", "Project.ID.5", "State", "Country")
+MonLoc %<>% select(., !! -drop.fields_mlid) %>% 
+    dplyr::rename(., ORG = Organization.ID,
+                          MLID.uid = Monitoring.Location.UID,
+                          MLID = Monitoring.Location.ID,
+                          MLID_name = Monitoring.Location.Name,
+                          MLID.type = Monitoring.Location.Type,
+                          HUC8 = HUC.8, LATdd = Latitude, LONdd = Longitude,
+                          EcoR_3 = "Eco-Region.3", EcoR_4 = "Eco-Region.4",
+                          WMU = Watershed.Management.Unit,
+                          Created_date = Created,
+                          Changed_date = Last.Changed) %>% arrange(MLID)
+
+```
+
+```{r Clean_MonLoc2}
+MonLoc$QC_type <- ifelse(is.na(MonLoc$Description), NA,
+                            ifelse(grepl("Duplicate", MonLoc$Description), "Replicate",
+                            ifelse(grepl("Blind Duplicate", MonLoc$Description), "Replic_blind",
+                            ifelse(grepl("Replicate", MonLoc$Description),
+                                   "Replicate", ifelse(grepl("Blank", MonLoc$Description),
+                                   "Blank", NA)))))
+MonLoc$QC.parent <- ifelse(is.na(MonLoc$QC_type), NA,
+                           ifelse(grepl("^Replicate", MonLoc$QC_type),
+                                  trimws(substr(MonLoc$Description, 
+                                        regexpr("of ", MonLoc$Description)+3,
+                                        nchar(MonLoc$Description))),
+                                  NA))
+# fix dates
+MonLoc$Created_date <- as.Date(MonLoc$Created_date, origin="1899-12-30")
+MonLoc$Changed_date <- as.Date(MonLoc$Changed_date, origin="1899-12-30")
+```
+
++ File :: [`r basename(file.monloc)`]
++ Last Accessed :: [`r file.mtime(file.monloc)`]
++ `r format(nrow(MonLoc), big.mark=",")` Monitoring Locations
++ `r length(unique(MonLoc$MLID.type))` unique Types of sites
+
+_QC Cleanup_
+
+Key groups are for:  
+
++ Duplicate(s)  //  _Historical usage_
++ Blind.Duplicate(s) // _Historical usage_
++ Replicate(s) // _Preferred term, via QAPP_
++ Blank(s)
+    + Equipment Blank
+    + Field Blank
+    + Trip Blank // _inappropriate; no longer used_
+
+```{r monloc_eval01.tab01}
+addmargins(table(MonLoc$MLID.type, MonLoc$QC_type, useNA = "ifany"))
+```
+
+
+### Export MonLoc file
+
+Save MonLoc in [XLSX] and [.RData] formats
+
+```{r export.file01, eval=F}
+openxlsx::write.xlsx(MonLoc, file=paste("MonitoringLocations_awqms_", format(Sys.Date(), "%y%m%d"), ".xlsx", sep="")) ## saved as XLSX
+#
+save(MonLoc, file=paste("MonitoringLocations_awqms_", format(Sys.Date(), "%y%m%d"), ".RData", sep=""))
+```
+
+***
+***
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof  
+
+***
+
+
+
+

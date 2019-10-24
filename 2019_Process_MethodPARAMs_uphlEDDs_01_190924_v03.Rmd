@@ -1,0 +1,800 @@
+---
+title: "Build Method-Param Table : UPHL EDDs (v3)"
+author: "T.Hooker"
+date: "24 September, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](WaterQuality1_72dpi_2.png)  
+
+***
+
+**Project Root Path** :: `L:\DATA MANAGEMENT & QA\DATA.Projects\MASTER_PARAMETER_Tables_r`
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidyr"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+# graph_package <- c("ggplot2", "scales")
+# if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+***
+> **Note**: This notebook is now truncated, and will function to only compile Methods and Parameters from EDDs files and build the MPFx.key and AWQMS.keys
+
+[_190924_]  
+> **2nd Note**: EDD file will be obtained from working `EDD_0` df located here:  `U:\INFODATA\Sampling\UPHL_raw_EDDs\uphl_EDD_rawProcessing_r`
+
+***
+
+
+## 1.0 Compile UPHL EDDs
+
+### 1.1 Import EDD File Data
+
++ Build work on UPHL raw EDD files (compiled) from:
+  + `U:\INFODATA\Sampling\UPHL_raw_EDDs\uphl_EDD_rawProcessing_r`
++ Select the most recent `EDD_0[...].rds` file
+
+
+```{r Import0, eval=FALSE}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.RDS]", multi = FALSE)
+EDD_0 <- readRDS(file.01)
+```
+
+Path ::  `r dirname(file.01)`  
+File :: `r basename(file.01)`
+
++ Datafile has :: `r format(nrow(EDD_0), big.mark=",")` records and `r ncol(EDD_0)` variables
++ Full dataset Sample.Date Range :: From `r min(EDD_0$Sample.Date)` to `r max(EDD_0$Sample.Date)`
++ Full dataset Sample.Time Range :: From [`r min(EDD_0$Sample.Time, na.rm=T)`] to [`r max(EDD_0$Sample.Time, na.rm=T)`]
++ UPHL-LIMS EDD file dates Range :: From `r min(EDD_0$file_date)` to `r max(EDD_0$file_date)`
+
+***
+***
+
+## 2.0 Build UPHL-LIMS Method-Param table
+
+```{r}
+uphl.param0 <- EDD_0 %>% 
+    distinct(Method.Agency, Method.ID, Method.Description,
+             Param.Description, Matrix.Description, Units) %>%
+    mutate_all(list(~case_when(
+        !is.na(.) & . %in% c("", " ") ~ as.character(NA),
+        !is.na(.) ~ .,
+        TRUE ~ as.character(NA)))) %>% # clean
+    mutate(
+        Method.Agency = stringr::str_trim(.$Method.Agency, "both"),
+        Method.ID = stringr::str_trim(.$Method.ID, "both")) %>% ## arrange
+    arrange(., Method.Agency, Method.ID, Param.Description, Matrix.Description) %>%
+    mutate(MethPar.key = 
+               paste(.$Method.ID, 
+                     .$Param.Description, sep="_"),
+           MethParFxn.key = 
+               paste(.$Method.ID, 
+                     .$Param.Description, 
+                     .$Matrix.Description,
+                     sep="_"),
+           ParamX = Param.Description)
+```
+
+```{r}
+uphl.param0 %<>% mutate(
+  ParamX = case_when(
+    Param.Description == "Chlorophyll-a" ~ "CHLA", Param.Description == "Chlorophyll-a (conc)" ~ "CHLA_c",
+    Param.Description == "Filtered Volume" ~ "FiltVOL", Param.Description == "Pheophytin-a" ~ "PHEO",
+    Param.Description == "Pheophytin-a (conc)" ~ "PHEO_c",
+    Param.Description == "Alkalinity as Calcium Carbonate" ~ "T.Alk", 
+    Method.ID == "2320B" & Param.Description == "Alkalinity as Carbonate" ~ "Alk_Tco3",
+    Method.ID == "2320B" & Param.Description == "Bicarbonate" ~ "Alk_hco3",
+    Method.ID == "2320B" & Param.Description == "Carbonate" ~ "Alk_co3",
+    Method.ID == "2320B" & Param.Description == "Free Carbon Dioxide" ~ "Alk_co2",
+    Method.ID == "2320B" & Param.Description == "Hydroxide" ~ "Alk_oh",
+    Method.ID == "2320B" & Param.Description == "pH" ~ "Alk_ph",
+    Param.Description == "Ammonia as Nitrogen" ~ "NH4", Param.Description == "Chloride" ~ "Cl",
+    Param.Description == "Chlorophyll-A After Acid" ~ "CHLA",
+    Param.Description == "Chlorophyll-A Before Acid" ~ "CHLA.tot",
+    Param.Description == "Conductivity" ~ "SpCOND", Param.Description == "Hardness" ~ "HARD",
+    Param.Description == "Dilution Factor" ~ "DilFact", 
+    Param.Description == "Lab Report" ~ "LabReport",
+    Param.Description == "Low Concentration Phosphate" ~ "TP",
+    Param.Description == "Nitrate + Nitrite as Nitrogen" ~ "NO32",
+    Param.Description == "Orthophosphate" ~ "orthoP", 
+    Param.Description == "Pass Through Laboratory" ~ "PASS_THRU",
+    Param.Description == "Periphyton" ~ "PERI", Param.Description == "Pheophytin" ~ "PHEO",
+    Param.Description == "Total Dissolved Solids" ~ "TDS",
+    Param.Description == "Total Microcystins & Nodularins" ~ "MycNod",
+    Param.Description == "Total Nitrogen" ~ "TN", Param.Description == "Total Phosphate" ~ "TP",
+    Param.Description == "Total Organic Carbon" ~ "TOC",
+    Param.Description == "Total Suspended Solids" ~ "TSS",
+    Param.Description == "Total Volatile Solids" ~ "TVS",
+    Param.Description == "Chloride by IC" ~ "Cl_ic",
+    Param.Description == "Fluoride by IC" ~ "F_ic",
+    Param.Description == "Sulfate by IC" ~ "SO4_ic",
+    Param.Description == "Sulfate" ~ "SO4",
+    Param.Description == "Sulfide" ~ "H2S",
+    !is.na(Param.Description) ~ Param.Description,
+    TRUE ~ as.character(NA)))
+```
+
+
++ Number of unique levels ::
+  + Method.Agency :: `r uphl.param0 %>% distinct(Method.Agency) %>% nrow()`
+    + ?? Missing :: `r sum(is.na(uphl.param0$Method.Agency))`
+  + Method.ID :: `r uphl.param0 %>% distinct(Method.ID) %>% nrow()`
+    + ?? Missing :: `r sum(is.na(uphl.param0$Method.ID))`
+  + Method.Description :: `r uphl.param0 %>% distinct(Method.Description) %>% nrow()`
+  + Param.Description :: `r uphl.param0 %>% distinct(Param.Description) %>% nrow()`
+    + ?? Missing :: `r sum(is.na(uphl.param0$Param.Description))`
+  + Matrix.Description :: `r uphl.param0 %>% distinct(Matrix.Description) %>% nrow()`
+    + ?? Missing :: `r sum(is.na(uphl.param0$Matrix.Description))`
+  + Units :: `r uphl.param0 %>% distinct(Units) %>% nrow()`
+  + MethPar.key :: `r uphl.param0 %>% distinct(MethPar.key) %>% nrow()`
+  + MethParFxn.key :: `r uphl.param0 %>% distinct(MethParFxn.key) %>% nrow()`
+  + ParamX :: `r uphl.param0 %>% distinct(ParamX) %>% nrow()`
+    + ?? Missing :: `r sum(is.na(uphl.param0$ParamX))`
+  + **Whole Table** :: `r uphl.param0 %>% distinct(.) %>% nrow()`
+
++ Number of Table elements :: `r nrow(uphl.param0)`
+
+
+
+### 2.1 Annotate EDD method-param Table
+
++ Some elements of Method x Param x Matrix sets _do no represent DATA_ and need to be correctly ID'd
+
+```{r}
+uphl.param1 <- uphl.param0 %>% mutate(
+  Method.Agency = stringr::str_trim(.$Method.Agency, "both"),
+  Method.ID = stringr::str_trim(.$Method.ID, "both")) %>% 
+  mutate(
+    MethParFxn.key = case_when(
+      grepl("Pass Through", .$Method.Description) ~ paste(.$Method.ID,
+                                                          "_PASSTHRU", sep=""),
+      !is.na(MethParFxn.key) ~ MethParFxn.key,
+      Method.ID == "Explosives" ~ "IGNORE",
+      grepl("BOD", .$Method.Description) &
+      grepl("Overall test", .$Method.Description, 
+            ignore.case = T) ~ paste(.$Method.ID, 
+                                     .$Param.Description, 
+                                     .$Matrix.Description,
+                                     sep="_"),
+    grepl("BOD", .$Method.Description) &
+      grepl("Lab Report", .$Param.Description) ~ paste(.$Method.ID,
+                                                       "_PASS_THRU", sep=""),
+    grepl("dilution factor", .$Param.Description,
+          ignore.case = T) ~ paste(.$Method.ID,
+                                   "_DilutionFactor", sep=""),
+    !is.na(MethParFxn.key) ~ MethParFxn.key,
+    TRUE ~ as.character(NA)))
+```
+
+### 2.2 Build or Assign AWQMS.key to MethParFxn.key
+
++ This table `CharTran01` represents paired sets of EDD- and AWQMS-specific method-parameter elements
++ Pull in Char.Trans table for review / update
+  + Use `NA` for records where AWQMS.key{_TRIM} is not used
+
++ Using `CharTran` df
+
++ Version and Clean file
+
+```{r}
+CharTran01 <- CharTran
+CharTran01 %<>% select(-CAS.Number, everything())
+## cleanup
+CharTran01 %<>% 
+    mutate(
+        key_Comment = paste(.$QAQC.Comment,
+                            .$`Review.for.2016-Q3Q4.LIMS.EDD`,
+                            .$`Add'l.Comments`,
+                            sep="_"),
+        Method.ID = case_when(Method.ID == "160.19999999999999" ~ "160.2",
+                              !is.na(Method.ID) ~ stringr::str_trim(.$Method.ID),
+                              TRUE ~ as.character(NA)),
+        Method.Agency = stringr::str_trim(.$Method.Agency, "both")) %>% # add comment
+    mutate(key_Comment = case_when(
+        key_Comment == "NA_NA_NA" ~ as.character(NA),
+        grepl("^NA_", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "^NA_",
+                                                            ""),
+        grepl("NA_", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "NA_",
+                                                           ""),
+        grepl("_NA$", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "_NA$",
+                                                            ""),
+        !is.na(key_Comment) ~ key_Comment,
+        TRUE ~ as.character(NA)
+    )) %>% 
+    mutate(key_Comment = case_when(
+        grepl("^NA_", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "^NA_",
+                                                            ""),
+        grepl("NA_", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "NA_",
+                                                           ""),
+        grepl("_NA$", .$key_Comment) ~ stringr::str_replace(.$key_Comment, "_NA$",
+                                                            ""),
+        !is.na(key_Comment) ~ key_Comment,
+        TRUE ~ as.character(NA))) %>% 
+    select(EDD.Key:Bottle, RESULT.STATUS, key_Comment, everything())
+
+```
+
++ In `CharTran01`, build MethPar.key
+
+```{r}
+CharTran01 %<>% mutate(
+    MethPar.key = 
+        paste(.$Method.ID, 
+              .$Param.Description, sep="_"),
+    MethParFxn.key = 
+               paste(.$Method.ID, 
+                     .$Param.Description, 
+                     .$Matrix.Description,
+                     sep="_")) %>%
+    select(AWQMS.Key:Bottle, RESULT.STATUS, key_Comment,
+           everything()) %>%
+    select(MethPar.key, MethParFxn.key, everything())
+```
+
++ Review Sample.Matrix / fraction pairs
+
+```{r}
+CharTran01 %>% {table(.$Matrix.Description, 
+                      .$Result.Sample.Fraction, useNA="ifany", deparse.level = 2)}
+```
+
+```{r}
+CharTran01 %<>% select(MethPar.key:Matrix.Description, Result.Sample.Fraction, everything()) %>%
+    arrange(Matrix.Description, Result.Sample.Fraction) %>%
+    mutate(
+        Result.Sample.Fraction = case_when(
+            Matrix.Description == "Filter" ~ "X",
+            Matrix.Description %in% c("Water", "Water, Non-filtered", "Water, Raw") ~ "Total",
+            Matrix.Description == "Water, Filtered" ~ "Dissolved",
+            !is.na(Result.Sample.Fraction) ~ Result.Sample.Fraction,
+            TRUE ~ as.character(NA)))
+
+#
+CharTran01 %>% {table(.$Matrix.Description, 
+                      .$Result.Sample.Fraction, useNA="ifany", deparse.level = 2)}
+```
+
+
+### 2.3 Join Tables
+
+```{r}
+uphl.param2 <- left_join(uphl.param1,
+                         select(CharTran01,
+                                MethPar.key, MethParFxn.key,
+                                AWQMS.Key, Bottle,
+                                RESULT.STATUS, Result.Sample.Fraction,
+                                Activity.Media.Name:Characteristic.Name,
+                                Method.Speciation, Result.Value.Type,
+                                key_Comment,
+                                PARAM.0),
+                         by = c("MethParFxn.key" = "MethParFxn.key", 
+                                "MethPar.key" = "MethPar.key")) %>%
+  arrange(MethPar.key, Matrix.Description) %>%
+  select(-Method.Agency, everything()) %>%
+  select(MethPar.key, MethParFxn.key, AWQMS.Key, everything())
+```
+
+### 2.4 Build AWQMS.Keys
+
+```{r}
+uphl.param2 %<>% 
+  mutate(AWQMS.Key_TRIM = paste(.$Method.Agency,
+                         toupper(.$Method.ID),
+                         .$ParamX,
+                         sep="-")) %>%
+  select(MethPar.key, AWQMS.Key_TRIM, MethParFxn.key, AWQMS.Key,
+         Method.ID, Param.Description, ParamX, 
+         Matrix.Description, Result.Sample.Fraction,
+         Units,
+         Bottle, RESULT.STATUS,
+         key_Comment,
+         everything())
+
+```
+
++ AWQMS.Key
+
+```{r}
+uphl.param2 %<>% # fix some specifics [Li]
+    mutate(
+        Result.Sample.Fraction = case_when(
+            MethPar.key == "200.8_Li" &
+                Matrix.Description == "Water, Filtered" ~ "Dissolved",
+            MethPar.key == "200.8_Li" &
+                Matrix.Description == "Water, Non-filtered" ~ "Total",
+            !is.na(Result.Sample.Fraction) ~ Result.Sample.Fraction,
+            TRUE ~ as.character(NA))) %>%
+    mutate(
+        Result.Sample.Fraction = case_when(
+            is.na(Result.Sample.Fraction) & 
+                Matrix.Description == "Filter" ~ "X",
+            is.na(Result.Sample.Fraction) & 
+                Matrix.Description %in% c("Water", "Water, Non-filtered", "Water, Raw") ~ "Total",
+            is.na(Result.Sample.Fraction) & 
+                Matrix.Description == "Water, Filtered" ~ "Dissolved",
+            !is.na(Result.Sample.Fraction) ~ Result.Sample.Fraction,
+            TRUE ~ as.character(NA))) %>%
+    mutate(
+        AWQMS.Key = case_when(
+            is.na(AWQMS.Key) &
+                (!grepl("Dilution", .$MethParFxn.key) &
+                     !grepl("PASSTHRU", .$MethParFxn.key)) ~ paste(.$AWQMS.Key_TRIM,
+                                                                   .$Result.Sample.Fraction,
+                                                                   sep="-"),
+            !is.na(AWQMS.Key) ~ paste(.$AWQMS.Key_TRIM,
+                                      .$Result.Sample.Fraction,
+                                      sep="-"),
+            TRUE ~ as.character(NA))) %>% ## trim Dissolved to Diss
+    mutate(
+        AWQMS.Key = case_when(
+            !is.na(AWQMS.Key) & 
+                grepl("Dissolved$", 
+                      .$AWQMS.Key,
+                      ignore.case = T) ~ stringr::str_replace(.$AWQMS.Key,
+                                                              "Dissolved$",
+                                                              "Diss"),
+            !is.na(AWQMS.Key) ~ AWQMS.Key,
+            TRUE ~ as.character(NA))) %>%
+    mutate(
+        AWQMS.Key = case_when(
+            grepl("-NA$", .$AWQMS.Key) &
+                Matrix.Description == "Water, Filtered" ~ paste(.$AWQMS.Key_TRIM,
+                                                                "Diss",
+                                                                sep="-"),
+            grepl("-NA$", .$AWQMS.Key) &
+                Matrix.Description == "Water, Drinking" ~ paste(.$AWQMS.Key_TRIM,
+                                                                "Diss",
+                                                                sep="-"),
+            grepl("-NA$", .$AWQMS.Key) &
+                Matrix.Description == "Water, Non-filtered" ~ paste(.$AWQMS.Key_TRIM,
+                                                                    "Total",
+                                                                    sep="-"),
+            Matrix.Description == "Soil" ~ as.character(NA),
+            !is.na(AWQMS.Key) ~ AWQMS.Key,
+            TRUE ~ as.character(NA)))
+```
+
++ Check BOD, Alk, and CHL keys...
+
++ CHL method x parameters
+    + Only `Chlorophyll-a (conc)` & `Pheophytin-a (conc)` parameters would be imported to AWQMS
+
+```{r}
+uphl.param2 %<>% 
+    mutate(
+        AWQMS.Key = case_when(
+            grepl("hplc", .$MethPar.key, ignore.case = T) &
+                ParamX %in% c("CHLA_c", "PHEO_c") ~ AWQMS.Key,
+            grepl("hplc", .$MethPar.key, ignore.case = T) ~ as.character(NA),
+            grepl("10200H", .$MethPar.key, ignore.case = T) &
+                !ParamX %in% c("CHLA_c", "PHEO_c") ~ as.character(NA),
+            !is.na(AWQMS.Key) ~ AWQMS.Key,
+            TRUE ~ as.character(NA)))
+```
+
++ BOD (SM 5210B)
+
+```{r}
+uphl.param2 %>% filter(grepl("5210B", MethPar.key)) %>%
+    select(MethPar.key, AWQMS.Key_TRIM, AWQMS.Key, Method.Description) %>% 
+    htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rllll")
+```
+
++ Alkalinity (SM 2320B)
+    + Only use T.Alk
+
+```{r}
+uphl.param2 %<>% mutate(
+    AWQMS.Key = case_when(
+        grepl("2320B", MethPar.key) &
+            !ParamX == "T.Alk" ~ as.character(NA),
+        !is.na(AWQMS.Key) ~ AWQMS.Key,
+        TRUE ~ as.character(NA)))
+```
+
++ Align Bottles x Method-param
+
+```{r}
+uphl.param2 %>% filter(Matrix.Description != "Soil") %>%
+    filter(!Method.ID %in% c("5210B", "376.2")) %>%
+    {addmargins(table(.$Method.ID,
+                      .$Bottle, 
+                      useNA="ifany", deparse.level = 2))} %>%
+    htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.7em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ Run a quick Export/Import and tidy up some Vars...
+
+```{r}
+# openxlsx::write.xlsx(uphl.param2, file="uphlPARAM_2_x1_190701.xlsx")
+# file.02  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# uphl.param3 <- openxlsx::read.xlsx(file.02)
+```
+
+```{r}
+# uphl.param3 %>% filter(Matrix.Description != "Soil") %>%
+#     filter(!is.na(Bottle)) %>%
+#     {addmargins(table(.$Method.ID,
+#                       .$Bottle, 
+#                       useNA="ifany", deparse.level = 2))} %>%
+#     htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+### 2.5 ID duplicated records
+
+```{r}
+uphl.param2 %>% distinct(MethPar.key, MethParFxn.key, Method.Description,
+                         ParamX, AWQMS.Key_TRIM,
+                         RESULT.STATUS, Result.Sample.Fraction, Param.Description,
+                         Matrix.Description, Characteristic.Name, 
+                         Result.Analytical.Method.Method.ID) %>% nrow()
+```
+
++ Based on `MethPar.key`
+
+```{r}
+uphl.param2 %>% {addmargins(table(.$MethPar.key, useNA="ifany",
+                                  deparse.level = 2))} %>% 
+  as.data.frame(stringsAsFactors=FALSE) %>%
+  setNames(c("MethPar.key", "Freq")) %>% filter(Freq > 1 & MethPar.key != "Sum") %>%
+  mutate(Samp.MATRIX = as.character(NA), Samp.Fraction = as.character(NA), 
+         Meth.Descrip  = as.character(NA)) -> uphlp2_MPK.tab
+#
+for (j in uphlp2_MPK.tab$MethPar.key[uphlp2_MPK.tab$MethPar.key != "Sum"]) {
+  uphlp2_MPK.tab$Samp.MATRIX[uphlp2_MPK.tab$MethPar.key == j] =
+    if (length(unique(
+      uphl.param2$Matrix.Description[uphl.param2$MethPar.key == j])) > 1) {
+      "DIFF"
+    } else {NA}
+  uphlp2_MPK.tab$Samp.Fraction[uphlp2_MPK.tab$MethPar.key == j] =
+    if (length(unique(
+      uphl.param2$Result.Sample.Fraction[uphl.param2$MethPar.key == j])) > 1) {
+      "DIFF"
+    } else {NA}
+  uphlp2_MPK.tab$Meth.Descrip[uphlp2_MPK.tab$MethPar.key == j] =
+    if (length(unique(
+      uphl.param2$Method.Description[uphl.param2$MethPar.key == j])) > 1) {
+      "DIFF"
+    } else {NA}
+}
+##
+uphlp2_MPK.tab %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc|ccc")
+```
+
++ Duplicates for `MethPar.key` based on _Matrix.Description_ or _Result.Sample.Fraction_ are expected for most analytes (e.g. metals and nutrients)
++ But **Not for** TDS or TSS
+
+***
+
++ Unique records Based on `MethParFxn.key`
+
+```{r}
+EDD_0 %>% mutate(MethParFxn.key = 
+                   paste(.$Method.ID, 
+                         .$Param.Description, 
+                         .$Matrix.Description,
+                         sep="_"),
+                 SKey2 = paste(.$MLID,
+                         as.numeric(.$Sample.Date - as.Date("1899-12-30")),
+                         .$Sample.Number,
+                         sep=".")) %>% 
+  distinct(Method.Agency, Method.ID, Method.Description, SKey2,
+             Param.Description, Matrix.Description, Units, .keep_all=T) %>%
+  group_by(MethParFxn.key) %>%
+  summarize(Freq = n_distinct(SKey2),
+            SampDate_mn = min(Sample.Date, na.rm=T),
+            SampDate_mx = max(Sample.Date, na.rm=T),
+            k_MLID = n_distinct(MLID),
+            k_SDate = n_distinct(Sample.Date)
+            ) -> edd0_mpfk_summ
+#
+uphl.param2 %>% {addmargins(table(.$MethParFxn.key, useNA="ifany",
+                                  deparse.level = 2))} %>% as.data.frame() %>%
+  setNames(c("MethParFxn.key", "Freq")) %>% filter(Freq > 1) %>% 
+  mutate(Comment = case_when(
+    grepl("PASSTHRU", .$MethParFxn.key, ignore.case = T) ~ "IGNORE passthru",
+    grepl("soil", .$MethParFxn.key, ignore.case = T) ~ "IGNORE Soil matrix",
+    TRUE ~ as.character(NA))) %>% 
+  mutate_if(is.factor, as.character)-> uphl2_MPFK.tab
+#
+uphl2_MPFK.tab <- left_join(uphl2_MPFK.tab,
+                            edd0_mpfk_summ %>% 
+                              select(MethParFxn.key, SampDate_mn, SampDate_mx),
+                            by = c("MethParFxn.key" = "MethParFxn.key")) %>%
+  mutate(EDD_Comment = case_when(
+    MethParFxn.key == "7471B_Hg_Soil" ~ "IGNORE Old recs",
+    TRUE ~ as.character(NA)
+    ))
+#
+uphl2_MPFK.tab %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc|c|cc|c", total=T)
+```
+
+### 2.6 Adjust Param-Table for suitability with current EDD set
+
++ From table above, if Comments include "IGNORE" then **drop** `AWQMS.Key`
+
++ **Version `uphl.paramX` data frame**
+
++ Also, update CHL/PERI keys...
+  + currently, not using (conc) Parameters, but have RV calculated from raw param names
+
++ Update / Correct parameter names for ions by IC (CL, F, SO4)
+
+```{r}
+Sample.fractions <- c("Water" = "TOT", 
+                   "Water, Non-filtered" = "TOT",
+                   "Water, Filtered" = "DIS",
+                   "Filter" = "X",
+                   "Soil" = "soil",
+                   "Water, Drinking" = "TOT")
+#
+uphl.param3 <- uphl.param2 %>% mutate(
+  ParamX = case_when(
+    grepl("by IC", .$Param.Description) ~ sub("_ic","",.$ParamX),
+    TRUE ~ ParamX)) %>%
+  mutate(
+    AWQMS.Key_TRIM = case_when(
+      MethParFxn.key %in% 
+        uphl2_MPFK.tab$MethParFxn.key[grepl("IGNORE", uphl2_MPFK.tab$Comment)] ~ as.character(NA),
+      (Matrix.Description == "Filter" | Result.Sample.Fraction == "X") &
+        grepl("conc", .$MethPar.key, ignore.case = T) ~ as.character(NA),
+      Matrix.Description == "Soil" ~ as.character(NA),
+      grepl("Dilution Factor", .$MethPar.key, ignore.case = T) ~ as.character(NA),
+      TRUE ~ paste(.$Method.Agency,
+                   .$Method.ID,
+                   .$ParamX, sep="-"))) %>%
+  mutate(
+    AWQMS.Key = case_when(
+      is.na(AWQMS.Key_TRIM) ~ as.character(NA),
+      TRUE ~ paste(.$AWQMS.Key_TRIM,
+                   recode(.$Matrix.Description,
+                          !!!Sample.fractions),
+                   sep="-")))
+```
+
+
+```{r}
+# uphl.param2 %>% filter(is.na(AWQMS.Key_TRIM)) %>% nrow()
+# uphl.param3 %>% filter(is.na(AWQMS.Key_TRIM)) %>% nrow()
+# 
+# openxlsx::write.xlsx(uphl.param3, file="uphl_param3_table_190925.xlsx")
+```
+
+#### Table: MPFKey x Records & Dates
+
++ Similar to the table above (for duplicated MPFK sets), summarize occurrence and date-range of records in current EDDs for full set of MPFKey levels
+  + Building on `edd0_mpfk_summ`
+  + Also recode `Bottle`
+
+```{r}
+edd0_mpfk_summ.tab <- edd0_mpfk_summ %>%
+  mutate(Comment = case_when(
+    grepl("PASSTHRU", .$MethParFxn.key, ignore.case = T) ~ "IGNORE passthru",
+    grepl("Pass Through", .$MethParFxn.key, ignore.case = T) ~ "IGNORE passthru",
+    grepl("Lab Report", .$MethParFxn.key, ignore.case = T) ~ "IGNORE passthru",
+    grepl("soil", .$MethParFxn.key, ignore.case = T) ~ "IGNORE Soil matrix",
+    grepl("8260_", .$MethParFxn.key, ignore.case = T) ~ "IGNORE organics",
+    grepl("Explosives_", .$MethParFxn.key, ignore.case = T) ~ "IGNORE LIMS error",
+    grepl("546_", .$MethParFxn.key, ignore.case = T) ~ "IGNORE HABs",
+    grepl("Filtered Volume", .$MethParFxn.key, ignore.case = T) ~ "IGNORE data-element",
+    grepl("Dilution Factor", .$MethParFxn.key, ignore.case = T) ~ "IGNORE data-element",
+    grepl("(conc)", .$MethParFxn.key, ignore.case = T) ~ "IGNORE use raw Param",
+    TRUE ~ as.character(NA))) %>% 
+  mutate_if(is.factor, as.character) %>%
+  left_join(.,
+            uphl.param3 %>% filter(!grepl("REMOVE-lab error", .$RESULT.STATUS)) %>%
+              distinct(ParamX, MethParFxn.key, Bottle, RESULT.STATUS),
+            by = c("MethParFxn.key" = "MethParFxn.key")) %>%
+  mutate(ParamX = case_when(
+    is.na(ParamX) & 
+      (!MethParFxn.key %in% 
+         uphl.param3$MethParFxn.key) ~ sub(".*_ *(.*?) *_.*", "\\1", .$MethParFxn.key),
+    TRUE ~ ParamX)) %>%
+  mutate(Bottle = case_when(
+    is.na(Bottle) &
+      ParamX %in% c("TDS", "TSS", "Cl", "F", "SO4", "orthoP") ~ "TOTAL_CHEMISTRY",
+    is.na(Bottle) &
+      ParamX %in% c("NO32") & !grepl("Filtered", .$MethParFxn.key) ~ "TOTAL_NUTRIENTS",
+    is.na(Bottle) &
+      ParamX %in% c("Li") & grepl("Non-filtered", .$MethParFxn.key) ~ "TOTAL_METALS",
+    is.na(Bottle) &
+      ParamX %in% c("Li") & grepl("Filtered", .$MethParFxn.key) ~ "FILTERED_METALS",
+    is.na(Bottle) &
+      ParamX %in% c("CBOD") ~ "BOD",
+    is.na(Bottle) &
+      ParamX %in% c("MycNod", "Cylindrospermopsin") ~ "HAB_micy",
+    is.na(Bottle) &
+      ParamX %in% c("Anatoxin-a") ~ "HAB_antox",
+    is.na(Bottle) &
+      ParamX %in% c("CHLA", "PHEO", "CHLA.tot") & 
+      grepl("_Filter", .$MethParFxn.key) ~ "FILTER-WC_CHL",
+    ParamX %in% c("PERI") & 
+      grepl("_Filter", .$MethParFxn.key) ~ "FILTER-BENTH_PERI",
+    TRUE ~ Bottle)) %>% mutate(PARAM_grp = as.character(NA)) %>%
+  mutate(PARAM_grp = case_when(
+    grepl("FILTER-", .$Bottle) | 
+      grepl("HPLC", .$MethParFxn.key) |
+      grepl("HPLCmod", .$MethParFxn.key) ~ "CHL_solids",
+    grepl("_CHEMISTRY", .$Bottle) ~ "Gen_chem",
+    grepl("_NUTRIENTS", .$Bottle) |
+      grepl("orthoP", .$ParamX) ~ "NUTR",
+    grepl("_METALS", .$Bottle) |
+      grepl("200.8", .$MethParFxn.key) |
+      grepl("7471", .$MethParFxn.key) ~ "MET",
+    Bottle == "BOD" | grepl("5210B_", .$MethParFxn.key) ~ "BOD",
+    grepl("HAB", .$Bottle) |
+      grepl("qPCR", .$MethParFxn.key) |
+      grepl("546_", .$MethParFxn.key) ~ "HABs",
+    is.na(PARAM_grp) & (
+      grepl("160.2", .$MethParFxn.key) |
+        grepl("300.1", .$MethParFxn.key)) ~ "Gen_chem",
+    (grepl("1664", .$MethParFxn.key) |
+       grepl("1694", .$MethParFxn.key) |
+       grepl("8015B", .$MethParFxn.key) |
+       grepl("8260", .$MethParFxn.key)) ~ "organics",
+    Bottle == "SULFIDE" ~ "SULFIDE",
+    TRUE ~ as.character(NA)
+  )) %>% arrange(PARAM_grp, RESULT.STATUS, MethParFxn.key)
+  
+```
+
+
+```{r}
+edd0_mpfk_summ.tab %>% filter(PARAM_grp != "organics") %>% select(-k_MLID, -k_SDate) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc|cc|cc|l|llc|l", 
+                       n.tspanner=c(5, 14,31,10,14,62,1,3), 
+                       tspanner=rep("",8))
+```
+
+
+```{r}
+# sub(".*_ *(.*?) *_.*", "\\1","160.2_Total Suspended Solids_Water")
+
+edd0_mpfk_summ.tab %>% {addmargins(table(.$PARAM_grp, is.na(.$MethParFxn.key),
+                                         useNA="ifany"))}
+
+```
+
+
+[190925] **Stopping Point**
+
+
+## 3.0 Review Master Table / Export
+
++ Working UPHL-EDD-Parameter Table :: `uphl.param3`
+
++ Re-name and version
+
+```{r}
+uphl.param3 -> UPHL_edd_MethodParam_table
+```
+
+```{r}
+saveRDS(UPHL_edd_MethodParam_table,
+        file=paste("uphlEDD_MethParTABLE_", format(Sys.Date(), "%y%m%d"),
+                   ".rds", sep=""))
+#
+openxlsx::write.xlsx(UPHL_edd_MethodParam_table,
+        file=paste("uphlEDD_MethParTABLE_", format(Sys.Date(), "%y%m%d"),
+                   ".xlsx", sep=""))
+```
+
+***
+***
+
+## 4.0 Updates and Corrections to Master Table
+
+_Also, re-export_
+
++ [190703] Working DF :: `uphl.param4` to UPHL_edd_MethodParam_table
+
+```{r}
+uphl.param3 -> uphl.param4
+```
+
+
++ Add PARAM_status field (populated)
+  + If AWQMS.Key includes _any_ `NA`, then drop that case from being selected...
+  + ...and other stuff
+
+```{r}
+uphl.param4 %<>% mutate(PARAM_status = as.character(NA)) %>% mutate(
+  PARAM_status = case_when(
+    is.na(Method.Agency) & 
+      Bottle != "TOTAL_HAB" &
+      grepl("^NA-", .$AWQMS.Key_TRIM, ignore.case = T) ~ "REJECTED",
+    MethPar.key %in% c("160.2_Dilution Factor",
+                       "1664_Lab Report",
+                       "1664_Pass Through Laboratory",
+                       "1694_Lab Report",
+                       "1694_Pass Through Laboratory",
+                       "2340B_Hardness") &
+      is.na(PARAM_status) ~ "REJECTED",
+    grepl("^2320B_", .$MethPar.key, ignore.case = T) &
+      ParamX != "T.Alk" ~ "REJECTED",
+    grepl("Pass Through", .$MethPar.key, ignore.case = T) ~ "REJECTED",
+    grepl("Lab Report", .$MethPar.key, ignore.case = T) ~ "REJECTED",
+    grepl("^Explosives", .$MethPar.key, ignore.case = T) ~ "REJECTED",
+    Method.ID %in% c("ANATOXIN", "CYLINDROSPERMOPSIN",
+                     "MICROCYSTINS", "qPCR") ~ "HAB",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA))) %>%
+  select(MethPar.key:AWQMS.Key, PARAM_status, everything())
+```
+
+
++ Any dupes ?
+
+
+```{r}
+uphl.param4 %>% 
+  {table(paste(.$MethPar.key,
+               .$AWQMS.Key_TRIM,
+               .$ParamX, sep="_"), useNA="ifany")} %>%
+  as.data.frame(.) %>% 
+  filter(., .$Freq > 1) %>% dplyr::arrange(., desc(Freq))
+
+```
+
++ Update Export-file
+
+```{r}
+uphl.param4 -> UPHL_edd_MethodParam_table
+```
+
+```{r}
+saveRDS(UPHL_edd_MethodParam_table,
+        file=paste("uphlEDD_MethParTABLE_", format(Sys.Date(), "%y%m%d"),
+                   ".rds", sep=""))
+#
+openxlsx::write.xlsx(UPHL_edd_MethodParam_table,
+        file=paste("uphlEDD_MethParTABLE_", format(Sys.Date(), "%y%m%d"),
+                   ".xlsx", sep=""))
+```
+
+
+
+***
+***
+***
+
+## X.0 Review Master Meth-Param Table
+
++ This procedure remains to be worked out...
+    + Should check for any new table-elements
+
+***
+***
+## END
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
