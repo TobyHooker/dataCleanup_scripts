@@ -1,0 +1,1501 @@
+---
+title: "Utah Lake CHL-Method Comparison (2017) 3.0"
+author: "T.Hooker"
+date: "30 January, 2018"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 10
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+
+**This version includes all three CHL methods for comparison, from 2017 samples**
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+### Notes
+
+Notebook describes import and review of CHLA results and associated metadata fior 2017 methods comparison of Utah Lake waters
+
++ 170927 :: Initial Project Start Date
+
++ 171010 :: _Updated UPHL EDDs_
+
+**Next Steps:** [as of 171010] ::   
+
++ Add Sampling Dates to Evaluation (Sec. 1.32)
++ ~~Adjust MLIDs (4917388 & 4917390 can be combined)~~ [_done_]
++ ~~Drop EQBK (equipment blank) from figures / calculations~~ [_done_]
++ Keep looking for new CTF data
+
++ 171014 :: _Updated CTF and UPHL data_
+
++ 171023 :: _Update UPHL [edd] data_
+
++ 171109 :: _Update UPHL [edd] data_
+
++ 171208 :: _Update UPHL [edd] data_
+    + Email Ed-H and Alia about missing records
+
++ 180103 :: _Update UPHL [edd] & CTF data_
+
++ 180117 :: _Update UPHL [edd] data_
+
++ 180130 :: _Imported CTF-EDDs & Updated Field-Vols_
+
++ 180213 :: _Received last UPHL EDD [?]_
+
++ 180911 :: _Add UPHL-HPLC method and run analyses_
+
+
+### 1.0 Data Import
+
+**This is an updated version of Utah Lake CHLA method comparison project (180130).  Data-preparation steps from previous versions is simplified here, since a great deal of completeness review has already been performed.  Field filtration-volumes have been updated and EDDs from CTF have been received and compiled (in another project: "ChemTech_compile_r").**
+
+
+#### 1.1 Site Data
+
+Import General site information, including names, coordinates and site type  
+
++ This list was updated (in the XLS file) to include site-4917388 (171003)
+
+```{r sites.Import, eval=FALSE}
+#UTCH_sites1 <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+#UL.sites <- openxlsx::read.xlsx(UTCH_sites1, sheet="Sites", startRow = 1, colNames=TRUE, rowNames=FALSE)  
+# control digits ib lat/lon 
+UL.sites$LATNAD83DD <- format(UL.sites$LATNAD83DD, digits=5)
+UL.sites$LONNAD83DD <- format(UL.sites$LONNAD83DD, digits=5)
+```
+
+This project involves (`r nrow(UL.sites)`) sites associated with Utah Lake open waters, including (`r nrow(UL.sites[UL.sites$Site.Type == "QC",])`) QC sites
+
+```{r sites.tab1}
+htmlTable::htmlTable(UL.sites[-1], css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.7em;font-size: 0.7em;", times=ncol(UL.sites)-1), matrix("padding-left: 0.7em; padding-right: 0.7em; font-size: 0.65em;",ncol=ncol(UL.sites)-1, nrow=nrow(UL.sites))), rnames=FALSE)
+```
+
+```{r Site.list, eval=FALSE}
+# vector of sites for UTLk project
+UTLake.mlid <- sort(unique(UL.sites$MLID))
+```
+
+
+#### ~~1.15 Filtered Volumes~~
+
+**All filtered Volume observations are located in the Field Data**
+
+Note: QC sites do not appear to have filtration measurements (Replicate site and Equipment Blank)
+
++ Filtered Volume results found for (`r nrow(UL.VOLs)`) sites
++ Sampling Events::
+
++ Note that the above table does not include the Equipment Blank site (4930009) nor the Provo Bay EXO site (4917388)
+    + Going forward, 4917388 has been combined w/ 49417390
+
+#### 1.2 Field Obs
+
+```{r FieldDat.import, eval=FALSE}
+#UTCH_sites1 <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+UL.field <- openxlsx::read.xlsx(UTCH_sites1, sheet="Field.dat.OW", startRow = 3, colNames=TRUE, rowNames=FALSE);  
+
+####
+#   Need to fix Sample Dates and Times [format]
+####
+# date format is MSExcel Time
+UL.field$SDate <- as.Date(UL.field$SDate, origin = "1899-12-30")
+x0 <- UL.field$Time
+x1 <- x0 - as.integer(x0)
+UL.field$Time <- format(as.POSIXct(Sys.Date() + x1), "%H:%M", tz="UTC")
+UL.field$month <- (format(UL.field$SDate, "%b"))
+UL.field$month_n <- as.integer(format(UL.field$SDate, "%m"))
+#
+```
+
+```{r Field.tab1}
+fld.tab1 <- as.data.frame.matrix((table(UL.field$MLID, UL.field$month_n, useNA = "ifany", deparse.level = 2)))
+mlid <- rownames(fld.tab1)
+fld.tab1 <- cbind(mlid, fld.tab1)
+names(fld.tab1)[2:7] <- month.abb[as.integer(names(fld.tab1)[2:7])]
+rownames(fld.tab1) <- NULL
+htmlTable::htmlTable(fld.tab1, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(fld.tab1)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(fld.tab1), nrow=nrow(fld.tab1))), rnames=FALSE, caption = "Field records by Month")
+```
+
++ **Field record for May, site 4917390 is synonymous with 4917388**  
++ **Site 4917320 is a Field-Replicate of 4917310**  
++ **Site 4930009 an an Equipment Blank - Not used as part of this method-comparison project**
+  
+  
+_Compile Field-data Vols_
+
+```{r FilVol.chek, eval=FALSE}
+fld.vols_melt <- reshape2::melt(UL.field[,c("MLID", "SDate", "month", "CHLA.vol")],
+                                id.vars = c("MLID", "SDate", "month"),
+                                value.name = "CHLA.vol")
+fld.vols_melt$month_n <- plyr::revalue(fld.vols_melt$month, c("May" = 5, "Jun" = 6,
+                                    "Jul" = 7, "Aug" = 8, "Sep" = 9, "Oct" = 10, "Nov" = 11))
+```
+
+
+
+#### 1.3 Filtration Volume
+
+All volume records from Utah Lake "field data"
+
+```{r Filt.Vol-combine, eval=FALSE, message=FALSE, warning=FALSE}
+FILT.vols <- fld.vols_melt
+FILT.vols$month_n <- as.integer(FILT.vols$month_n)
+```
+ 
+**Filtered Volume Dataframe** :: `FILT.vols`
+    + Var == "CHLA.vol"
+
+_Summary of Volume Measurements_
+
+```{r Filt.Vol.tab1}
+tab1 <- as.data.frame.matrix(addmargins(table(FILT.vols$MLID[!is.na(FILT.vols$CHLA.vol)], FILT.vols$month[!is.na(FILT.vols$CHLA.vol)], useNA = "ifany", deparse.level = 2)))
+tab1$MLID <- rownames(tab1)
+tab1 <- dplyr::select(tab1, MLID, May, Jun, Jul, Aug, Sep, Oct, Nov, Sum)
+row.names(tab1) <- NULL
+tab1$comment[tab1$MLID == "4930009"] <- "EQ BLK" 
+tab1$comment[tab1$MLID == "4917320"] <- "Field Rep. of 4917310" 
+tab1$comment[tab1$MLID == "4917390"] <- "syn. w/ 4917388" 
+# styling for missing / zero's (0)
+tabdat <- tab1
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+for (i in 2:(nrow(cellbold))) {
+    for (j in 1:ncol(cellbold)-1) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700;background: gray90; border: 1px solid;",
+            ifelse(tabdat[i-1,j] == 0, "font-weight: 700;background: #DCDCDC; border: 1px solid;", ""))     }   }
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tab1, css.cell = css.cell, caption = "Samples with Filtration Volume by Month", rnames=FALSE, total = TRUE)
+
+```
+
++ A couple samples may be missing from May, 2017
+    + Further investigation reveals that the field replicate site (**4917320**) was only sampled (in triplicate) in August, and may not have been provided to both labs;
+    + **This site can be _broadly_ dropped in comparisons between methods**  
+    + The Equipment Blank (4930009) was not collected in May, and was only provided to UPHL for the remaining sample dates
+
+***
+
+**Summarize filtration volume: MLID x Date**
+```{r Filt.Vol.tab2}
+FILTvol_cast <- reshape2::dcast(FILT.vols, MLID ~ month_n, value.var = "CHLA.vol", fun.aggregate=function(x) mean(x, na.rm=TRUE))
+# annotate table
+FILTvol_cast$Note <- NA
+FILTvol_cast$Note[2] <- "Field Rep of 4917310; not used"
+FILTvol_cast$Note[5] <- "Includes 4917388 [May17]"
+FILTvol_cast$Note[13] <- "Equipment Blank; not used"
+
+# prepare table ~css~
+tabdat <- FILTvol_cast
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+## highlight the cells in the table missing data (i.e. value = 0)
+for (i in 2:(nrow(cellbold))) {
+    for (j in 1:ncol(cellbold)-1) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700; background: #DCDCDC; border: 1px solid;",
+            ifelse(tabdat[i-1,j] == 0, "font-weight: 700; background: gray90; border: 1px solid;", ""))     }   }
+#  background: lightgrey;
+#  font-weight: 900;
+#  border: solid 1px;
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(FILTvol_cast, css.cell = css.cell, rnames=FALSE, caption = "Filtration Volumes for CHLA samples")
+```
+
++ Note that the site 4917388 is not included in this table
++ Site 4917320 is a Field Replicate (of 4917310) for QC purposes only
++ Site 4930009 is the Equipment Blank, analyzed only at UPHL, and can be ignored
+
+#### 1.4 Sample Dates
+
+```{r SDates.1}
+addmargins(table(UL.field$SDate, UL.field$month_n, useNA = "ifany"))
+```
+
++ Sampling Dates for MLIDs by month (_from Field Data_)
+
+```{r SDates.2, eval=F}
+tab.set <- data.frame()
+for (i in unique(UL.field$month_n)) {
+    t_i <- table(UL.field$MLID[UL.field$month_n == i], UL.field$SDate[UL.field$month_n == i])
+    tab.set <- rbind(tab.set, t_i)
+    print(t_i)  }
+```
+
+
+#### 1.5 UPHL Lab Data
+
+**Compile Data from UPHL EDDs**
+
++ First EDD date for Utah Lake CHL project ::  8/1/2017
+
++ EDD file list updated 171010 [for EDDs through 171006]
++ Updates 171023 [for EDDs through 171020]
++ Updates 171109 (additional EDDs)
++ Updated 180103 (additional EDDs)
++ Updated 180117 (additional EDDs)
++ Updated 180212 (last remaining EDD ?)
+
+
+```{r Lab.Import, eval=FALSE}
+# files.lab <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+b <- lapply(files.lab, FUN=read.delim, as.is=TRUE, header=TRUE)
+filename <- basename(files.lab)
+names(b) <- filename
+path.filename <- dirname(files.lab)
+```
+
+A total of `r length(b)` data files were selected from path:  **`r path.filename[1]`**
+
+```{r show.Import0, message=FALSE, warning=FALSE}
+options(width=95)
+file.list <- filename
+length(file.list) <- prod(dim(matrix(file.list, ncol=3)))
+filelist.dat <- data.frame(matrix(data=(file.list), ncol=3, byrow=TRUE))
+htmlTable::htmlTable(filelist.dat, caption = "Names of imported data files", css.cell = rbind(rep("padding-left: 1em; padding-right: 1em;font-size: 0.8em;", times=ncol(filelist.dat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;", ncol=ncol(filelist.dat), nrow=nrow(filelist.dat))), align="l", header = rep(NA, times = ncol(filelist.dat)))
+```
+
+**Identify Files that contain CHLA data**
+
+```{r Lab1, eval=FALSE}
+# extract all methods
+EDD_method <- data.frame()
+for (i in 1:length(b)) {
+    EDD_method <- rbind(EDD_method,
+        data.frame(file = i, Filename = names(b[i]), 
+            Num.methods = length(unique(b[[i]]$Method.Description)),
+            Methods = sort(unique(trimws(b[[i]]$Method.Description)))))   }
+# extract all methods from EDDs 
+EDD_method.df <- data.frame(EDD.Methods = sort(unique(EDD_method$Methods)))
+# get CHLA-related method(s)
+CHL.meth <- c("SM 10200H Chlorophyll with Pheophytin and Chlorophyll After Acid")
+#
+```
+
+```{r LabMethods.tab1, eval=F}
+htmlTable::htmlTable(EDD_method.df, css.cell = "padding-left: 0.8em; padding-right: 0.8em; font-size: 0.65em;", align="l", rnames=FALSE)
+```
+
+```{r uphl_meta, eval=FALSE}
+EDD_meta1 <- data.frame()
+for (i in 1:length(b)) {
+    EDD_meta1 <- rbind(EDD_meta1, 
+        data.frame(n = i, File.name = names(b[i]), n_recs = nrow(b[[i]]),
+            min_SDate = min(as.Date(b[[i]]$Sample.Date,format = "%m/%d/%Y")),
+            max_SDate = max(as.Date(b[[i]]$Sample.Date,format = "%m/%d/%Y")),
+            UTL.recs = length(b[[i]]$Station.ID[b[[i]]$Station.ID %in% UTLake.mlid]),
+            UTL.sites = length(unique(b[[i]]$Station.ID[b[[i]]$Station.ID %in% UTLake.mlid])),
+            UTL.CHLA.sites = length(unique(b[[i]]$Station.ID[b[[i]]$Station.ID %in% UTLake.mlid & b[[i]]$Method.Description %in% CHL.meth])))  )   }
+#
+TOT <- as.data.frame(cbind(NA, "Totals", sum(EDD_meta1[,3], na.rm=T), NA, NA, sum(EDD_meta1[,6], na.rm=T), sum(EDD_meta1[,7], na.rm=T), sum(EDD_meta1[,8], na.rm=T)))
+names(TOT) <- names(EDD_meta1)
+EDD_meta2 <- rbind(EDD_meta1, TOT)
+# truncate to only records w/ UTL results
+EDD_meta3 <- EDD_meta2[EDD_meta2$UTL.recs > 0,]
+
+```
+
+```{r Lab_meta.tab1}
+htmlTable::htmlTable(EDD_meta3, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(EDD_meta3)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.7em;", ncol=ncol(EDD_meta3), nrow=nrow(EDD_meta3))), rnames=FALSE, align=c("c","l","c"), caption = "Occurrence of UT Lake results in UPHL-EDDs", total = TRUE)
+```
+
+**UPHL Lab Data Cleanup**
+
+_Extract Utah Lake records (by MLID)_
+
+```{r UTLK.dat, eval=FALSE}
+# extract results from EDD-list (b)
+EDD.dat0 <- plyr::ldply(b, .id="Lab.filename")
+## add MLID (as CHAR) to DF
+EDD.dat0$MLID.c <- as.character(EDD.dat0$Station.ID)
+# Subet for Utah Lake MLIDs (in list)
+UTLK_uphl <- EDD.dat0[EDD.dat0$Station.ID %in% UTLake.mlid,]
+row.names(UTLK_uphl) <- NULL
+# correct sample date format
+UTLK_uphl$Sample.Date <- as.Date(lubridate::parse_date_time(UTLK_uphl$Sample.Date, "mdy HMS", truncated=3))
+# convert Sample.Date to XLS time and creak Sample-Key-1 (as SK1)
+UTLK_uphl$SDate <- as.numeric(as.Date(UTLK_uphl$Sample.Date) - as.Date(0, origin="1899-12-30", tz='UTC'))
+# Sample key 1
+UTLK_uphl$SK1 <- paste(UTLK_uphl$Station.ID, UTLK_uphl$SDate, sep=".")
+```
+
+_UPHL Data Summary [Utah Lake Records]_  
+
++ Number of Records: [`r format(nrow(UTLK_uphl), big.mark=",")`]
++ Number of unique **Sites**: [`r format(nrow(UTLK_uphl[unique(UTLK_uphl$Station.ID),]), big.mark=",")`]
++ Number of **Sampling Dates**: [`r format(nrow(UTLK_uphl[unique(UTLK_uphl$Sample.Date),]), big.mark=",")`]
+    + From: [`r min(as.Date(UTLK_uphl$Sample.Date,format = "%m/%d/%Y"))`]
+    + To: [`r max(as.Date(UTLK_uphl$Sample.Date,format = "%m/%d/%Y"))`]
++ Number of **Sampling Events**: [`r format(nrow(UTLK_uphl[unique(c(UTLK_uphl$Sample.Date, UTLK_uphl$Station.ID)),]), big.mark=",")`]
++ Number of unique parameter levels: [`r length(unique(UTLK_uphl$Param.Description))`]  
+  
++ Note that these results (above) include all parameters and some additional Non-UTLK samples collected as part of the DWQ-Lakes program  
+
+
+**Subset for only Chlorophyll-related records**
+
+```{r UTLK_CHLA.dat, eval=FALSE}
+ULCHL.dat0 <- UTLK_uphl[UTLK_uphl$Method.Description %in% CHL.meth,]
+row.names(ULCHL.dat0) <- NULL
+ULCHL.dat0$month <- as.integer(format(ULCHL.dat0$Sample.Date, "%m"))
+```
+
+_UPHL CHLA-Data Summary [Utah Lake Records]_  
+
++ Number of Records: [`r format(nrow(ULCHL.dat0), big.mark=",")`]
++ Number of unique **Sites**: [`r format(nrow(ULCHL.dat0[unique(ULCHL.dat0$Station.ID),]), big.mark=",")`]
++ Number of **Sampling Dates**: [`r format(nrow(ULCHL.dat0[unique(ULCHL.dat0$Sample.Date),]), big.mark=",")`]
+    + From: [`r min(as.Date(ULCHL.dat0$Sample.Date,format = "%m/%d/%Y"))`]
+    + To: [`r max(as.Date(ULCHL.dat0$Sample.Date,format = "%m/%d/%Y"))`]
++ Number of **Sampling Events**: [`r format(nrow(ULCHL.dat0[unique(c(ULCHL.dat0$Sample.Date, ULCHL.dat0$Station.ID)),]), big.mark=",")`]
++ Number of unique parameters: [`r length(unique(ULCHL.dat0$Param.Description))`]
+    + `r paste(unique(ULCHL.dat0$Param.Description), collapse=" // ")`
+
+```{r uphlCHLA-tab1}
+tab2 <- as.data.frame.matrix(addmargins(table(ULCHL.dat0$Station.ID, ULCHL.dat0$month, useNA = "ifany", deparse.level = 2, exclude = c("12"))))
+tab2$MLID <- rownames(tab2)
+tab2 <- tab2[,c(ncol(tab2),1:(ncol(tab2)-1))]
+rownames(tab2) <- NULL
+# Number of Utah Lake CHLA-related records by month of sampling
+# Table values are in triplicate, for the 3 parameters listed above
+# add BOLD for missing results, add 1 to ROW for Headers
+#
+## Add notations for some MLIDs
+tab2$note <- ""
+tab2$note[tab2$MLID == "4917388"] <- "combined w/ 4917390"
+tab2$note[tab2$MLID == "4917320"] <- "replicate of 4917310"
+tab2$note[tab2$MLID == "4930009"] <- "EQ Blank, needs further refinement"
+#
+tabdat <- tab2
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+for (i in 2:(nrow(cellbold))) {
+    for (j in 1:ncol(cellbold)) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700;background: gray90;border: 1px solid;",
+            ifelse(tabdat[i-1,j] == 0, "font-weight: 700;background: #DCDCDC; border: 1px solid;", ""))     }   }
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tabdat, css.cell = css.cell, caption = "UPHL CHLa results by Month", rnames=FALSE, total = TRUE)
+```
+
++ Results appear to be a bit more sparse than the Field data...
++ Sites with missing CHLA data:
+    + May : [_none_]
+    + June : [`r length(tab2$MLID[tab2$"6" == 0])`] :: [`r paste(tab2$MLID[tab2$"6" == 0], collapse = " // ")`]
+    + July : [_none_]
+    + August : [`r length(tab2$MLID[tab2$"8" == 0])`] :: [`r paste(tab2$MLID[tab2$"8" == 0], collapse = " // ")`]
+    + September : [_none_]
+    + October : [_none_]
+    + November : [_none_]  
+  
+    
++ Recall that 4917320 and 4917388 can be ignored due to site changes
+
+***
+
+**Correct MLID mis-match for 4917388 and 4917390**
+
+```{r uphl-chladat.clean, eval=FALSE}
+# adding Var = MLID, to correct site-id change
+ULCHL.dat0$MLID <- ULCHL.dat0$Station.ID
+ULCHL.dat0$MLID[ULCHL.dat0$Station.ID == 4917388] <- 4917390
+## looks ok
+```
+***
+ 
+#### 1.6 Chemtech-Ford Lab Data
+
+**Results from UPHL pass-through**  
+Previopusly, results were hand-entered from _pdf_ files provided by UPHL for some sampling events. 
+
+The current dataset is based on EDDs from CTF, emailed by EdH Jan 19, 2018  
+
+CTF results for BOD and CHLA were compiled on 180129, and the x.RData file is located:
+` W:\2017_wy_Data\2017 Water Year_Lab Data\ChemTech_compile_r `  
+
++ filename ::  ` ChemTech_data_v01_180129.RData`
++ data-frame :: `CTF.dat1`
+
+
+```{r CTF.import, eval=FALSE}
+# use CTF-EDD compiled data
+# CTF_EDD <- choose.files(caption="Select _working_ DATA file [*.RData]", multi = FALSE)
+#   load(CTF_EDD);    
+## DF == CTF.dat1
+#
+# Extract only CHLA results
+CTF.dat2 <- CTF.dat1[CTF.dat1$METHODCODE == "Chlorophyll",]
+#
+# datafile has been previously cleaned (dates)
+# sample-time not part of CTF edds
+
+CTF.dat2$month <- as.integer(format(CTF.dat2$SAMPDATE, "%m"))
+# create Sample-Key 1 (via Excel date)
+CTF.dat2$SDate_num <- as.numeric(as.Date(CTF.dat2$SAMPDATE) - as.Date(0, origin="1899-12-30", tz='UTC'))
+#
+## Need to extract MLIDs...messy
+# CTF.dat2$SK1 <- paste(CTF.dat0$MLID, CTF.dat0$SDate_num, sep=".")
+```
+
+```{r CTF.mlids, eval=F}
+library(plyr); library(dplyr)
+# Extract MLIDS from "sComment"
+CTF.dat2$MLID <- regmatches(CTF.dat2$sComment, regexpr("[0-9]{7}",CTF.dat2$sComment))
+# Extract REP from sComment
+CTF.dat2$Rep <- as.integer(substr(CTF.dat2$sComment, regexpr("[-]", CTF.dat2$sComment)+1, (regexpr("[-]", CTF.dat2$sComment)+1)))
+## Correct a typo in MLID (4717390 / 471770) ==> 491....
+# length(CTF.dat2$MLID[startsWith(CTF.dat2$MLID, "471")]); CTF.dat2$MLID[startsWith(CTF.dat2$MLID, "471")]
+CTF.dat2$MLID2 <- CTF.dat2$MLID
+CTF.dat2$MLID2[startsWith(CTF.dat2$MLID, "471")] <- plyr::revalue(CTF.dat2$MLID2[startsWith(CTF.dat2$MLID2, "471")], c("4717390" = "4917390", "4717770" = "4917770"))
+#CTF.dat2 <- select(CTF.dat2, -MLID) %>% rename(c("MLID" = "MLID2"))
+# Add sample-Key
+CTF.dat2$SK1 <- paste(CTF.dat2$MLID2, CTF.dat2$SDate_num, sep=".")
+```
+
+_Chemtech-Ford CHLA-Data Summary [Utah Lake Records]_  
+
++ Number of Records: [`r format(nrow(CTF.dat2), big.mark=",")`]
++ Number of unique **Sites**: [`r format(nrow(CTF.dat2[unique(CTF.dat2$MLID),]), big.mark=",")`]
++ Number of **Sampling Dates**: [`r format(nrow(CTF.dat2[unique(CTF.dat2$SAMPDATE),]), big.mark=",")`]
+    + From: [`r min(as.Date(CTF.dat2$SAMPDATE,format = "%m/%d/%Y"), na.rm = T)`]
+    + To: [`r max(as.Date(CTF.dat2$SAMPDATE,format = "%m/%d/%Y"), na.rm = T)`]
++ Number of **Sampling Events**: [`r format(nrow(CTF.dat2[unique(c(CTF.dat2$SAMPDATE, CTF.dat2$MLID)),]), big.mark=",")`]
++ Number of unique parameter levels: [`r length(unique(CTF.dat2$ANALYTE))`]
+    + `r paste(unique(CTF.dat2$ANALYTE), collapse=" // ")`
+
+**Check for completeness: MLID x Month**
+
+```{r CTF.tab1}
+tab3 <- NULL
+tab3 <- as.data.frame.matrix(addmargins(table(CTF.dat2$MLID2, CTF.dat2$month, useNA = "ifany", deparse.level = 2)))
+tab3$MLID <- rownames(tab3)
+tab3 <- tab3[,c(length(names(tab3)),1:(length(names(tab3))-1))]
+# annotate some sites
+rownames(tab3) <- NULL
+tab3$note <- ""
+tab3$note[2] <- "field rep; not consistently sampled"
+tab3$note[5] <- "combined w/ 4917390"
+tab3$note[14] <- "EQ Blank, needs further refinement"
+# styling
+tabdat <- tab3
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+for (i in 2:(nrow(cellbold))) {
+    for (j in 1:ncol(cellbold)) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700;background: gray80;border: 1px solid;",
+            ifelse(tabdat[i-1,j] == 0, "font-weight: 700;background: #DCDCDC; border: 1px solid;", ""))     }   }
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tabdat, css.cell = css.cell, caption = "Chemtech-Ford CHLa results by Month", rnames=FALSE, total = TRUE)
+```
+
++ Sites with missing CHLA data:
+    + May : [`r length(tab3$MLID[tab3$"5" == 0])`] ::  [`r paste(tab3$MLID[tab3$"5" == 0], collapse = " // ")`]
+    + June : [`r length(tab3$MLID[tab3$"6" == 0])`] :: [`r paste(tab3$MLID[tab3$"6" == 0], collapse = " // ")`]
+    + July : [`r length(tab3$MLID[tab3$"7" == 0])`] :: [`r paste(tab3$MLID[tab3$"7" == 0], collapse = " // ")`]
+    + August : [`r length(tab3$MLID[tab3$"8" == 0])`] :: [`r paste(tab3$MLID[tab3$"8" == 0], collapse = " // ")`]
+    + September : [`r length(tab3$MLID[tab3$"9" == 0])`] :: [`r paste(tab3$MLID[tab3$"9" == 0], collapse = " // ")`]
+    + October : [`r length(tab3$MLID[tab3$"10" == 0])`] :: [`r paste(tab3$MLID[tab3$"10" == 0], collapse = " // ")`]
+
++ MLIDs (4917388 & 4917390) can be aggregated as the same site
++ MLID 4917320 is a Field-Replicate and can be ignored here
++ Ignore Equipment Blank (4930009)
+
+***
+
+**Correct MLID mis-match for 4917388 and 4917390**
+
+```{r CTF-chladat.clean, eval=FALSE}
+# adding Var = MLID, to correct site-id change
+#CTF.dat2$MLID2 <- CTF.dat2$MLID
+CTF.dat2$MLID2[CTF.dat2$MLID == 4917388] <- 4917390
+## looks ok
+#
+## redo SK1
+CTF.dat2$SK1 <- paste(CTF.dat2$MLID2, CTF.dat2$SDate_num, sep=".")
+```
+***
+
+### 2.0 CHLA calculations
+
+**Key Fields for UPHL and CTF results**
+
+```{r data.fields, message=FALSE}
+Fields <- c("Sample.Number","Station.ID","Sample.Date","Sample.Time","Method.ID","Param.Description",
+            "Result.Code","Result.Value","Lower.Report.Limit",
+            "Method.Detect.Limit","Units","SK1","month", "MLID")
+##
+library(dplyr)
+#
+uphl_CHL.dat <- select(ULCHL.dat0, 
+                       Sample.Number:Sample.Time, Method.ID, Param.Description,
+                       Result.Code:Method.Detect.Limit, Units, SK1, month, MLID)
+ctf_CHL.dat <- select(CTF.dat2, LABSAMPID, MLID, SAMPDATE, METHODNAME, ANALYTE,
+                      Result.Flag, Result.Value, RL, DL, UNITS, SK1, month,
+                      MLID2,Rep)
+```
+
+**Merge with Filtration Volumes**
+
+
+```{r uphl.set1, eval=FALSE}
+## add aggregated volumes :: UPHL data
+uphl_CHL.dat1 <- merge(uphl_CHL.dat, FILT.vols[,c(1,6,5)], all.x=TRUE, by.x = c("MLID", "month"), by.y = c("MLID", "month_n"))
+##
+##
+## add aggregated volumes :: CTF data
+# But first, correct MLID (4917388 to 4917390)
+ctf_CHL.dat$MLID2[ctf_CHL.dat$SK1 == "4917388.42866"] <- "4917390"
+#
+ctf_CHL.dat1 <- merge(ctf_CHL.dat, FILT.vols[,c(1,6,5)], all.x=TRUE, by.x = c("MLID2", "month"), by.y = c("MLID", "month_n"))
+```
+
+**Examine Lab Data for Missing Volumes**  
+Earlier examination of results identified some incomplete records for Filtration Volumes and/or Lab data.  
+_How complete are the Lab x Filt.Vol pairs?_
+
+**UPHL data**  
+
++ Number of records where "VOL_x" is missing from UPHL lab data :: [`r nrow(uphl_CHL.dat1[is.na(uphl_CHL.dat1$CHLA.vol),])`]
++ Sample months w/ missing filtration volumes:
+    + `r paste(month.abb[sort(unique(uphl_CHL.dat1$month[is.na(uphl_CHL.dat1$CHLA.vol)]))], collapse = " // ")`
++ Site IDs (as MLID) w/ missing filtration volumes:
+    + `r paste(sort(unique(uphl_CHL.dat1$Station.ID[is.na(uphl_CHL.dat1$CHLA.vol)])), collapse = " // ")`
+
+**CTF data**  
+
++ Number of records where "VOL_x" is missing from Chemtech-Ford data :: [`r nrow(ctf_CHL.dat1[is.na(ctf_CHL.dat1$CHLA.vol),])`]
++ Sample months w/ missing filtration volumes:
+    + `r paste(month.abb[sort(unique(ctf_CHL.dat1$month[is.na(ctf_CHL.dat1$CHLA.vol)]))], collapse = " // ")`
++ Site IDs (as MLID) w/ missing filtration volumes:
+    + `r paste(sort(unique(ctf_CHL.dat1$MLID[is.na(ctf_CHL.dat1$CHLA.vol)])), collapse = " // ")`
+
+#### 2.1 UPHL CHLA Concentration Calculations
+
++ Recode Parameter-Names (terse)
+
+```{r uphl.calc1, eval=FALSE}
+# recode Params
+uphl_CHL.dat1$PARAM <- uphl_CHL.dat1$Param.Description
+uphl_CHL.dat1$PARAM <- plyr::revalue(uphl_CHL.dat1$PARAM,
+                                     c("Chlorophyll-A After Acid" = "CHLA",
+                                       "Pheophytin" = "PHEOA",
+                                       "Chlorophyll-A Before Acid" = "CHL_tot"))
+uphl_CHL.dat1 <- select(uphl_CHL.dat1, MLID : Method.ID, PARAM, everything(), -Param.Description)
+#
+### calcs
+#
+uphl_CHL.dat1$ResVal0 <- ifelse(uphl_CHL.dat1$Result.Code == "U", NA, uphl_CHL.dat1$Result.Value)
+#
+uphl_CHL.dat1$CHL_1 <- ifelse(is.na(uphl_CHL.dat1$CHLA.vol), NA,
+                        ifelse(is.na(uphl_CHL.dat1$ResVal0), NA,
+                            uphl_CHL.dat1$ResVal0 * 1000 / uphl_CHL.dat1$CHLA.vol * 1000 ))
+#
+uphl_CHL.dat1$CHL_Umdl <- ifelse(is.na(uphl_CHL.dat1$CHLA.vol), NA,
+                        ifelse(uphl_CHL.dat1$Result.Code == "U",
+            uphl_CHL.dat1$Method.Detect.Limit * 1000 / uphl_CHL.dat1$CHLA.vol * 1000,
+                                    NA))
+#
+uphl_CHL.dat1$CHL_Ulrl <- ifelse(is.na(uphl_CHL.dat1$CHLA.vol), NA,
+                        ifelse(uphl_CHL.dat1$Result.Code == "U", 
+            uphl_CHL.dat1$Lower.Report.Limit * 1000 / uphl_CHL.dat1$CHLA.vol * 1000,
+                                    NA))
+###
+uphl_CHL.dat1$CHL_result <- ifelse(is.na(uphl_CHL.dat1$CHL_1),
+                                    ifelse(is.na(uphl_CHL.dat1$CHLA.vol), NA,
+                                           uphl_CHL.dat1$CHL_Umdl),
+                                    uphl_CHL.dat1$CHL_1)
+#
+uphl_CHL.dat1$CHL_units <- "ug/L"
+```
+
+_The above calculations have been updated to combine 4917388 / 4917390 (above)_  
+
+_Summary_  
+
++ Number of UPHL records : [`r nrow(uphl_CHL.dat1)`]
++ Number of UPHL records with no Volume : [`r nrow(uphl_CHL.dat1[is.na(uphl_CHL.dat1$CHLA.vol),])`]
++ Number of UPHL records with no CHLA (lab) result :  [`r nrow(uphl_CHL.dat1[is.na(uphl_CHL.dat1$Result.Value),])`]
++ Number of UPHL records with: 
+    + J-flag (reduced quantitation) :: `r nrow(uphl_CHL.dat1[!is.na(uphl_CHL.dat1$Result.Code) & uphl_CHL.dat1$Result.Code == "J",])`
+    + U-flag (not detected) :: `r nrow(uphl_CHL.dat1[!is.na(uphl_CHL.dat1$Result.Code) & uphl_CHL.dat1$Result.Code == "U",])`
+
+***
+ 
+#### 2.2 CTF CHLA Calcs (back-calc)
+
+```{r ctf.calc1, eval=FALSE}
+ctf_CHL.dat1$Res_wgt.mg <- ifelse(is.na(ctf_CHL.dat1$CHLA.vol), NA,
+                ifelse(!is.na(ctf_CHL.dat1$Result.Value),
+            (ctf_CHL.dat1$Result.Value * (ctf_CHL.dat1$CHLA.vol/1000)/1000),
+                ifelse(!is.na(ctf_CHL.dat1$Result.Flag) & ctf_CHL.dat1$Result.Flag == "J",
+            (ctf_CHL.dat1$RL * (ctf_CHL.dat1$CHLA.vol/1000)/1000), NA)))
+#
+ctf_CHL.dat1$CHL_result <- ifelse(is.na(ctf_CHL.dat1$Result.Value),
+                                   ctf_CHL.dat1$RL, ctf_CHL.dat1$Result.Value)
+# recode Params
+ctf_CHL.dat1$PARAM <- ctf_CHL.dat1$ANALYTE
+ctf_CHL.dat1$PARAM <- plyr::revalue(ctf_CHL.dat1$PARAM,
+                                     c("Chlorophyll a" = "CHLA",
+                                       "Pheophytin a" = "PHEOA",
+                                       "Pheophytin b" = "PHEOB",
+                                       "Chlorophyll b" = "CHL_B"))
+ctf_CHL.dat1 <- select(ctf_CHL.dat1, MLID2, SAMPDATE : METHODNAME, PARAM, everything(), -ANALYTE)
+#
+```
+
+_Summary_  
+
++ Number of CTF records : [`r nrow(ctf_CHL.dat1)`]
++ Number of CTF records with no Volume : [`r nrow(ctf_CHL.dat1[is.na(ctf_CHL.dat1$CHLA.vol),])`]
++ Number of CTF records with no CHLA (lab) result :  [`r nrow(ctf_CHL.dat1[is.na(ctf_CHL.dat1$CHL_result),])`]
++ Number of CTF records with: 
+    + J-flag (reduced quantitation) :: `r nrow(ctf_CHL.dat1[!is.na(ctf_CHL.dat1$Result.Flag) & ctf_CHL.dat1$Result.Flag == "J",])`
+    + U-flag (not detected) :: `r nrow(ctf_CHL.dat1[!is.na(ctf_CHL.dat1$Result.Flag) & ctf_CHL.dat1$Result.Flag == "U",])`
+
+
+#### 2.3 Compare Lab matchups
+
+```{r uphl.data1.tab, message=FALSE}
+# compare SK1 levels
+# update SK1 aggregation
+ctf_CHL.dat1$SK1[ctf_CHL.dat1$SK1 == "4917388.42866"] <- "4917390.42866"
+uphl_CHL.dat1$SK1[uphl_CHL.dat1$SK1 == "4917388.42866"] <- "4917390.42866"
+#
+## cleanup MLID.name for CTF
+ctf_CHL.dat1 <- plyr::rename(ctf_CHL.dat1, replace = c("MLID" = "MLID.orig", "MLID2" = "MLID"))
+#
+upl.sk1 <- sort(unique(uphl_CHL.dat1$SK1))
+ctf.sk1 <- sort(unique(ctf_CHL.dat1$SK1))
+#
+if (length(upl.sk1) > length(ctf.sk1)) length(ctf.sk1) <- length(upl.sk1) else length(upl.sk1) <- length(ctf.sk1)
+#
+sk1_x <- as.data.frame(table(upl.sk1, ctf.sk1))
+sk1_x$pair[as.character(sk1_x$upl.sk1) == as.character(sk1_x$ctf.sk1)] <- "pair"
+sk1_x <- sk1_x[!is.na(sk1_x$pair) & sk1_x$pair == "pair",]
+table(sk1_x$pair, sk1_x$Freq, useNA = "ifany", deparse.level = 2)
+```
+
++ [`r nrow(sk1_x)`] levels of Sample.Key1 (SK1) were found in lab data
+    + [`r nrow(sk1_x[sk1_x$Freq > 0,])`] levels were matched 
+
+*Aggregate UPHL CHLA results*
+
+```{r uphl.dat2, eval=FALSE, message=FALSE, warning=FALSE}
+library(plyr); library(dplyr)
+UPHL_summ1 <- ddply(uphl_CHL.dat1[,c("MLID", "month", "Sample.Date", "PARAM", "CHL_result", "Result.Code")],
+            .(MLID, month, Sample.Date, PARAM), summarize,
+            mean = round(mean(CHL_result), 2),
+            sd = round(sd(CHL_result), 2),
+            CV = round(sd / mean *100, 2),
+            ND = sum(Result.Code == "U"))
+```
+
+*CTF CHLA results*
+
+```{r ctf.dat2, eval=FALSE}
+library(plyr); library(dplyr)
+# fixed MLID2 issue (renamed above)
+CTF_summ1 <- ddply(ctf_CHL.dat1[,c("MLID", "month", "SAMPDATE","PARAM", "CHL_result", "Result.Flag")],
+            .(MLID, month, SAMPDATE, PARAM), summarize,
+            mean = round(mean(CHL_result), 2),
+            sd = round(sd(CHL_result), 2),
+            CV = round(sd / mean *100, 2),
+            ND = sum(Result.Flag == "J"))
+```
+
+_Combine and Compare aggregated results by Lab_
+
+```{r combine.dat3, eval=FALSE}
+UPHL_summ1 <- plyr::rename(UPHL_summ1, replace = c("Sample.Date" = "SDate"))
+UPHL_summ1$Lab <- "UPHL"
+#
+CTF_summ1 <- plyr::rename(CTF_summ1, replace = c("SAMPDATE" = "SDate", "MLID2" = "MLID"))
+CTF_summ1$Lab <- "CTF"
+## combine summaries
+Lab_summ1 <- rbind(UPHL_summ1, CTF_summ1)
+# a little cleanup
+Lab_summ1$ND <- ifelse(is.na(Lab_summ1$ND), 0, Lab_summ1$ND)  ## ok
+```
+
++ Add a comment for: 4917388 x May -> changed to 4917390 [May]
+
+```{r datsumm.Fix1, eval=FALSE}
+Lab_summ1$Note <- NA
+Lab_summ1$Note[Lab_summ1$MLID == 4917390 & Lab_summ1$month == 5] <- "MLID changed from 4917388"
+Lab_summ1$MLID[Lab_summ1$MLID == 4917388 & Lab_summ1$month == 5] <- 4917390
+Lab_summ1$Note[Lab_summ1$MLID == 4917320 & Lab_summ1$month == 8] <- "Fld-Rep; QC only"
+Lab_summ1$Note[Lab_summ1$MLID == 4930009] <- "EQ-Blk; no reps"
+```
+
+***
+
+#### 2.4 Combine Results for Plotting / Analysis
+
+_Note_ :: SK6 (SK1 & SampNum) generated [180912]
+
+```{r data-combo-1, eval=FALSE}
+uphl.vars <- c("MLID", "month", "Sample.Date", "SK1", "PARAM", "Result.Code", "CHL_result", "CHL_units", "CHL_Umdl", "CHL_Ulrl", "CHLA.vol", "SK6")
+ctf.vars <- c("MLID", "month", "SAMPDATE", "SK1", "PARAM", "Result.Flag", "CHL_result", "UNITS", "DL", "RL", "CHLA.vol", "SK6")
+#
+# new SK6
+uphl_CHL.dat1$SK6 <- paste(uphl_CHL.dat1$SK1, uphl_CHL.dat1$Sample.Number, sep=".")
+uphl_1 <- uphl_CHL.dat1[,uphl.vars]
+uphl_1$Lab <- "UPHL"
+uphl_1 <- dplyr::arrange(uphl_1, SK6, PARAM)
+## transform names to CTF version
+names(uphl_1) <- c("MLID", "month", "SDate","SK1", "PARAM", "Flag", "CHL_result", "Units", "MDL", "MRL", "FVol","SK6","Lab")
+## add REPs to results
+for (k in uphl_1$SK1) {
+    for (m in uphl_1$PARAM) {
+        uphl_1$REP[uphl_1$SK1 == k & uphl_1$PARAM == m] <- 1:length(uphl_1$SK1[uphl_1$SK1 == k & uphl_1$PARAM == m])     }   }
+####
+# ChemTech
+####
+# new SK6
+ctf_CHL.dat1$SK6 <- paste(ctf_CHL.dat1$SK1, ctf_CHL.dat1$LABSAMPID, sep=".")
+ctf_1 <- ctf_CHL.dat1[,ctf.vars]
+ctf_1$Lab <- "CTF"
+ctf_1 <- dplyr::arrange(ctf_1, SK6, PARAM)
+#
+names(ctf_1) <- c("MLID", "month", "SDate","SK1", "PARAM", "Flag", "CHL_result", "Units", "MDL", "MRL", "FVol","SK6","Lab")
+## add REPs to results
+for (k in ctf_1$SK1) {
+    for (m in ctf_1$PARAM) {
+        ctf_1$REP[ctf_1$SK1 == k & ctf_1$PARAM == m] <- 1:length(ctf_1$SK1[ctf_1$SK1 == k & ctf_1$PARAM == m])     }   }
+###
+# Combine the datasets ##
+###
+CHLA.dat1 <- rbind(uphl_1, ctf_1)
+# cleanup Flags (clear out "spaces" as NAs...)
+CHLA.dat1$Flag <- ifelse(CHLA.dat1$Flag == "", NA, 
+                         ifelse(is.na(CHLA.dat1$Flag), NA, CHLA.dat1$Flag))
+```
+
+**Comments on Combined Dataset**
+
++ For the two labs (CTF and UPHL) the key _comparable_ parameters are **CHLA** and **PHEOA** [but the most interesting parameter, for now, is CHLA]  
++ MLID 4917388 in May has been corrected to 4917390 for both sets of lab results
+
+**Completeness of Combined Datasets**
+
+```{r ParamLab.tab1}
+table(CHLA.dat1$PARAM, CHLA.dat1$Lab, useNA = "ifany", deparse.level = 2)
+```
+
+
+```{r complete.full}
+dat.chla <- CHLA.dat1[CHLA.dat1$PARAM == "CHLA",]
+tab4 <- as.data.frame(addmargins(table(dat.chla$MLID, dat.chla$month, dat.chla$Lab, useNA = "ifany", exclude = c("12")), c(1,2)))
+#
+t4x <- reshape2::dcast(tab4, Var1 + Var3 ~ Var2, value.var = "Freq")
+#
+names(t4x)[c(1,2)] <- c("MLID", "Lab")
+# annotate table
+t4x$note <- NA
+t4x$note[t4x$MLID == "4917320"] <- "Field.Rep site; ignore"
+t4x$note[t4x$MLID == "4930009"] <- "EQ Blk; ignore"
+t4x$note[t4x$MLID == "4917388"] <- "Aggregated w/ 4917390"
+## would like to highlight the cells in the table missing data (i.e. value = 0)
+tabdat <- t4x
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+#
+for (i in 2:(nrow(cellbold)-2)) {
+    for (j in 3:(ncol(cellbold)-2)) {
+        cellbold[i,j] <- ifelse(tabdat[i-1,j] == 0, "font-weight: 700; border: 1px solid;", "")     }   }
+#
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tabdat, col.rgroup = c("none", "none", "grey70","grey70"), css.cell = css.cell, rnames=FALSE, caption = "Results by Site (MLID) by Date (month) and by Lab for CHLA")
+## cleanup
+# rm(css.cell, cellbold, css.x)
+```
+
+**comments on Utah Lake CHLA dataset completeness**  
+
++ ~~Looks to be a mismatch for MLID 4917388 // 4917390~~
+    + ~~These records should be reconciled and then (_likely_) combined~~
+    +  [_Complete 171023_]
++ ~~Some UPHL samples missing in all months~~
++ Weird summary results for the Equipment Blank (4930009), ~~need to investigate~~
+    + **Drop all EQ Blanks for this project**
++ Appears that two UPHL samples remain missing:
+    + 4917710 in June
+    + 4917715 in August
+    + _Email UPHL (again) to get status update on these_
+
+
+
+#### 2.5 Compare CHLA results
+
++ Param == "CHLA"
+
+```{r plot1}
+library(ggplot2)
+plot.dat <- CHLA.dat1[CHLA.dat1$PARAM == "CHLA",]; # add refinements
+plot.dat <- plot.dat[(plot.dat$MLID != 4917320),]
+plot.dat <- plot.dat[(plot.dat$MLID != 4930009),]
+# cast the data by LAb
+plot.dat2 <- reshape2::dcast(plot.dat, MLID + month + PARAM + SK1 + REP ~ Lab, 
+                             value.var = "CHL_result",
+                             fun.aggregate=function(x) mean(x, na.rm=TRUE))
+#
+z <- ggplot(data = plot.dat2, aes(x = UPHL, y = CTF), na.rm=TRUE)
+z1 <- z + geom_point(aes(), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA concentations (ug/L) for CTF versus UPHL")
+z1
+```
+
+**Of course, not really kosher to compare "reps" between lab samples**
+
+#### 2.6 Compare Aggregated CHL results
+
+**Better to compare 'aggregated' results by Lab and Parameter (= CHLA)**
+
+Working datafile :: `Lab_summ1` (see Sect. 2.3)
+
+```{r AgData.1, eval=FALSE}
+# facet by SITE (MLID)
+# Lab = colors or groups
+# dates is x-axis
+CHLA_ag.dat1 <- Lab_summ1[Lab_summ1$PARAM == "CHLA",]
+## drop EQBK 4930009 & 4917320 (duplicate sampledonly once)
+CHLA_ag.dat1 <- CHLA_ag.dat1[CHLA_ag.dat1$MLID != 4930009 & CHLA_ag.dat1$MLID != 4917320,]
+```
+
+```{r Agdata.fig1, fig.width=7, fig.asp=1.3 }
+## set up packages
+library(ggplot2)
+library(scales)
+###
+##
+z <- ggplot(data = CHLA_ag.dat1, aes(x = ((month)), y = mean, fill=Lab),
+            na.rm=TRUE) + theme_bw() + 
+    scale_fill_manual(values=c("white", "gray65")) +
+    facet_wrap(~MLID, ncol=3, scales="free_y")
+z1 <- z + geom_col(na.rm = TRUE, position=position_dodge(), 
+                   col="black", width = 0.9) + 
+        geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width = 0.3, 
+                          position = position_dodge(0.9), na.rm=TRUE) +
+    xlab("Month of Sample Collection") + ylab("Mean CHLA conc. (ug/L) [3 replicates]") + ggtitle("Mean Chlorophyll-A concentrations in Utah Lake: \nComparison of laboratory results") + 
+    theme(plot.title = element_text(hjust = 0.5), 
+          legend.position=c(0.88,0.07), legend.justification = c(1,0)) +
+    scale_x_continuous(breaks = c(5,6,7,8,9,10,11), 
+                    labels=c("M", "Jn", "Jl", "Au", "Sp", "Oc","No"))
+z1
+```
+
+```{r Agdata2, eval=FALSE}
+# cast data [CHLA_ag.dat1] by Lab
+CHLA_ag.dat1_melt <- reshape2::melt(CHLA_ag.dat1, id.vars = c(1:4,9), measure.vars = c(5:8), variable.name = "VAR-x")
+CHLA_ag.dat1_melt$LabVar <- paste(CHLA_ag.dat1_melt$Lab, CHLA_ag.dat1_melt$`VAR-x`, sep=".")
+# re-cast
+CHLA_ag.dat2 <- reshape2::dcast(CHLA_ag.dat1_melt[,c(1:4, 7, 8)], MLID + month + PARAM ~ LabVar, value.var = "value")
+
+```
+
+```{r Agdata2.fig2, fig.asp=0.8, fig.width=7, message=FALSE}
+library(ggplot2)
+library(scales)
+#
+q <- ggplot(data = CHLA_ag.dat2, aes(x = UPHL.mean, y = CTF.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(4))
+q1 <- q + geom_errorbar(aes(ymin=CTF.mean-CTF.sd, ymax=CTF.mean+CTF.sd, width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=UPHL.mean-UPHL.sd, xmax=UPHL.mean+UPHL.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA concentrations by laboratory") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+    
+q1
+
+
+
+```
+
+#### 2.7 Aggregated Data Summary
+
+```{r AggSumm1, eval=F}
+CHLA_ag.dat2$mean_Diff <- CHLA_ag.dat2$CTF.mean - CHLA_ag.dat2$UPHL.mean
+CHLA_ag.dat2$mean_LAB <- rowMeans(CHLA_ag.dat2[,c("CTF.mean", "UPHL.mean")])
+CHLA_ag.dat2$mean_RSD <- round(abs(CHLA_ag.dat2$mean_Diff)/(CHLA_ag.dat2$mean_LAB), digits=3)*100
+
+```
+
+#### 2.8 Export
+
+**Export datafiles for review**
+
+```{r export01, eval=F}
+exp.files <- list("Lab_summary" = Lab_summ1, "CHL_data" = CHLA.dat1, "Lab_comparison" = CHLA_ag.dat2)
+#
+openxlsx::write.xlsx(exp.files, file = paste("UTLK_CHLA_MethodComparison_export01",
+                format(Sys.Date(), "%y%m%d"), ".xlsx", sep=""))
+
+```
+
+### 3.0 DATA CLEANUP TASKS
+
+_Things to do / check / revise while lab and field data continue to accumulate_
+
+1) Missing Filtration Volume for MLID:4917320 in May, 2017 (**1.35**)
+    + _Presume_ that value should be the same as for 4917310 [Parent site] Vol = 250 mL [?]
+2) Missing Filtration Volume for MLID:4930009 [EQB] in May, 2017 (**1.35**)
+    + _Presume_ value should be same as other months for EQB, Vol = 500 mL
+3) Find / Explain missing **UPHL** CHL results:: (**1.5**)
+    + ~~**MAY** : 4917390 [should be combined with 4917388; 7390 is the correct MLID]~~
+    + **JUNE** : ~~4917388 [same as above; combine w/ 4917390]~~
+        + And: 4917710
+        + ~~Also, weird # of samples in May, June, July, Aug for EQB: 4930009~~
+    + ~~**JULY** : 4917388 [as above]~~
+        + ~~4917450 & 4917500 & 4917520 & 4917600 & 4917710 & 4917715 & 4917770~~
+    + **AUGUST** : ~~_all samples, except 4917450...~~
+        + 4917715
+4) Find / Explain missing **CTF** CHL results:: (**1.6**)
+    + **MAY** : 4917390 [as above; combine w/ 4917388 as 4917390]
+    + **JUNE** : 4917388 [as above; combine w/ 4917390 as 4917390]
+    + **JULY** : 4917388 [as above; combine w/ 4917390 as 4917390]
+    + **AUGUST**: _ALL August Samples !!_
+5) In UPHL CHL results (see `uphl_CHL.dat1`), for MLID = 4930009
+    + Check Sample.Dates for association with Utah Lake CHLA study Dates
+    + Also look at 7930009 in August (1 set of samples), results well above MRLs !!
+6) Go back and take a closer look at planned sample dates, as some of these results (lab) may be from other projects where the same QC site (EQB) was used in the same month, but different days as UT LK project
+
+***
+
+### 4.0 Add 3rd CHL Method 
+
+#### 4.1 Import Data
+
++ Data for HPLC analysis from UPHL was initially reviewed  as part of the 'New CHL Method Compilation'  [_180911_]
+
+```{r import_hplc, eval=F}
+# file_hplc <- choose.files(caption="Select DATA file [*.xlsx]", multi = FALSE)
+hplc_01 <- openxlsx::read.xlsx(file_hplc, sheet=1, startRow = 1, colNames=T, rowNames=FALSE);  
+```
+
++ File name :: `r basename(file_hplc)`
++ File path :: `r dirname(file_hplc)`
+
+**Note that this datafile includes _all_ results available for CHL from UPHL and is not HPLC only**
+
+#### 4.2 Filter to UTAH LAKE
+
+**By MLID**
+
+```{r mlid_recs}
+utlk_mlid <- unique(CHLA.dat1$MLID)
+nrow(hplc_01[hplc_01$MLID_x %in% utlk_mlid,])
+#
+hplc_02 <- hplc_01[hplc_01$MLID_x %in% utlk_mlid,]
+rownames(hplc_02) <- NULL
+```
+
++ `r nrow(hplc_02)` records w/ MLIDs for Utah Lake-CHL project
+    + Date range :: from `r min(hplc_02$SDate_x)` to `r max(hplc_02$SDate_x)`
+    + Some results outside of range of interest...
+
++ Utah Lake CHL data-range ::  from `r min(CHLA.dat1$SDate)` to `r max(CHLA.dat1$SDate)`
+
++ Utah Lake-CHL Sample Dates ::
+    + `r paste(sort(unique(CHLA.dat1$SDate)), collapse = " / ")`
+
+**Just build SK1 back into `hplc_02` and pull from there...**
+
+```{r hplc_SK1}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+for (i in 1:nrow(hplc_02)) {
+    hplc_02$SKey1[i] <- paste(stringi::stri_split_regex(hplc_02$SKey6[i],
+                                            "[.]", n=3, simplify = TRUE)[,1:2],
+                              collapse=".")   }
+hplc_02 <- select(hplc_02, Lab.filename:PROJECT, SKey1, everything())
+#
+utlk_SK1 <- unique(CHLA.dat1$SK1)
+hplc_03 <- hplc_02[hplc_02$SKey1 %in% utlk_SK1,]
+#
+# (unique(hplc_03$SKey1)) %in% (unique(CHLA.dat1$SK1))
+```
+
+
++ Working datafile :: `hplc_03`
+
+***
+
+#### 4.3 Bind datasets
+
+```{r combine}
+# version datafile
+CHLA.dat2 <- CHLA.dat1
+CHLA.dat2$Set <- "one"
+var1 <- names(CHLA.dat2)
+#
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+# select vars for new data
+hplc_03set <- select(hplc_03, MLID_x, SDate_x, SKey1, PARAM, Result.Code, RV2,
+                     Units2, Method.Detect.Limit, Lower.Report.Limit,SKey6, Method_x)
+#
+# add remaining cols for matchup
+hplc_03set$month <- lubridate::month(as.Date(hplc_03set$SDate_x))
+
+
+## add REPs to results
+## block below takes too long to process (inefficient code)
+# for (h in hplc_03set$Method_x) {
+#     for (k in hplc_03set$SKey1) {
+#         for (m in hplc_03set$PARAM) {
+#             hplc_03set$REP[hplc_03set$Method_x == h & hplc_03set$SKey1 == k & hplc_03set$PARAM == m] <-
+#                 1:length(hplc_03set$SKey1[hplc_03set$Method_x == h & 
+#                                               hplc_03set$SKey1 == k & hplc_03set$PARAM == m])
+#             }   }   }
+hplc_03set <- dplyr::arrange(hplc_03set, SKey6, PARAM, Method_x)
+hplc_03set$Set <- "two" 
+#
+CHLA.dat2$SDate <- as.character(CHLA.dat2$SDate)
+# fix varnames
+names(hplc_03set) <- c("MLID", "SDate", "SK1", "PARAM", "Flag", "CHL_result",
+                       "Units", "MDL", "MRL", "SK6", "Lab", "month", "Set")
+#
+CHL_data <- bind_rows(CHLA.dat2, hplc_03set)
+
+```
+
+**Working dataframe `CHL_data`**
+
+#### 4.4 Examine Combined datasets
+
+```{r adat.01}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+CHL_data <- select(CHL_data, MLID:SK1, SK6, everything())
+CHL_data <- arrange(CHL_data, SK1, PARAM, SK6, Lab, Set)
+# align PARAM names
+addmargins(table(CHL_data$PARAM, CHL_data$Lab, useNA = "ifany"))
+#
+CHL_data$PARAM <- plyr::revalue(CHL_data$PARAM,
+                                c("CHL.tot" = "CHL_tot"))
+CHL_data$PARAM <- ifelse(CHL_data$PARAM == "CHL_tot" & CHL_data$Units == "ug/L",
+                         "CHLtot.c", CHL_data$PARAM)
+# PARAM x Data.Src X Result.Unit
+tab1 <- as.data.frame.matrix(addmargins(
+    table(CHL_data$PARAM, 
+        CHL_data$Lab, 
+        useNA = "ifany"),1))
+#
+tab1x <- as.data.frame.matrix(addmargins(
+    table(paste(CHL_data$PARAM, " [ ", CHL_data$Units, " ]"), 
+        CHL_data$Lab, 
+        useNA = "ifany"),1))
+#
+tab1$Units <- NA
+tab1$PARAM <- rownames(tab1); rownames(tab1) <- NULL; tab1x$PARAM <- rownames(tab1x); rownames(tab1x) <- NULL
+tab1 %<>% select(PARAM, everything()); tab1x %<>% select(PARAM, everything())
+#
+for (k in tab1$PARAM[1:(nrow(tab1)-1)]) {
+    tab1$Units[tab1$PARAM == k] <- 
+        paste(unique(CHL_data$Units[CHL_data$PARAM == k]), collapse = " & ")   }
+```
+
+```{r adat01.tab}
+# Table : PARAM x Lab w/ Units
+tab1$Comment <- NA
+tab1$Comment[tab1$PARAM == "CHLA"] <- "Mixed data here"
+tab1$Comment[tab1$PARAM == "CHLtot.c"] <- "Same Units"
+tab1$Comment[tab1$PARAM == "PHEOA"] <- "Mixed data here"
+# styling for missing / zero's (0)
+tabdat <- tab1
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat)-2)
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+for (i in 2:(nrow(cellbold)-1)) {
+    for (j in 2:ncol(cellbold)) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700;background: gray90; border: 1px solid;",
+            ifelse(tabdat[i-1,j] != 0, "font-weight: 700;background: #DCDCDC; border: 1px solid;", ""))     }   }
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tabdat, css.cell = css.cell, caption = "Parameters by data-source w/ Units in combined dataset", rnames=FALSE, total = TRUE, align = c("l|cccc|ll"))
+```
+
+```{r adat01.tab2}
+# Table : [PARAM x Units] x Lab  #####   ######
+# styling for missing / zero's (0)
+tabdat <- tab1x
+css.cell <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+cellbold <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+css.x <- matrix("", nrow=nrow(tabdat)+1, ncol=ncol(tabdat))
+for (i in 2:(nrow(cellbold)-1)) {
+    for (j in 2:ncol(cellbold)) {
+        cellbold[i,j] <- ifelse(is.na(tabdat[i-1,j]), "font-weight: 700;background: gray90; border: 1px solid;",
+            ifelse(tabdat[i-1,j] != 0, "font-weight: 700;border: 0.5px solid;", ""))     }   }
+# background: #DCDCDC; 
+css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tabdat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tabdat), nrow=nrow(tabdat)))
+for (i in 1:nrow(cellbold)) {
+    for (j in 1:ncol(cellbold)) {
+        css.cell[i,j] <- paste(css.cell[i,j], cellbold[i,j])  }   }
+#
+htmlTable::htmlTable(tabdat, css.cell = css.cell, caption = "PARAM x Unit vs. data-source in combined dataset", rnames=FALSE, total = F, align = c("l|cccc"),
+    n.tspanner=c(1,1,2,1,2,1,2,1,1,1), tspanner=c("", "", "", "", "", "", "", "", "",""),
+    css.rgroup = "font-weight: 700; text-align: center; font-style: italic;",
+    css.tspanner.sep = "border-top: 1px solid;")
+```
+
++ Three parameters have mixed Units
+    + CHLA includes both weight (ug) and concentration (ug/L)
+    + CHLtot.c is _only_ concentration (but units style differs)
+    + PHEOA includes both weight (ug) and concentration (ug/L)
+
+**Key PARAMs**
+
+1) CHLA -- concentation
+2) CHLtot.c -- concentration
+3) PHEOA -- less important, as concentration
+
+**Comparable PARAM x Lab(method) combinations**
+
++ CHLA (concentration, as ug/L)
+    + `CHLA` & Lab = ["CTF", "UPHL"]
+    + `CHLA.c` & Lab = ["10200H", "HPLC"]
+
++ CHL [total] (concentation, as ug/L)
+    + `CHLtot.c` & Lab = ["10200H", "HPLC"] ( _where units = "UG-L"_ )
+    + `CHLtot.c` & Lab = ["UPHL"] ( _where units = "ug/L"_ )
+    + **CHL-Total concentration for CTF needs manual calculation**
+
+  
++ Working datafile :: `CHL_data`
+
+***
+
+#### 4.5 Fix filtration vols
+
+```{r adat.02}
+CHL_data_copy <- CHL_data
+
+for (j in unique(CHL_data$SK1)) {
+    dat_j <- CHL_data[CHL_data$SK1 == j,]
+    CHL_data$FVol[CHL_data$SK1 == j] <- 
+        ifelse(length(unique(dat_j$FVol[dat_j$SK1 == j & !is.na(dat_j$FVol)])) == 1,
+               unique(dat_j$FVol[dat_j$SK1 == j & !is.na(dat_j$FVol)]),
+               ifelse(length(unique(dat_j$FVol[dat_j$SK1 == j & !is.na(dat_j$FVol)])) == 0,
+                      NA,
+                      NA))  }
+#
+CHL_data$FVol[CHL_data$SK1 == "4930009.43089"] <- CHL_data$CHL_result[CHL_data$PARAM == "filt.VOL" & CHL_data$SK1 == "4930009.43089"]
+#
+CHL_data %>% group_by(SK1) %>%
+    summarize(., meanVol = mean(FVol, na.rm=T),
+              sdVol = sd(FVol, na.rm=T),
+              nObs = n())
+```
+
++ [180913] Vols looks good
+
+#### 4.6 Trim Dataset
+
++ Date Range :: From `r min(CHL_data$SDate, na.rm=T)` to `r max(CHL_data$SDate, na.rm=T)`
+
+```{r data_01}
+CHL_data <- arrange(CHL_data, SK1, PARAM, SK6, Lab, Set)
+
+```
+
++ Dates look okay atm (180913)
+
+***
+
+### 5.0 Method Comparisons
+
+#### 5.1 CHL-A concentrations
+
++ VAR :: `CHLA01`
+
+```{r chla_01}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+CHLA01 <- CHL_data %>%
+    filter((PARAM == "CHLA" & (Lab == "CTF" | Lab == "UPHL")) |
+               (PARAM == "CHLA.c" & (Lab == "10200H" | Lab == "HPLC")))
+# clean up "REPs"
+for (j in unique(CHLA01$SK6)) {
+    CHLA01$REP[CHLA01$SK6 == j] <- CHLA01$REP[CHLA01$SK6 == j & !is.na(CHLA01$REP)]
+}
+# j = "4917310.42927.2070677"
+```
+
+```{r fig01_data}
+# trim sites (not 4917320 & 4930009)
+plot1_dat <- CHLA01[(CHLA01$MLID != 4917320 & CHLA01$MLID != 4930009),]
+# cast the data by LAb
+plot1_dat2 <- reshape2::dcast(plot1_dat, MLID + month + SK1 + REP ~ Lab, 
+                             value.var = "CHL_result",
+                             fun.aggregate=function(x) mean(x, na.rm=TRUE))
+# rename 10200H
+plot1_dat2 %<>% dplyr::rename("UVVIS" = "10200H")
+```
+
+
+```{r data01_fig01}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# library(corrplot); library(Hmisc)
+# library("PerformanceAnalytics")
+#
+# UPHL (uvvis) vs CTF
+z <- ggplot(data = plot1_dat2, na.rm=TRUE)
+z1 <- z + geom_point(aes(x = UPHL, y = CTF), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA conc. (ug/L) :: CTF versus UPHL")
+z1
+# UPHL (uvvis) vs 10200H (uvvis) - Data check
+z2 <- z + geom_point(aes(x = UPHL, y = UVVIS), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA conc. (ug/L) :: UPHL versus UPHL")
+z2
+# (plot1_dat2[(!is.na(plot1_dat2$UVVIS) & 
+                # !is.na(plot1_dat2$UPHL) &
+                # plot1_dat2$UVVIS != plot1_dat2$UPHL),])
+# UPHL (uvvis) vs HPLC
+z3 <- z + geom_point(aes(x = UPHL, y = HPLC), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA conc. (ug/L) :: UPHL UVVIS vs HPLC")
+z3
+# CTF vs HPLC
+z4 <- z + geom_point(aes(x = HPLC, y = CTF), na.rm=TRUE) + 
+    geom_abline(slope = 1, intercept = 0, lty=2, col = "black") + 
+    theme_bw() + scale_x_continuous(limits= c(0,NA)) + 
+    scale_y_continuous(limits=c(0,NA)) + 
+    ggtitle("Scatterplot of CHLA conc. (ug/L) :: CTF UVVIS vs HPLC")
+z4
+
+```
+
+
+#### 5.3 Aggregate Replicates (UTLK only)
+
+```{r agg_01}
+CHLA01$Lab[CHLA01$Lab == "10200H"] <- "UVVIS"
+CHLA_SUMM01 <- plyr::ddply(CHLA01[(CHLA01$MLID != 4917320 & CHLA01$MLID != 4930009),
+                    c("SK1","MLID", "month","SDate", "CHL_result", "Flag", "Lab")],
+                           .(SK1, MLID, month, SDate, Lab), 
+                           dplyr::summarize,
+                           mean = round(mean(CHL_result, na.rm=T), 2),
+                           sd = round(sd(CHL_result, na.rm=T), 2),
+                           CV = round(sd / mean *100, 2),
+                           ND = sum(!is.na(Flag)))
+#
+```
+
+```{r agg01_fig01, fig.width=7, fig.height=9}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+zz <- ggplot(data = CHLA_SUMM01[CHLA_SUMM01$Lab != "UVVIS",], 
+            aes(x = ((month)), y = mean, fill=Lab),na.rm=TRUE) + theme_bw() + 
+    scale_fill_manual(values=c("white", "gray65", "blue")) +
+    facet_wrap(~MLID, ncol=3, scales="free_y")
+zz1 <- zz + geom_col(na.rm = TRUE, position=position_dodge(),col="black", width = 0.9) +
+    geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width = 0.3, 
+                          position = position_dodge(0.9), na.rm=TRUE) +
+    xlab("Month of Sample Collection") + ylab("Mean CHLA conc. (ug/L) [3 replicates]") +
+    ggtitle("Mean Chlorophyll-A concentrations in Utah Lake: \nComparison of laboratory methods") + 
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position=c(0.95,0.07), legend.justification = c(0.8,0.5),
+          legend.direction = "vertical", legend.title=NULL) +
+    scale_x_continuous(breaks = c(5,6,7,8,9,10,11), 
+                       labels=c("M", "Jn", "Jl", "Au", "Sp", "Oc","No")) +
+    labs(fill=NULL)
+zz1
+```
+
+```{r agg01_fig02_data}
+CHLA_SUMM01_melt <- reshape2::melt(CHLA_SUMM01,
+                                   id.vars = c(1:5),
+                                   measure.vars = c(6:9),
+                                   variable.name = "VAR")
+CHLA_SUMM01_melt$LabVar <- paste(CHLA_SUMM01_melt$Lab, CHLA_SUMM01_melt$VAR, sep=".")
+# re-cast
+CHLA_SUMM02 <- reshape2::dcast(CHLA_SUMM01_melt[, c(1:5, 7, 8)],
+                               SK1 + MLID + month + SDate ~ LabVar,
+                               value.var = "value")
+```
+
+```{r agg01_fig02}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# UPHL x CTF
+q <- ggplot(data = CHLA_SUMM02, aes(x = UPHL.mean, y = CTF.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(7))
+q1 <- q + geom_errorbar(aes(ymin=CTF.mean-CTF.sd, ymax=CTF.mean+CTF.sd, 
+                            width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=UPHL.mean-UPHL.sd, 
+                       xmax=UPHL.mean+UPHL.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA conc.: UPHL vs. CTF") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+    
+q1
+
+```
+
+```{r agg01_fig03}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# UPHL x UVVIS
+q <- ggplot(data = CHLA_SUMM02, aes(x = UPHL.mean, y = UVVIS.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(7))
+q2 <- q + geom_errorbar(aes(ymin=UVVIS.mean-UVVIS.sd, ymax=UVVIS.mean+UVVIS.sd, 
+                            width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=UPHL.mean-UPHL.sd, 
+                       xmax=UPHL.mean+UPHL.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA conc.: UPHL vs. UVVIS") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+q2
+
+```
+
+```{r agg01_fig04}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# UPHL x HPLC
+q <- ggplot(data = CHLA_SUMM02, aes(x = UPHL.mean, y = HPLC.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(7))
+q2 <- q + geom_errorbar(aes(ymin=HPLC.mean-HPLC.sd, ymax=HPLC.mean+HPLC.sd, 
+                            width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=UPHL.mean-UPHL.sd, 
+                       xmax=UPHL.mean+UPHL.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA conc.: UPHL vs. HPLC") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+q2
+
+```
+
+```{r agg01_fig05}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# HPLC x CTF
+q <- ggplot(data = CHLA_SUMM02, aes(x = HPLC.mean, y = CTF.mean), na.rm=TRUE) + 
+    theme_bw() + scale_colour_manual(values=rainbow(7))
+q2 <- q + geom_errorbar(aes(ymin=CTF.mean-CTF.sd, ymax=CTF.mean+CTF.sd, 
+                            width=0.3), na.rm=TRUE) +
+    geom_errorbarh(aes(xmin=HPLC.mean-HPLC.sd, 
+                       xmax=HPLC.mean+HPLC.sd, height=0.3), na.rm=TRUE) + 
+    geom_point(aes(fill=factor(month)), na.rm=T, shape=21, size=4) + 
+    geom_abline(slope=1, intercept=0, lty=2, col="black") + 
+    scale_x_continuous(limits= c(NA,NA)) + 
+    scale_y_continuous(limits=c(NA,NA)) +
+    geom_text(aes(label=MLID), size=2, vjust=2, hjust=0.5, na.rm=T, check_overlap = TRUE,
+              nudge_x=4) +
+    ggtitle("Pairwise comparison of mean CHLA conc.: HPLC vs. CTF") + 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    labs(fill = "Sample Month")
+q2
+
+```
+
+
+### 6.0 Export
+
+```{r export_data, eval=F}
+CHLmethods_dat <- list("Data_all" = CHL_data,
+                       "Data_CHLA" = CHLA01,
+                       "CHLA_summ01" = CHLA_SUMM01,
+                       "CHLA_summ02" = CHLA_SUMM02)
+openxlsx::write.xlsx(CHLmethods_dat, 
+                     file = paste("UtahLake_CHL2017_MethodsData_",
+                                  format(Sys.Date(), "%y%m%d"), ".xlsx", sep=""))
+#
+save(CHLmethods_dat,
+     file = paste("UtahLake_CHL2017_MethodsData_",
+                                  format(Sys.Date(), "%y%m%d"), ".RData", sep=""))
+
+```
+
+
+
+***
+
+***
+
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***

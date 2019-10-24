@@ -1,0 +1,671 @@
+---
+title: "UTLK Solids Methods review"
+author: "T.Hooker"
+date: "9 August, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+
+***
+
+**Project Root Path** :: 
+`"U:\ENG_WQ\tobyhooker\DATA MANAGEMENT & QA\DATA.Projects\UtahLake_chemMethods\UTLK_solids_meth_r"`
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidy"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+# startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+[190808] :: Utah Lake Science Panel (Dr. Mitch Hogsett) posed question of exact procedure and naming-convention for aqueous volatile solids concentration, TVS versus VSS. TSS from SM 2540D / EPA 160.2; Volatile solids from SM 2540E and EPA 160.4. [email].  
+
+Questions to address::
+
+1) Which methods for TVS (etc.) are used in UTLK dataset?
+2) Which methods for TVS are provided by UPHL?
+3) Is there disagreement b/w method-IDs and characteristic names that must be reconciled?
+4) Is it necessary / worthwhile to do so?
+
+Steps:  
+
+1) Extract all solids data from AWQMS from UTLK sites
+2) Eval Meth-Params 
+
+
+## 1.0 Data import
+
+1) UTLK Sites
+
+```{r}
+## [2; paste vector from ClipBoard to DF / vector]
+# readClipboard()-> utlk_sites
+```
+
+2) Use these sites to pull full Standard Export from AWQMS for all P-related parameters
+
+Go to :  https://awqms.utah.gov/Homepage.aspx  
+Login as: thooker // pw  
+Navigate :
+
++ Metadata  
++ Monitoring Locations  
++ [select] Search  
++ [select] Export to Excel  
++ -complete-  
+
+3) Import AWQMS data
+
+```{r}
+# file.01  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+data01 <- openxlsx::read.xlsx(file.01, sheet=1, startRow = 2,
+                              rowNames=FALSE, check.names = T)
+```
+
+4) Cleanup and Tune
+
++ Sampling and Analysis Date/Time
+
+```{r}
+data01$Activity.Start.Date <- as.Date(data01$Activity.Start.Date, origin="1899-12-30")
+data01$Analysis.Start.Date <- as.Date(data01$Analysis.Start.Date, origin="1899-12-30")
+data01$Activity.Start.Time <- as.character(chron::times((data01$Activity.Start.Time - as.integer(data01$Activity.Start.Time))))
+data01$Analysis.Start.Time <- as.character(chron::times((data01$Analysis.Start.Time - as.integer(data01$Analysis.Start.Time))))
+```
+
+
++ Filename ::  `r basename(file.01)`
++ Path ::  `r dirname(file.01)`
++ Datafile has :: `r nrow(data01)` records & `r ncol(data01)` fields
++ Record Data Range :: From `r min(data01$Activity.Start.Date)` to `r max(data01$Activity.Start.Date)`
++ Record Sample-Time Range :: From [`r min(data01$Activity.Start.Time, na.rm=T)`] to [`r max(data01$Activity.Start.Time, na.rm=T)`]
+
+### 1.1 Trim datafile
+
+**Fields to Keep from AWQMS Standard Export**
+
+```{r}
+awqms_export_fields_tokeep <- c("Organization.ID","Activity.ID","Activity.Type","Activity.Media","Activity.Start.Date", "Activity.Start.Time", "Activity.Relative.Depth","Activity.Depth.Height","Activity.Depth.Height.Unit","Activity.Top.Depth.Height","Activity.Top.Depth.Height.Unit","Activity.Bottom.Depth.Height","Activity.Bottom.Depth.Height.Unit","Project.ID1","Project.ID2","Activity.Conducting.Organization1","Activity.Conducting.Organization2","Monitoring.Location.ID","Monitoring.Location.Name","Monitoring.Location.Type","Activity.Comment","Sample.Collection.Method.ID","Sample.Collection.Method.Context","Sample.Collection.Method.Name","Sample.Collection.Method.Description","Result.UID","Data.Logger.Line","Detection.Condition","Characteristic.Name","Method.Speciation","Sample.Fraction","Result.Value","Result.Unit","Result.Qualifier","Result.Status","Value.Type","Time.Basis","Temperature.Basis","Result.Comment","Result.Depth.Height","Result.Depth.Height.Unit","Analytical.Method.ID","Analytical.Method.Context","Analytical.Method.Name","Analytical.Method.Qualifier","Analytical.Method.Description","Laboratory.Name","Analysis.Start.Date","Analysis.Start.Time","Analysis.Start.Time.Zone","Laboratory.Comment.Code","Detection.Limit.Type1","Detection.Limit.Value1","Detection.Limit.Unit1","Detection.Limit.Type2","Detection.Limit.Value2","Detection.Limit.Unit2","Laboratory.Accreditation.Indicator","Substance.Dilution.Factor1","Lab.Batch.ID","Lab.Sample.ID")
+```
+
+```{r}
+data01 %>% select(., awqms_export_fields_tokeep) -> data02
+# Simplify VarNames
+data02 %<>% select(ORG = Activity.Conducting.Organization1,
+                   ACTID = Activity.ID, 
+                   ACT.type = Activity.Type, 
+                   SDate = Activity.Start.Date, STime = Activity.Start.Time, 
+                   ACT.depth = Activity.Relative.Depth, 
+                   PROJ01 = Project.ID1, 
+                   MLID = Monitoring.Location.ID, 
+                   MLID.name = Monitoring.Location.Name,
+                   MLID.type = Monitoring.Location.Type, 
+                   ACT.comment = Activity.Comment,
+                   DLL = Data.Logger.Line, 
+                   MethodID = Analytical.Method.ID, 
+                   PARAM = Characteristic.Name, 
+                   SampFrac = Sample.Fraction, 
+                   DetCond = Detection.Condition, 
+                   ResQual = Result.Qualifier, 
+                   Result.Value, Result.Status, Result.Comment, Value.Type,
+                   Limit01_nm = Detection.Limit.Type1, 
+                   Limit01_val = Detection.Limit.Value1,
+                   Limit02_nm = Detection.Limit.Type2, 
+                   Limit02_val = Detection.Limit.Value2,
+                   DilFact = Substance.Dilution.Factor1, 
+                   Method_desc = Analytical.Method.Description,
+                   LAB = Laboratory.Name, 
+                   AnalysisDate = Analysis.Start.Date,
+                   BatchID = Lab.Batch.ID, 
+                   PROJ02 = Project.ID2, everything()
+				   )
+## arrange Var's
+data02 %<>% select(-ORG, -ACTID, -PROJ01, everything()) %>%
+  select(ACT.type:ResQual, Result.Status,
+         Result.Value, Limit01_nm, Limit01_val, Limit02_nm, Limit02_val, DilFact,
+         everything())
+```
+
+### 1.2 Cleanup Methods and Params
+
+**Parameters**
+
+```{r}
+unique(data02$PARAM)
+```
+
+```{r}
+data02 %<>% mutate(ParamX = PARAM) %>%
+  mutate(ParamX = recode(.$PARAM,
+                         "Total suspended solids" = "TSS",
+                         "Total volatile solids" = "TVS", 
+                         "Total dissolved solids" = "TDS",
+                         "Organic carbon" = "Corg",
+                         "Total fixed solids" = "TFxS")) %>%
+  select(ACT.type:PARAM, ParamX, everything())
+```
+
+```{r}
+unique(data02$MethodID)
+```
+
+```{r}
+unique(data02$SampFrac)
+table(data02$SampFrac, useNA="ifany")
+data02 %>% {addmargins(table(.$PARAM, .$SampFrac, useNA="ifany"))}
+```
+
+
++ Build Meth_Par.key
+
+```{r}
+data02 %<>% mutate(
+  MethPar.key = paste(.$MethodID,
+                      .$ParamX,
+                      sep="_"),
+  Par_frac = paste(.$ParamX,
+                   recode(.$SampFrac,
+                          "Dissolved" = "dis",
+                          "Total" = "TOT",
+                          .missing="TOT"),
+                   sep=".")
+  ) %>%
+  select(-LAB, -ACT.comment, everything()) %>%
+  select(ACT.type:MethodID, MethPar.key, Par_frac,
+         PARAM:Result.Value, Result.Unit, Result.Comment, ACT.comment, everything())
+```
+
+
++ Add YR_qtr to records
+
+```{r}
+data02 %<>% mutate(
+  samp_YRqtr = paste(lubridate::year(.$SDate),
+                     ".q",
+                     sprintf("%.2i",lubridate::quarter(.$SDate, with_year=F)),
+                     sep="")) %>%
+  select(ACT.type:SDate, samp_YRqtr, everything())
+```
+
+
++ Code Result.Values w/ RLs
+
+```{r}
+rlimits = c("Lower Reporting Limit", "Lower Quantitation Limit")
+detlimits = c("Method Detection Level")
+
+
+data02 %<>% mutate(
+  LRL = case_when(
+    Limit01_nm %in% rlimits ~ Limit01_val,
+    TRUE ~ as.numeric(NA)),
+  MDL = case_when(
+    Limit01_nm %in% detlimits ~ Limit01_val,
+    Limit02_nm %in% detlimits ~ Limit02_val,
+    TRUE ~ as.numeric(NA))) %>%
+  select(ACT.type:Result.Unit, LRL, MDL, everything()) %>%
+  mutate(
+    LRL = case_when(
+      LRL == 0 ~ as.numeric(NA),
+      TRUE ~ LRL),
+    MDL = case_when(
+      MDL == 0 ~ as.numeric(NA),
+      TRUE ~ MDL)
+    )
+```
+
+
+```{r}
+unique(data02$Limit01_nm)
+unique(data02$Limit02_nm)
+unique(data02$DetCond)
+```
+
+### 1.3 Result Values are numeric
+
+```{r}
+data02 %<>% mutate(
+  RV2 = as.double(Result.Value)) %>%
+  select(ACT.type:Result.Status, RV2, everything()) %>%
+  mutate(
+    RV3 = case_when(
+      is.na(RV2) & !is.na(LRL) ~ LRL,
+      !is.na(RV2) ~ RV2)
+    ) %>% select(ACT.type:Result.Value, RV3, everything())
+```
+
+
+***
+***
+
+
+## 2.0 Data Review
+
+### 2.1 Data Project Goals
+
+1) Identify Method and Parameter Combinations
+2) Exmaine MethParms over time...
+
+```{r}
+data02 %>% {addmargins(table(.$MethodID, .$ParamX, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+***
+
+### PARAM.01 Total Dissolved Solids
+
+```{r}
+data02 %>% filter(ParamX=="TDS") %>%
+  {addmargins(table(.$samp_YRqtr, .$MethodID, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+```{r fig.width=8, fig.height=4}
+data02 %>% filter(ParamX=="TDS") %>%
+  ggplot(.,
+         aes(y=SDate,
+             x=factor(MethodID),
+             col=SampFrac)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Method ID") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="3 year",
+               limits=c(as.Date("1989-01-01"), as.Date("2019-01-01"))) +
+  coord_flip() +
+  ggtitle("Total Dissolved Solids [methods]")
+#
+# (
+#   data02 %>% filter(ParamX=="TP") %>%
+#   ggplot(.,
+#          aes(y=SDate,
+#              x=factor(MethodID),
+#              col=SampFrac)) + theme_bw() +
+#   geom_point(na.rm=T,
+#              position=position_jitter(width=0.1), size=1) +
+#   xlab("Method ID") + ylab("Sample Date") +
+#   scale_y_date(date_labels ="%Y",
+#                date_breaks="3 year",
+#                limits=c(as.Date("1989-01-01"), as.Date("2019-01-01"))) +
+#   coord_flip() +ggtitle("Total P [digest]")
+# ) %>% ggsave("UTLK_DP_methods_date_01.jpg", ., height=4, width=10, dpi=500)
+```
+
+***
+
+### PARAM.02 Total Suspended Solids
+
+```{r}
+data02 %>% filter(ParamX=="TSS") %>%
+  {addmargins(table(.$samp_YRqtr, .$MethodID, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+```{r}
+data02 %>% filter(ParamX=="TSS") %>%
+  ggplot(.,
+         aes(y=SDate,
+             x=factor(MethodID),
+             col=SampFrac)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Method ID") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="3 year",
+               limits=c(as.Date("1989-01-01"), as.Date("2019-01-01"))) +
+  coord_flip() +
+  ggtitle("Total Suspended Solids [methods]")
+```
+
+### PARAM.03 Total Volatile Solids 
+
+```{r}
+data02 %>% filter(ParamX=="TVS") %>%
+  {addmargins(table(.$samp_YRqtr, .$MethodID, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+```{r}
+data02 %>% filter(ParamX=="TVS") %>%
+  ggplot(.,
+         aes(y=SDate,
+             x=factor(MethodID),
+             col=SampFrac)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.1), size=1) +
+  xlab("Method ID") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="3 year",
+               limits=c(as.Date("1989-01-01"), as.Date("2019-01-01"))) +
+  coord_flip() +
+  ggtitle("Total Volatile Solids [methods]")
+```
+
+### PARAM.04 Fixed Solids
+
+```{r}
+data02 %>% filter(ParamX=="TFxS") %>%
+  {addmargins(table(.$samp_YRqtr, .$MethodID, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ Take a look at Fixed and Volatile solids, combined...
+
+```{r}
+shape_names <- c(
+  "circle", paste("circle", c("open", "filled", "cross", "plus", "small")), "bullet",
+  "square", paste("square", c("open", "filled", "cross", "plus", "triangle")),
+  "diamond", paste("diamond", c("open", "filled", "plus")),
+  "triangle", paste("triangle", c("open", "filled", "square")),
+  paste("triangle down", c("open", "filled")),
+  "plus", "cross", "asterisk"
+)
+```
+
+
+```{r}
+data02 %>% filter(ParamX=="TVS" | ParamX=="TFxS") %>%
+  ggplot(.,
+         aes(y=SDate,
+             x=factor(MethodID),
+             color=ParamX, shape=SampFrac)) + theme_bw() +
+  geom_point(na.rm=T,
+             position=position_jitter(width=0.1), size=1.5) +
+  scale_shape_manual(values=c("Total"=19,
+                              "Dissolved"=8),
+                     na.translate=T,
+                     na.value=0) +
+  scale_color_manual(values=c("TVS"="darkblue",
+                              "TFxS"="orange"),
+                     aesthetics = c("color", "fill")) +
+  
+  xlab("Method ID") + ylab("Sample Date") +
+  scale_y_date(date_labels ="%Y",
+               date_breaks="3 year",
+               limits=c(as.Date("1989-01-01"), as.Date("2019-01-01"))) +
+  coord_flip() +
+  ggtitle("Total Volatile / Fixed Solids [methods]")
+```
+
+### PARAM.05 Organic C
+
++ Magnitude of Corg in UTLK
+
+```{r}
+data02 %>% filter(ParamX=="Corg") %>%
+  ggplot(.,
+         aes(x=as.character(ACT.depth), 
+             y=RV3, 
+             fill=SampFrac), na.rm=T) +
+  geom_boxplot()
+```
+
++ Magnitude of Corg versus TSS and TVS in UTLK
+
+```{r}
+data02 %>% filter((ParamX=="Corg" & SampFrac=="Dissolved") |
+                    (ParamX == "TSS")) %>%
+  ggplot(., aes(x=ParamX, 
+                y=RV3), na.rm=T) +
+  geom_boxplot(na.rm=T) +
+  scale_y_continuous(oob=squish,
+                     limits=c(0.5, 300),
+                     trans = "log10") +
+  ggtitle("Utah Lake: Dissolved Organic-C and TSS") +
+  ylab("Concentration (mg/L)")
+```
+
++ Quick look at DOC when TSS is low/small
+```{r}
+data02 %>% filter((ParamX=="Corg" & SampFrac=="Dissolved") |
+                    (ParamX == "TSS" & RV2 < 20)) %>%
+  ggplot(., aes(x=ParamX, 
+                y=RV3), na.rm=T) +
+  geom_boxplot(na.rm=T) +
+  scale_y_continuous(oob=squish,
+                     limits=c(NA, NA),
+                     trans = "log10") +
+  ggtitle("Utah Lake: Dissolved Organic-C and TSS at low TSS levels") +
+  ylab("Concentration (mg/L)")
+```
+
+```{r}
+data02 %>% filter((ParamX=="Corg" & SampFrac=="Dissolved") |
+                    (ParamX == "TSS") |
+                    (ParamX == "TVS")) %>%
+  ggplot(., aes(x=RV3), na.rm=T) +
+  stat_ecdf(aes(col=ParamX),
+            na.rm=T) +
+  scale_x_continuous(trans="log10",
+                     limits=c(NA, NA),
+                     breaks=c(0.5, 1, 2, 5, 10, 20, 50, 100, 200)) +
+  geom_vline(xintercept = 0.5, lty=2, color="darkgreen")
+  
+```
+
+```{r}
+data02 %>% filter((ParamX=="Corg" & SampFrac=="Dissolved") |
+                    (ParamX == "TSS") |
+                    (ParamX == "TVS")) %>%
+  ggplot(., aes(x=RV3), na.rm=T) +
+  stat_ecdf(aes(col=ParamX),
+            na.rm=T) +
+  scale_x_continuous(limits=c(NA, 50)) +
+  geom_vline(xintercept = 0.5, lty=2, color="darkgreen")
+  
+```
+
+***
+***
+
+
+### 2.2 Frequency of Data below RL
+
+```{r message=FALSE, warning=FALSE}
+
+data02 %>% filter(ParamX %in% c("TSS", "TVS", "Corg")) %>%
+  group_by(ParamX, MethodID, SampFrac) %>%
+  summarise(Obs = n(),
+            p_NonDet = sum(is.na(RV2)),
+            min_RL = signif(min(LRL, na.rm=T), digits=3),
+            max_RL = signif(max(LRL, na.rm=T), digits=3),
+            "10%ile" = signif(quantile(RV3,probs = 0.1, na.rm=T), digits =2),
+            "25%ile" = signif(quantile(RV3,probs = 0.25, na.rm=T), digits =2),
+            "median" = signif(quantile(RV3,probs = 0.5, na.rm=T), digits =2),
+            "75%ile" = signif(quantile(RV3,probs = 0.75, na.rm=T), digits =2),
+            "90%ile" = signif(quantile(RV3,probs = 0.9, na.rm=T), digits =2)
+            ) -> Solids_RL_tab01
+#
+Solids_RL_tab01 %<>% mutate(
+  NonDet_total = paste(round(p_NonDet / Obs, digits=2)*100,
+                       " %", sep="")
+  ) %>% 
+  select(ParamX:p_NonDet, NonDet_total, everything()) %>%
+  mutate(
+    min_RL = case_when(
+      min_RL == "Inf" ~ as.numeric(NA),
+      !is.na(min_RL) ~ min_RL),
+    max_RL = case_when(
+      max_RL == "-Inf" ~ as.numeric(NA),
+      !is.na(max_RL) ~ max_RL
+    )
+  )
+
+# openxlsx::write.xlsx(DP_RL_tab01, file="DP_reportlimits_table1.xlsx")
+```
+
+```{r}
+Solids_RL_tab01 %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), n.tspanner=c(3,3,3), tspanner=c("","",""), align=c("rclc|ccc|cc|ccccc"))
+```
+
+***
+
+### 2.3 Sample Fraction Effects
+
+```{r}
+data02 %>% filter(ParamX=="Corg") %>%
+  {table(.$ParamX, .$SampFrac, useNA="ifany", deparse.level = 2)}
+
+data02 %>% filter(ParamX=="Corg") %>%
+  {table(.$ParamX, .$ACT.depth, useNA="ifany", deparse.level = 2)}
+```
+
+
+```{r}
+data02 %>%
+  filter(ParamX=="Corg" & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, RV2, ACT.depth,
+         MethodID) %>%
+  spread(., SampFrac, RV2) %>%
+  ggplot(., 
+         aes(x=Total, y=Dissolved, 
+             col=MLID)) + theme_bw() +
+  geom_point(na.rm=T) + theme(legend.position = "none") +
+  ggtitle("Organic-C: Dissolved versus Total (filtered/unfiltered) concentrations [mg /L]") +
+  geom_abline(slope=1, intercept=0, lty=2, col="darkgreen") +
+  scale_x_continuous(limits=c(NA, NA), oob=squish) +
+  scale_y_continuous(limits=c(NA, NA), oob=squish)
+```
+
+
+### "TVS" vs TSS
+
+```{r}
+data02 %>%
+  filter((ParamX=="TVS" | ParamX=="TSS") & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, ACT.depth, RV3) %>%
+  spread(., ParamX, RV3) %>%
+  ggplot(., 
+         aes(x=TSS, y=TVS, 
+             col=as.factor(lubridate::year(SDate)))) + theme_bw() +
+  geom_point(na.rm=T) + theme(legend.position = "none") +
+  ggtitle("TSS and {total} Volatile Suspended Solids concentrations [mg /L]") +
+  geom_abline(slope=1, intercept=0, lty=2, col="darkgreen") +
+  scale_x_continuous(limits=c(NA, NA), oob=squish) +
+  scale_y_continuous(limits=c(NA, NA), oob=squish) +
+  geom_hline(yintercept = 9, lty=2, col="red") +
+  geom_vline(xintercept = 4, lty=2, col="red")
+```
+
+### VSS:TSS ratios
+
+```{r}
+data02 %>%
+  filter((ParamX=="TVS" | ParamX=="TSS") & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, ACT.depth, RV3) %>%
+  spread(., ParamX, RV3) %>% 
+  filter(!is.na(TSS) & !is.na(TVS)) %>%
+  mutate(
+    VSS_TSS = case_when(
+      TVS > TSS ~ as.numeric(NA),
+      TVS == TSS ~ 1.0,
+      TRUE ~ signif((TVS / TSS), digits = 2))
+    ) %>%
+  ggplot(., 
+         aes(x=TSS, y=VSS_TSS, 
+             col=as.factor(lubridate::year(SDate)))) + theme_bw() +
+  geom_point(na.rm=T) + theme(legend.position = "none") +
+  ggtitle("VSS/TSS ratio vs. TSS concentration") +
+  scale_x_continuous(limits=c(NA, NA), oob=squish, trans="log10") +
+  scale_y_continuous(limits=c(NA, NA), oob=squish, labels = percent) +
+  geom_vline(xintercept = 4, lty=2, col="red")
+```
+
+```{r}
+data02 %>%
+  filter((ParamX=="TVS" | ParamX=="TSS") & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, ACT.depth, RV3) %>%
+  spread(., ParamX, RV3) %>% filter(!is.na(TSS) & !is.na(TVS)) %>%
+  mutate(
+    VSS_TSS = case_when(
+      TVS > TSS ~ as.numeric(NA),
+      TVS == TSS ~ 1.0,
+      TRUE ~ signif((TVS / TSS), digits = 2))
+    ) %>%
+  ggplot(., aes(x=VSS_TSS), na.rm=T) +
+  stat_ecdf(aes(col=as.factor(lubridate::year(SDate))),
+            na.rm=T) +
+  scale_x_continuous(limits=c(NA, NA), labels=percent) +
+  scale_y_continuous(labels=percent)
+```
+
+```{r}
+data02 %>%
+  filter((ParamX=="TVS" | ParamX=="TSS") & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, ACT.depth, RV3) %>%
+  spread(., ParamX, RV3) %>% filter(!is.na(TSS) & !is.na(TVS)) %>%
+  mutate(
+    VSS_TSS = case_when(
+      TVS > TSS ~ as.numeric(NA),
+      TVS == TSS ~ 1.0,
+      TRUE ~ signif((TVS / TSS), digits = 2))
+    ) %>%
+  ggplot(., aes(x=VSS_TSS), na.rm=T) +
+  stat_ecdf(na.rm=T) +
+  scale_x_continuous(limits=c(NA, NA), labels=percent) +
+  scale_y_continuous(labels=percent)
+```
+
+```{r}
+data02 %>%
+  filter((ParamX=="TVS" | ParamX=="Corg") & ACT.depth != "Bottom") %>%
+  distinct(MLID, ParamX, SDate, SampFrac, ACT.depth, RV3) %>%
+  spread(., ParamX, RV3) %>% filter(!is.na(Corg) & !is.na(TVS)) %>%
+  ggplot(., 
+         aes(x=TVS, y=Corg, 
+             col=as.factor(lubridate::year(SDate)))) + theme_bw() +
+  geom_point(na.rm=T) + theme(legend.position = "none") +
+  ggtitle("DOC vs. VSS concentration") +
+  scale_x_continuous(limits=c(NA, NA), oob=squish) +
+  scale_y_continuous(limits=c(NA, NA), oob=squish) +
+  geom_vline(xintercept = 9, lty=2, col="red") +
+  geom_hline(yintercept = 0.5, lty=2, col="red") +
+  geom_abline(slope=0.5, intercept=0, lty=2, col="grey40")
+```
+
+
+***
+***
+***
+
+## END
+### Working pieces
+```{r}
+# select(EDD2_2, contains("key", ignore.case=T)) %>% names(.)
+```
+
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

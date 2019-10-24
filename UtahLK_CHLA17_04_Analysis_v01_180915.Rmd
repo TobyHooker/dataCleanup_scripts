@@ -1,0 +1,92 @@
+---
+title: "Utah Lake CHL-Methods Comparison (2017) 4.0"
+subtitle: "Analysis"
+author: "T.Hooker"
+date: "15 September, 2018"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 10
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+
+**This version includes all three CHL methods for comparison, from 2017 samples**
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+### Notes
+
+This notebook summarizes method-comparison analyses for CHL samples from Utah Lake in 2017
+
+_A little workspace cleanup may be needed_
+
+### 1.0 Data Import
+
+**Working from last exported XLS (or RData) file (listed, multi-tab) from "UtahLH_CHLA17_03_AllMethods_vo1_180911.Rmd" [notebook]**
+
+```{r import01}
+# file_UTLK <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# UTLK_0 <- openxlsx::read.xlsx(file_UTLK, sheet="Sites", startRow = 1, colNames=TRUE, rowNames=FALSE)  
+##
+# UTLK_0_rdat <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+CHLmethods_dat <- get(load(UTLK_0_rdat))
+# unlist(CHLmethods_dat)
+for (j in names(CHLmethods_dat)) {
+    assign(names(CHLmethods_dat[j]), data.frame(CHLmethods_dat[[j]]))   }
+rm(j)
+
+
+```
+
++ Selection of the R-data set gives a list of DFs
++ **File** :: `r basename(UTLK_0_rdat)`
++ **Path** :: `r dirname(UTLK_0_rdat)`
++ **File Date** :: `r format(file.info(UTLK_0_rdat)$mtime, "%m/%d/%Y")`
++ **Data frames** included in loaded data (list) :: 
+    + `r paste(names(CHLmethods_dat), collapse = " // ")`
+
+***
+
+### 2.0 Statistical Approach
+
+1) Evaluate linear correspondence (linear regressions) among Methods for CHLA and CHL_total
+2) Examine reporting / detection limits among Methods
+    + Value and Frequency
+3) Quantify precision of replicate filters
+
+
+
+
+
+***
+
+***
+### End
+
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***

@@ -1,0 +1,625 @@
+---
+title: "UPHL TP results by Calibration Range"
+author: "T.Hooker"
+date: "8 March, 2018"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 10
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "xtable", "dplyr")
+#lapply(packge.set, library, character.only=T)
+#options(table_counter=FALSE)
+options(scipen = 999, digits = 4)
+#opts_chunk$set(tidy=TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+A meeting w/ UPHL in early 2018 revealed some potential inefficiencies in the analysis of Total Phosphorus (TP), using UPHLs implementation of analytical method EPA 365.1 (molybdate absorbance).  The apparent inefficiency can affect the time-requirements of UPHL staff to perform TP analyses and the costs to DWQ when samples must be re-run on a separate, lower calibration curve with a concomitant hardware change.  After the initial run on the HI-CAL method, ~ 20% of samples need to be diluted and rerun, while ~ 50% of samples need to be rerun on the LO-CAL method
+
+_Overview of UPHL TP Procedure_
+
+1) Samples are prepared for acid-persulfate digest in sets of 70 per batch, plus 20 QC samples
+
+2) After digest, samples (a sample run w/ appropriate calibration, blanks, and CCV samples) are run (Lachat 8700 ?) against a higher-calibration (HI-CAL), ranging from 0.01 to 1.0 mg P/L (10 to 1000 ppb).  A check standard of 0.02 mg P/L is used.  Lab- and Matrix-spikes are at 0.10 mg P/L (100 ppb)
+
+3) For any results where the result value is < 0.02 mg P/L (20 ppb), the samples are rerun on the instrument after a change in hardware (manifold, flow lines) and calibration-standards
+
+4) The lower-calibration (LO-CAL) ranges from 0.003 to 0.20 mg P/L (3 to 200 ppb)
+
+5) The digest is approximately 8.2 mL of sample with 0.3 mL H^+^ and 0.25 mL of K~2~SO~4~.  [_These details can be confirmed by reviewing EPA 365.1_]
+
+
+**Goal**
+
+Examine whether significant / severe bias exists in results that lie in lower portions of the HI-CAL range, relative to re-run results using the LO-CAL setup
+
+**Current Reporting Limits**
+
++ Minimum Reporting Limit :: MRL = 0.003 mg P/L (3.0 $\mu$g P/L)
++ Method Detection Level :: MDL = 0.00277 mg P/L (2.77 $\mu$g P/L)
+
+
+**Objective**
+
+1) Import raw-data from Boyd Neilson (nutrient analyst at UPHL) for TP analyses.  Obtain ~ 30 months of results for a 'comparable' test
+2) Compare sample-results run on both HI-CAL and LO-CAL
+    + Values will be < 0.02 mg P/L
+3) Look for significant bias and/or uncertainty around 0.010 mg P/L and lower
+
+
+
+**Data-report nomenclature**
+
+LRB = lab reagent blank / aka Method-Blank  
+LFB = lab fortified blank / _spiked_ Method-Blank  
+LFM = lab fortified matrix / _spiked_ Sample  
+
++ For any duplicate records:
+    + Use RV that has the oldest / most recent analysis datetime
+    + Use RV w/ lowest position in file
+
+Filename structure ::  YYMMDD + [5/6] + {1:reps}.csv  
+
++ **5** (as 50, 51, etc) identifies HI-CAL
++ **6** (as 60, 61, etc) identifies LO-CAL
+
+### 1.0 Import Data
+
+```{r import01, eval=F}
+#files <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+b <- lapply(files, FUN=read.csv, header=TRUE, stringsAsFactors=F)
+#
+filename <- basename(files)
+names(b) <- filename
+path.filename <- dirname(files)
+
+```
+
+
+A total of `r length(b)` data files were selected from path:  **`r path.filename[1]`**
+
+```{r show.Import0, message=FALSE, warning=FALSE}
+options(width=95)
+file.list <- filename
+length(file.list) <- prod(dim(matrix(file.list, ncol=5)))
+filelist.dat <- data.frame(matrix(data=(file.list), ncol=5, byrow=TRUE))
+htmlTable::htmlTable(filelist.dat, caption = "Names of imported data files", css.cell = rbind(rep("padding-left: 1em; padding-right: 1em;font-size: 0.8em;", times=ncol(filelist.dat)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;", ncol=ncol(filelist.dat), nrow=nrow(filelist.dat))), align="l", header = rep(NA, times = ncol(filelist.dat)))
+rm(filelist.dat)
+```
+
+#### 1.1 Extract to Dataframe
+
+```{r import02, eval=F}
+TP.dat0 <- plyr::ldply(b, .id="Lab.filename")
+TP.dat0$Lab.filename <- as.character(TP.dat0$Lab.filename)
+# addition record position
+TP.dat0$posn <- NA
+for (j in unique(TP.dat0$Lab.filename)){
+    for (m in 1:nrow(TP.dat0[TP.dat0$Lab.filename == j,])) {
+        TP.dat0$posn[TP.dat0$Lab.filename == j][m] <- m  }  }
+```
+
+**Examine dataframe**
+
+```{r examine01}
+data.file <- TP.dat0 # 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+#
+htmlTable::htmlTable(Data.Vars, caption ="Datafile Characteristics of LAB DATA", align = c("l", "c"), css.cell = "padding-left: 1.5em; padding-right: 1.5em; font-size: 0.8em;", rnames = FALSE, header = c("Field No.", "Field Name", "Class","NAs", "Levels", "Blanks", "Obs"))
+```
+
+#### 1.2 Cleanup Field-names
+
++ Long field-names are _annoying_
+
+```{r clean01, eval=F}
+names(TP.dat0)[3] <- "Adate"
+names(TP.dat0)[4] <- "Atime"
+names(TP.dat0)[5] <- "DF"
+names(TP.dat0)[6] <- "RV" # values are already adjusted for DF
+names(TP.dat0)[7] <- "Units"
+names(TP.dat0)[8] <- "Analyte"
+```
+
++ Clean Dates (to Dates)
+
+```{r clean02}
+TP.dat0$Adate <- lubridate::mdy(TP.dat0$Adate)
+# leave time alone for now
+```
+
+
+
+
+
+#### 1.3 Sample Keys
+
+```{r Skey01, eval=F}
+TP.dat0$SKey1 <- paste(TP.dat0$Sample.ID, as.numeric(TP.dat0$Adate - as.Date("1899-12-30")), sep=".")
+# CAL-type
+TP.dat0$CAL.type <- ifelse(substr(TP.dat0$Lab.filename, 7,7) == 5,
+                           "HiCAL",
+                           ifelse(substr(TP.dat0$Lab.filename, 7,7) == 6,
+                                  "LoCAL", NA))
+# SKey2
+TP.dat0$SKey2 <- paste(TP.dat0$SKey1, TP.dat0$CAL.type, sep=".")
+```
+
+### 2.0 Examine Data
+
++ Re-arrange data to examine similar samples (as Sample.ID)
+
+```{r exam01, eval=F}
+TP.dat1 <- dplyr::arrange(TP.dat0, Sample.ID, Lab.filename, posn)
+```
+
++ Total number of unique `Sample.ID` (including CAL and QC-samples) :: `r format(length(unique(TP.dat1$Sample.ID)), big.mark=",")`
+
+***
+
+**Look at counts of sample.IDs**
+
+```{r exam02}
+x0 <- as.data.frame(table(TP.dat1$Sample.ID, useNA = "ifany"))
+table(x0$Freq)
+```
+
++ May have up to ~ [`r nrow(x0[x0$Freq == 2,])`] pairs of Lo x Hi-Cal samples
+
+**Extract Result-pairs from `TP.dat1`**
+
+```{r exam03, eval=F}
+TP.sets <- as.character(sort(unique(x0$Var1[x0$Freq == 2])))
+TP.pairs <- TP.dat1[TP.dat1$Sample.ID %in% TP.sets,]
+
+```
+
+**dCast `TP.pairs` by Analyte**
+
+```{r exam04, eval=F}
+library(reshape2)
+TP.pairs_cast <- dcast(TP.pairs, Sample.ID ~ CAL.type,
+                      value.var = "RV", mean)
+TP.pairs_cast <- TP.pairs_cast[!is.na(TP.pairs_cast$LoCAL),]
+```
+
+**Results x Cal-Type Summary**
+```{r summ1}
+summary(TP.pairs_cast$HiCAL)
+summary(TP.pairs_cast$LoCAL)
+```
+
+***
+
+### 3.0 Compare Results
+
+#### 3.1 Fig 1 :: Boxplots by Calibration Range
+
+```{r fig01, fig.width=5, fig.height=5}
+library(ggplot2); library(scales)
+# boxplot - aggregated
+ggplot(data=reshape2::melt(TP.pairs_cast[,c(1:3)], id.vars = "Sample.ID", 
+        variable.name="CAL.Type", value.name="TP")) + theme_bw() +
+    geom_boxplot(aes(x = CAL.Type, y = TP))
+#
+ggsave(file=paste("TP_cal_Fig1_boxplot_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       width=5, height=5, dpi=500)
+```
+
++ No substantial signs of result-bias by calibration type [range]
+
+***
+
+#### 3.2 Compare paired results
+
+```{r result01, eval=F}
+TP.pairs_cast$resid <- TP.pairs_cast$HiCAL - TP.pairs_cast$LoCAL
+TP.pairs_cast$rpd_high <- round(as.numeric(TP.pairs_cast$resid / TP.pairs_cast$HiCAL)*100, digits = 2)
+TP.pairs_cast$rpd_high.abs <- round(abs(as.numeric(TP.pairs_cast$resid / TP.pairs_cast$HiCAL)*100), digits = 2)
+# class
+TP.pairs_cast$GRP <- ifelse(TP.pairs_cast$rpd_high.abs > 30,
+                            ifelse(abs(TP.pairs_cast$resid) > 0.003,
+                                   "Hi_var", "ok"),
+                            "ok")
+```
+
++ Approximately (`r nrow(TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",])`) records out of (`r nrow(TP.pairs_cast)`) had high variance between measurements 
+    + (RPD > 30% and residual > MRL)
+    + Equivalent to : `r round(nrow(TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",])/nrow(TP.pairs_cast)*100, digits=2)`% of 30 months of results
+
+
+#### 3.3 Fig 2 :: Scatterplot of Hi-Low calibration pairs
+
+```{r fig02, fig.width=6.5, fig.height=5}
+library(ggplot2); library(scales); scaleFUN <- function(x) sprintf("%.3f", x)
+# polygon data
+poly.d <- data.frame(x = c(0.02, 0.02, 0.003, 0.003), y = c(0.003, 0.040, 0.040, 0.003))
+#
+ggplot(data=TP.pairs_cast[TP.pairs_cast$GRP == "ok",]) + theme_bw() + 
+    geom_polygon(data=poly.d, aes(x=x, y=y), fill="gray70", alpha=0.5) +
+    geom_point(aes(x=HiCAL, y=LoCAL)) + 
+    geom_abline(slope=1, intercept=0, col="black", lty=5, size=0.7) +
+    geom_vline(xintercept = 0, lty=5, col="darkgray", size=0.4) +
+    geom_hline(yintercept = 0, lty=5, col="darkgray", size=0.4) + 
+    scale_y_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on Low-Calibration (mg P/L)") +
+    scale_x_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on High-Calibration (mg P/L)") +
+    ggtitle("TP concentrations:  Low-cal versus High-cal") +
+    geom_hline(yintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.010, lty=2, col="darkgreen", size=0.5) +
+    annotate("text", x=0.0035, y = 0.038, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.035, y = 0.0038, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.0105, y = 0.038, hjust=0,vjust=0.65, 
+             label="Low-Std\n   (Hi-Cal)", col="darkgreen") +
+    annotate("text", x = 0.035, y = 0.038, hjust=1,vjust=1, label="1:1 line") +
+    geom_point(data=TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",],
+               aes(x=HiCAL, y=LoCAL), col="darkorange2")
+#
+ggsave(file=paste("TP_cal_Fig2_scatter_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       width=6.5, height=5, dpi=500)
+```
+
++ The scatterplot above illustrates the reasonable low apparent-bias in TP concentrations below 0.020 mg P/KL (= 20 ppb P)  
+
+Shown on the figure are paired-samples analyzed first on the High-Calibration setup (x-axis), and those samples with results < 0.20 mg P/L subsequently analyzed on the Lower-Calibration setup (y-axis).  Note that very few samples in this dataset (~ 3 months of TP analyses and `r nrow(TP.pairs_cast)` paired results) had High-Calibration results > 0.020 mg P/L (2 in this dataset).  Also note that a small portion (`r round(nrow(TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",])/nrow(TP.pairs_cast)*100, digits=2)`%, as estimated above, with filled _Orange_ symbols) had high variability, where RPD was > 30% _and_ the difference in Result.Values was > MRL (0.003 mgP/L)
+
+An additional plot, with a closer look at results near the current MRL is below...
+
+#### 3.4 Fig 3 :: [Zoomed] Scatterplot
+
+```{r fig03, fig.width=6.5, fig.height=5}
+library(ggplot2); library(scales); scaleFUN <- function(x) sprintf("%.3f", x)
+# polygon data
+poly.d <- data.frame(x = c(0.02, 0.02, 0.003, 0.003), y = c(0.003, 0.040, 0.040, 0.003))
+#
+ggplot(data=TP.pairs_cast[TP.pairs_cast$GRP == "ok",]) + theme_bw() + 
+    geom_polygon(data=poly.d, aes(x=x, y=y), fill="gray70", alpha=0.5) +
+    geom_hline(yintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.010, lty=2, col="darkgreen", size=0.5) +
+    geom_point(aes(x=HiCAL, y=LoCAL)) + 
+    geom_abline(slope=1, intercept=0, col="black", lty=5, size=0.7) +
+    geom_vline(xintercept = 0, lty=5, col="darkgray", size=0.4) +
+    geom_hline(yintercept = 0, lty=5, col="darkgray", size=0.4) + 
+    scale_y_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on Low-Calibration (mg P/L)") + 
+    scale_x_continuous(limits=c(NA, 0.04), labels=scaleFUN, 
+                       "TP on High-Calibration (mg P/L)") +
+    coord_cartesian(xlim=c(0, 0.022), ylim=c(0,0.025)) +
+    ggtitle("TP concentrations:  Low-cal versus High-cal [closer-look]") +
+    annotate("text", x=0.0035, y = 0.024, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.018, y = 0.0038, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.0105, y = 0.024, hjust=0,vjust=0.6, 
+             label="Low-Std\n   (Hi-Cal)", col="darkgreen") +
+    annotate("text", x = 0.035, y = 0.038, hjust=1,vjust=1, label="1:1 line") +
+    geom_point(data=TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var",],
+               aes(x=HiCAL, y=LoCAL), col="darkorange2")
+#
+ggsave(file=paste("TP_cal_Fig3_scatZoom_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       width=6.5, height=5, dpi=500)
+```
+
+#### 3.45 Quick LM on plot
+
+```{r linmodel.01, eval=F}
+TPmod.dat <- TP.pairs_cast[TP.pairs_cast$HiCAL <= 0.02,]
+
+TPmod1.lm <- lm(LoCAL ~ HiCAL, data=TPmod.dat)
+TPmod1.summ <- summary(TPmod1.lm)
+TP1.seyx <- TPmod1.summ$sigma
+#
+TPmod.dat2 <- TP.pairs_cast[TP.pairs_cast$GRP == "ok" & TP.pairs_cast$HiCAL <= 0.02,]
+
+TPmod2.lm <- lm(LoCAL ~ HiCAL, data=TPmod.dat2)
+TPmod2.summ <- summary(TPmod2.lm)
+TP2.seyx <- TPmod2.summ$sigma
+
+
+```
+
+
++ Let's take a look at the _residuals_ w/ the close-up scale...
+
+#### 3.5 Fig 4 :: Residuals Plot
+
+```{r fig04, fig.width=6.5, fig.height=5}
+library(ggplot2); library(scales); scaleFUN <- function(x) sprintf("%.3f", x)
+# polygon data
+poly.d2 <- data.frame(x = c(0, 0.02, 0.02, 0), y = c(-0.003, -0.003, 0.003, 0.003))
+# geom_polygon(data=poly.d, aes(x=x, y=y), fill="gray70", alpha=0.5) +
+#
+ggplot(data=TP.pairs_cast[TP.pairs_cast$GRP == "ok" &
+                              TP.pairs_cast$HiCAL < 0.025 &
+                              abs(TP.pairs_cast$resid) < 0.005,]) + theme_bw() + 
+    geom_polygon(data=poly.d2, aes(x=x, y=y), fill="gray70", alpha=0.5) +
+    geom_vline(xintercept = 0.003, lty=2, col="darkred", size=0.7) +
+    geom_vline(xintercept = 0.010, lty=2, col="darkgreen", size=0.5) +
+    geom_point(aes(x=HiCAL, y=resid)) + 
+    geom_vline(xintercept = 0, lty=5, col="darkgray", size=0.4) +
+    geom_hline(yintercept = 0, lty=5, col="black", size=0.4) + 
+    scale_y_continuous(limits=c(NA, NA), labels=scaleFUN, 
+                       "Residuals (High - Low") + 
+    scale_x_continuous(limits=c(NA, NA), labels=scaleFUN, 
+                       "TP on High-Calibration (mg P/L)") +
+    ggtitle("TP concentrations:  Residuals versus High-cal [closer-look]") +
+    annotate("text", x=0.0035, y = 0.005, hjust=0,vjust=0, label="MRL", col="darkred") +
+    annotate("text", x=0.0105, y = 0.005, hjust=0,vjust=0, 
+             label="Low-Std (Hi-Cal)", col="darkgreen") +
+    geom_point(data=TP.pairs_cast[TP.pairs_cast$GRP == "Hi_var" &
+                                TP.pairs_cast$HiCAL < 0.025 &
+                                abs(TP.pairs_cast$resid) < 0.005,],
+               aes(x=HiCAL, y=resid), col="darkorange2") +
+    geom_smooth(data=TP.pairs_cast[TP.pairs_cast$GRP == "ok" &
+            TP.pairs_cast$HiCAL < 0.025 & abs(TP.pairs_cast$resid) < 0.005,], 
+            aes(x=HiCAL, y=resid), method="lm")
+#
+ggsave(file=paste("TP_cal_Fig4_Resid_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       width=6.5, height=5, dpi=500)
+```
+
+### 4.0 All TP results in AWQMS
+
+#### 4.1 Import TP AWQMS file
+
+Import result-summary-file for all TP analyses form AWQMS
+
+```{r import.ALLTP, eval=F}
+library(openxlsx)
+filename.tp <- choose.files(caption="Select File to Import (XLSX)", multi=FALSE)
+DATA.file <- read.xlsx(filename.tp, sheet=1, startRow = 1, colNames=TRUE, rowNames=FALSE)
+TPall.dat <- DATA.file; rm(DATA.file)
+```
+
+
+Current file [**`r basename(filename.tp)`**], as of [`r format(Sys.Date(), "%m/%d/%Y")`] has:  
+
++ `r format(nrow(TPall.dat), big.mark=",")` records
++ `r format(length(unique(TPall.dat$Monitoring.Location.ID)), big.mark=",")` unique sites
++ Datafile created on :: `r file.info(filename.tp)[,5]`
++ Datafile was last accessed :: `r file.info(filename.tp)[,6]`
+
+#### 4.15 Fix Dates
+
+```{r fix_dates01, eval=F}
+TPall.dat$Activity.Start.Date <- as.Date(TPall.dat$Activity.Start.Date, origin="1899-12-30")
+```
+
+
+#### 4.2 Import Monitoring Location ID file
+
+Use MLID-file to subset `TPall.dat` for specific water body types
+
+Path for Master-Geofile [MonLoc] (from AWQMS) ::
+    + `L:\DATA MANAGEMENT & QA\DATA.Projects\GEOFILE_awqms_r`
+
+```{r import.MonLoc, eval=F}
+MLID.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+load(MLID.file)
+```
+
+Dataframe name is :: `MonLoc.file`  
+
++ Contains `r nrow(MonLoc.file)` records / site.IDs
+
+```{r MonLoc.tab01}
+library(tidyr)
+tab01 <- as.data.frame.table(addmargins(table(MonLoc.file$Monitoring.Location.Type, useNA = "ifany"))) %>% dplyr::rename("MLID.Type" = "Var1", "nObs" = "Freq")
+#
+tab <- tab01
+htmlTable::htmlTable(tab, caption = "Monitoring Location Types", css.cell = rbind(rep("padding-left: 1em; padding-right: 1em;font-size: 0.7em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.9em;", ncol=ncol(tab), nrow=nrow(tab))), align="lc", total = TRUE, rnames=F)
+```
+
+```{r MonLoc.tab02}
+addmargins(table(MonLoc.file$Monitoring.Location.Type, MonLoc.file$QC_type, useNA = "ifany"))
+```
+
+#### 4.3 Join TP-data w/ MLID-info
+
+```{r TPdat.join01, eval=F}
+library(dplyr, quietly=TRUE)
+TPall.dat2 <- left_join(TPall.dat, MonLoc.file[,c(3,6,52,53)],
+                        by = "Monitoring.Location.ID")
+```
+
+```{r TP.summ01}
+addmargins(table(TPall.dat2$Monitoring.Location.Type, TPall.dat2$QC_type, useNA = "ifany"))
+```
+
+```{r tablex}
+table(as.numeric(format(TPall.dat2$Activity.Start.Date, "%Y")), TPall.dat2$QC_type, useNA = "ifany")
+
+```
+
+
+
+#### 4.4 Plot eCDF of TP results
+
+```{r plot_packages, eval=F}
+library(ggplot2); library(scales); library(dplyr)
+```
+
+```{r TP_fig.01}
+fig01_data <- filter(TPall.dat2,
+                     is.na(QC_type) & !is.na(Monitoring.Location.Type) &
+        (Monitoring.Location.Type == "Lake" | Monitoring.Location.Type == "River/Stream"))
+#
+ggplot(data=fig01_data) + theme_bw() +
+    stat_ecdf(aes(x=RV.x, col=Monitoring.Location.Type), na.rm=T, pad=F) +
+    scale_x_continuous(limits=c(0.002, NA), trans = "log10",
+                       breaks=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, 2),
+                       labels=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, ">2"),
+                       name="Total P concentration (mg P/L)", oob=squish) +
+    coord_cartesian(xlim=c(0.002, 2)) +
+    scale_y_continuous(labels = percent, name="% of Records less than result value") +
+    guides(col = guide_legend(title = "Water Body Type", override.aes = list(size=1.2))) +
+    scale_color_manual(values=c("darkblue", "darkgreen")) +
+    theme(legend.position=c(0.82,0.15), legend.background = element_rect(fill="gray95"),
+          legend.key = element_rect(fill="gray95"))
+#
+ggsave(paste("TPall_fig01_cdf_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       height=4, width=5, dpi=500)
+```
+
+```{r TP_fig.02}
+ggplot(data=fig01_data) + theme_bw() +
+    stat_ecdf(aes(x=RV.x, col=Monitoring.Location.Type), na.rm=T, pad=F) +
+    scale_x_continuous(limits=c(0.002, NA), trans = "log10",
+                       breaks=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, 2),
+                       labels=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, ">2"),
+                       name="Total P concentration (mg P/L)", oob=squish) +
+    coord_cartesian(xlim=c(0.002, 2)) +
+    scale_y_continuous(labels = percent, name="% of Records less than result value") +
+    guides(col = guide_legend(title = "Water Body Type", override.aes = list(size=1.2))) +
+    scale_color_manual(values=c("darkblue", "darkgreen")) +
+    theme(legend.position=c(0.82,0.15), legend.background = element_rect(fill="gray95"),
+          legend.key = element_rect(fill="gray95")) +
+    geom_jitter(data=fig01_data[!is.na(fig01_data$Detection.Condition) & fig01_data$Detection.Condition == "Not Detected",], aes(x=RV.x, y = (-0.05)),
+               shape="U", col="red", width=0.05, height=0)
+#
+ggsave(paste("TPall_fig02_cdf_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       height=4, width=5, dpi=500)
+
+```
+
+```{r TP_fig.03}
+fig03_data <- fig01_data[fig01_data$Activity.Start.Date > as.Date("2005-01-01"),]
+#
+ggplot(data=fig03_data[]) + theme_bw() +
+    stat_ecdf(aes(x=RV.x, col=Monitoring.Location.Type), na.rm=T, pad=F) +
+    scale_x_continuous(limits=c(0.002, NA), trans = "log10",
+                       breaks=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, 2),
+                       labels=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, ">2"),
+                       name="Total P concentration (mg P/L)", oob=squish) +
+    coord_cartesian(xlim=c(0.002, 2)) +
+    scale_y_continuous(labels = percent, name="% of Records less than result value") +
+    guides(col = guide_legend(title = "Water Body Type", override.aes = list(size=1.2))) +
+    scale_color_manual(values=c("darkblue", "darkgreen")) +
+    theme(legend.position=c(0.82,0.15), legend.background = element_rect(fill="gray95"),
+          legend.key = element_rect(fill="gray95")) +
+    geom_jitter(data=fig03_data[!is.na(fig03_data$Detection.Condition) & fig03_data$Detection.Condition == "Not Detected",], aes(x=RV.x, y = (-0.05)),
+               shape="U", col="red", width=0.05, height=0) +
+    ggtitle("TP values since 2005")
+#
+ggsave(paste("TPall_fig03_cdf_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       height=4, width=5, dpi=500)
+
+```
+
+
+```{r TP_fig.04}
+fig04_data <- fig03_data[fig03_data$Activity.Start.Date > as.Date("2009-09-30"),]
+#
+library(ggplot2); library(scales)
+ggplot(data=fig04_data[]) + theme_bw() +
+    stat_ecdf(aes(x=RV.x, col=Monitoring.Location.Type), na.rm=T, pad=F) +
+    scale_x_continuous(limits=c(0.002, NA), trans = "log10",
+                       breaks=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, 2),
+                       labels=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, ">2"),
+                       name="Total P concentration (mg P/L)", oob=squish) +
+    coord_cartesian(xlim=c(0.002, 2)) +
+    scale_y_continuous(labels = percent, name="% of Records less than result value") +
+    guides(col = guide_legend(title = "Water Body Type", override.aes = list(size=1.2))) +
+    scale_color_manual(values=c("darkblue", "darkgreen")) +
+    theme(legend.position=c(0.82,0.15), legend.background = element_rect(fill="gray95"),
+          legend.key = element_rect(fill="gray95")) +
+    geom_jitter(data=fig04_data[!is.na(fig04_data$Detection.Condition) & fig04_data$Detection.Condition == "Not Detected",], aes(x=RV.x, y = (-0.05)),
+               shape="U", col="red", width=0.05, height=0, na.rm=T) +
+    ggtitle("TP values WY2010 to present")
+#
+ggsave(paste("TPall_fig04_cdf_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       height=4, width=5, dpi=500)
+
+```
+
+```{r TP_fig.05}
+fig04_data <- fig03_data[fig03_data$Activity.Start.Date > as.Date("2011-09-30"),]
+#
+library(ggplot2); library(scales)
+ggplot(data=fig04_data[]) + theme_bw() +
+    stat_ecdf(aes(x=RV.x, col=Monitoring.Location.Type), na.rm=T, pad=F) +
+    scale_x_continuous(limits=c(0.002, NA), trans = "log10",
+                       breaks=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, 2),
+                       labels=c(0.002, 0.005, 0.010, 0.020, 0.05, 0.1, 0.2, 0.5, 1, ">2"),
+                       name="Total P concentration (mg P/L)", oob=squish) +
+    coord_cartesian(xlim=c(0.002, 1)) +
+    scale_y_continuous(labels = percent, name="% of Records less than result value") +
+    guides(col = guide_legend(title = "Water Body Type", override.aes = list(size=1.2))) +
+    scale_color_manual(values=c("darkblue", "darkgreen")) +
+    theme(legend.position=c(0.82,0.15), legend.background = element_rect(fill="gray95"),
+          legend.key = element_rect(fill="gray95")) +
+    geom_jitter(data=fig04_data[!is.na(fig04_data$Detection.Condition) & fig04_data$Detection.Condition == "Not Detected",], aes(x=RV.x, y = (-0.05)),
+               shape="U", col="red", width=0.05, height=0, na.rm=T) +
+    ggtitle("TP values WY2012 to present")
+#
+ggsave(paste("TPall_fig05_cdf_", format(Sys.Date(), "%y%m%d"), ".jpeg", sep=""),
+       height=4, width=5, dpi=500)
+
+```
+
+***
+
+### 5.0 Other data-questions
+
+#### 5.1 How many high-samples?
+
+DF == `TP.dat1`
+
++ Total number of records in UPHL-dataset run on HiCAL ::  `r nrow(TP.dat1[TP.dat1$CAL.type == "HiCAL",])`
++ Number of unique SKeys :: `r length(unique(TP.dat1$SKey2[TP.dat1$CAL.type == "HiCAL"]))`
+    + _many of these are lab-QC samples..._
+
+
+```{r high.dat, eval=F}
+HiCAL <- TP.dat1[TP.dat1$CAL.type == "HiCAL",]
+HiC.uniq <- HiCAL$SKey2[duplicated(HiCAL$SKey2)]
+HiCAL$dupe_rec <- ifelse(HiCAL$SKey2 %in% HiC.uniq,"dupe", NA)
+#
+HiCAL$SampType <- ifelse(is.na(as.integer(HiCAL$Sample.ID)), "QC", "samp")
+table(HiCAL$SampType, useNA = "ifany")
+
+```
+
++ Records in HiCAL for "samples" :: `r nrow(HiCAL[HiCAL$SampType == "samp",])`
++ Number of unique _Sample_ keys :: `r length(unique(HiCAL$SKey2[HiCAL$SampType == "samp"]))`
+    + Number of unique _Sample_ keys w/ duplicate-records :: `r length(unique(HiCAL$SKey2[HiCAL$SampType == "samp" & !is.na(HiCAL$dupe_rec)]))`
+
+
+***
+
+### Wrap Up
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***
