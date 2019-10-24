@@ -1,0 +1,2529 @@
+---
+title: "UPHL April-Dec 2018 Lab Data (III)"
+author: "T.Hooker"
+date: "20 January, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE, error = TRUE)
+```
+
+### Notes
+
+[190114] :: This notebook describes data review and cleanup tasks for UPHL chemistry data (from EDDs).  These notes will build on previous efforts to clean and review lab data for AWQMS import.
+
++ EDD files for this dataset begin w/ the first file after 3/16/18 ::
+    + "UDWQ_EDD_20180323.txt" to present (1/14/19)
+
+[190117] :: Starting 2nd Notebook, will start w/ Site-level cleanup tasks.
+
+**Note** :: A "checklist" file for Chem data processing tasks has been created from prior LAb Cleanup notebooks.  
++ Filename :: `ChemCleanupNotes_uphl_v01_190116.docx`
++ Path :: `U:\INFODATA\Sampling\Data_Cleanup_Scripts\190114_UPHL_LIMS_wy18CLEANUP`
+
+_Working Dataframes_
+1) EDD_methods
+2) EDD.dat1
+3) EDD.param_5
+4) Param.tab04
+5) Method_tab01
+6) Method_tab03
+7) PassThru.tab01
+
+[190120] :: Metadata cleanup completed
+
++ From an initial 72,308 records in EDD-set
++ Keeping _only_ records that have _"CHL_rerun"_ **or** 'NA' in `RECORD_status`
+    + 2368 + 60572 = 62,940 records
+
+Moving on to clean up result status and values
+
++ [_Saved and exported current working dataset `EDD.dat3` as .RData_]
+
+_Reduce DF storage in project environment_
+
+***
+***
+
+## III: Results Cleanup
+
+_Workspace cleanup tasks w/ ENV.RData saves_
+
+```{r df_backup}
+# save(EDD.dat3, file="EDD3_00.RData")
+load(file="EDD3_00.RData")
+```
+
+### 5.0 Examine Result.Values
+
+**Tasks**  
+
+1) Review structure of Result.Values for working dataset
+2) Review Reporting Limits
+3) Build Sample.Keys (SKey2, SKey3)
+4) Review Analyte-Specific result-requirements
+    + Result Codes
+    + conversion of some result codes to result_comments
+    + Review QC information on result(s)
+5) Review result units
+
+#### 5.1 Review Result Values
+
+_Note:  Record counts will, unless specified otherwise, focused only on records that have successfully passed through `PARAM` and `SITE` status checks_
+
++ Variable-class for `Result.Value` is :: `r class(EDD.dat3$Result.Value)`  :: _Good !_
+    + Records w/ `NA` in `Result.Value` :: `r sum(is.na(EDD.dat3$Result.Value[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"]))`  ::  _Good !_
+
++ Results w/ value of `0.0` ?  ::  `r sum(EDD.dat3$Result.Value[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"] == 0)`
+    + Apparently, no useable records in this dataset have RV = 0
+    + Record Status where RV = 0 :: `r unique(EDD.dat3$RECORD_status[EDD.dat3$Result.Value == 0])`
+
+```{r result01}
+# class(EDD.dat3$Result.Value)
+# length(EDD.dat3$Result.Value[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"] == 0)
+# EDD.dat3 %>% filter(Result.Value == 0) %>% distinct(RECORD_status)
+# filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+# EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+#     filter(is.na(Sample.Number)) %>% nrow()
+```
+
++ Useable records w/ Lab.Sample.Number :: `r nrow(EDD.dat3[(is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun") & is.na(EDD.dat3$Sample.Number),])` :: _Good !_
+
+### 6.0 Build Sample Keys
+
+#### 6.1 Build Sample Key-2
+
+> MLID + Sample.Date + Lab.Sample.Number
+
+```{r SKey2_00}
+EDD.dat3 %<>% mutate(
+    SKey2 = paste(.$MLID2,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Number, 
+                  sep=".")      )
+# EDD.dat3 %>% 
+#     filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+#     filter(nchar(.$SKey1) > 13) %>%
+#     distinct(.$RECORD_status)
+# {table(nchar(.$SKey1), useNA="ifany", deparse.level = 2)} %>%
+# sort(unique(substr(EDD.dat3$SKey2[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"], 1, 7)))
+```
+
++ Records w/ missing SKey2 :: `r sum(is.na(EDD.dat3$SKey2))`  ::  _Good !_
+
++ Unique levels of SKey2 (useable records) :: `r length(unique(EDD.dat3$SKey2[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"]))`
+
++ This Sample-Key accounts for SiteID & Sample.Date & Lab-Sample-Bottle
++ However, all "CHL_rerun" records, which currently do not yet have an MLID assigned, have the same "Site.ID" portion of SKey2
+
+#### 6.2 Build Sample Key-3
+
+> MLID + Sample.Date + Lab.Sample.Number + {ParamX x Sample.Matrix}
+
++ First, build PARAM.key
+
+```{r SKey3_00}
+EDD.dat3 %<>% mutate(PARAM.key = 
+                         paste(.$ParamX,
+                               .$Sample.Matrix,
+                               sep="."))
+EDD.dat3 %>% 
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    {table(.$PARAM.key, .$RECORD_status, .$Method.GRP, useNA="ifany")} %>%
+    as.data.frame.table(.) %>% filter(.$Freq > 0) -> ParKey_tab01
+
+EDD.dat3 %>% 
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    {table(.$PARAM.key, .$RECORD_status, .$Method.GRP, useNA="ifany")} %>%
+    as.data.frame.table(.) %>% filter(.$Freq > 0) %>% arrange(Var3, Var1) %>%
+    reshape2::dcast(., Var1 ~ Var3, sum) -> ParKey_tab02
+ParKey_tab02 %<>% arrange(desc(BOD), desc(CHL), desc(CHL_hplc),
+                          desc(Filter),desc(Gen.chem), desc(metals), desc(nutrients))
+TOT = c(NA, sum(ParKey_tab02$BOD), 
+        sum(ParKey_tab02$CHL), sum(ParKey_tab02$CHL_hplc),
+        sum(ParKey_tab02$Filter),
+        sum(ParKey_tab02$Gen.chem),
+        sum(ParKey_tab02$metals),
+        sum(ParKey_tab02$nutrients))
+ParKey_tab03 <- rbind(ParKey_tab02, TOT)
+ParKey_tab03 %>%
+    htmlTable::htmlTable(.,
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+        times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                                 ncol=ncol(.)+1, nrow=nrow(.))),
+        caption="Useable Data counts by Parameter x Sample-Fraction", align=c("rcr"), total=T)
+
+# EDD.dat3 %>% 
+#     filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+#     filter(is.na(Sample.Type)) %>% distinct(ParamX)
+```
+
++ Total records (useable) in table above :: `r format(sum(TOT, na.rm=T), big.mar=",")`
+
+**Now, build SKey3**
+
+```{r SKey3_01}
+EDD.dat3 %<>% mutate(
+    SKey3 = paste(.$MLID2,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Number, 
+                  .$PARAM.key,
+                  sep=".")      )
+```
+
++ Unique levels of SKey3 (useable records) :: `r length(unique(EDD.dat3$SKey3[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"]))`
+
++ Based on this Sample-Key, only (`r nrow(EDD.dat3[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun",]) - length(unique(EDD.dat3$SKey3[is.na(EDD.dat3$RECORD_status) | EDD.dat3$RECORD_status == "CHL_rerun"]))`) records are duplicated in some way
+
+
+```{r dupe_SKey3}
+EDD.dat3 %>% 
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    .[duplicated(.$SKey3),"SKey3"] -> SKey3_dupes
+## Label Dupes
+EDD.dat3 %<>% mutate(
+    dupe_sk3 = case_when(
+        SKey3 %in% SKey3_dupes ~ "dupe.rec",
+        TRUE ~ as.character(NA)
+    ))
+
+# EDD.dat3 %>%
+#     filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+#     filter(!is.na(dupe_sk3)) %>%
+#     {table(.$SKey3, .$dupe_sk3, useNA="ifany", deparse.level = 2)}
+
+EDD.dat3 %>%
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(!is.na(dupe_sk3)) %>% distinct(SKey3, Lab.filename, RECORD_status) %>% 
+    {table(.$Lab.filename, .$RECORD_status, useNA="ifany")}
+
+EDD.dat3 %>%
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(!is.na(dupe_sk3)) %>% 
+    {addmargins(table(.$Lab.filename, .$RECORD_status, useNA="ifany"))}
+```
+
+***
+
+#### 6.3 Reporting Limits (Completeness)
+
+```{r RLs_01}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Lower.Report.Limit)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Method.Detect.Limit)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Sample.Detect.Limit)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Sample.Report.Limit)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Dilution.Factor)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Units)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Batch.Number)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Analysis.Date)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>%
+    filter(is.na(Sample.Type)) %>% 
+    {table(.$ParamX, .$Method.GRP, useNA="ifany")}
+
+```
+
+#### 6.4 Result Codes
+
++ Add UPHL-LIMS Result.Code table and review Result.Code x Problem.Identifiers from the dataset
+
+```{r import_rc01}
+# file.rc01  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# rc_01 <- openxlsx::read.xlsx(file.rc01, sheet=1, startRow = 1,
+#                               rowNames=FALSE, check.names = T)
+RCodes.dat <- rc_01
+```
+
+
++ Filename ::  `r basename(file.rc01)`
++ Path ::  `r dirname(file.rc01)`
++ Datafile has :: `r nrow(rc_01)` records & `r ncol(rc_01)` fields
++ Last Accessed :: [`r file.mtime(file.rc01)`]
+
+
+```{r RCode_01}
+RCodes.dat$QC_action <- NA;
+qc_list <- c("A", "B", "C", "E", "G", "HI", "K", "L", "M", "N", "O",
+             "Q", "R", "S", "SI", "SU", "V")
+#
+qc_action <- c("A", "C", "G", "HI", "M", "N", "Q", "R", "S", "SI")
+RCodes.dat$QC_action[RCodes.dat$Result.Code %in% qc_action] <- "REJECT Result"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "B"] <- "Check Blank contam"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "E"] <- "Result above calib"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "K" | RCodes.dat$Result.Code == "L"] <- "Check for Bias"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "O"] <- "Not Analyzed"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "SU"] <- "Organics: examine analysis report"
+RCodes.dat$QC_action[RCodes.dat$Result.Code == "V"] <- "High background; REJECT"
+#
+htmlTable::htmlTable(dplyr::arrange(RCodes.dat, Result.Code), align=c("cl"), 
+    css.cell = rbind(rep("padding-left: 0.5em; padding-right: 0.5em;font-size: 0.7em;",
+        times=ncol(RCodes.dat)), matrix("padding-left: 0.6em; padding-right: 0.6em;
+        font-size: 0.7em;", ncol=ncol(RCodes.dat), nrow=nrow(RCodes.dat))), 
+    rnames=F, caption="UPHL-LIMS Result.Codes, code-definitions, and impact on DWQ-QC",
+    n.tspanner=rep(1,nrow(RCodes.dat)), tspanner=rep("", nrow(RCodes.dat)))
+```
+
++ Export Result.Code_table
+
+```{r export_rc01}
+# openxlsx::write.xlsx(RCodes.dat, file=paste("UPHL_LIMS_EDD_ResultCode_table_",
+#                                             format(Sys.Date(), "%y%m%d"),
+#                                             ".xlsx", sep=""))
+```
+
+
+
+
+#### 6.41 RCodes from dataset
+
++ Filter dataset by _Useable_ records
+    
+
+```{r RCode_02}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+    {addmargins(table(trimws(gsub(" ", "", .$Result.Code)),
+                      .$Problem.Identifier,
+                      useNA = "ifany", deparse.level = 2))} %>% 
+    as.data.frame.matrix(.) %>% 
+    tibble::rownames_to_column(., var="Result.Code") -> QC.code.tab
+colnames(QC.code.tab) <- c("Result.Code", "<", ">", "_NA_", "Sum")
+QC.code.tab$Result.Code[QC.code.tab$Result.Code == "NA."] <- "< NA >"
+##
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+    #select(Result.Code) %>% as.character(.) %>% 
+    {strsplit(.$Result.Code, "[,]")} %>%
+    unlist(.) %>% 
+    gsub('"', "", .) %>%
+    gsub('\\(', "", .) %>%
+    gsub('\\)', "", .) %>%
+    trimws(.) %>%  
+    unique(.) %>% sort(.) %>%
+    data.frame(QC_code = .) -> QC_codes
+```
+
+```{r RCode_02_tab01}
+# annotate table
+QC.code.tab$Comment <- NA
+for (j in QC.code.tab$Result.Code) {
+    for (i in 1:length(trimws(unlist(strsplit(
+        QC.code.tab$Result.Code[QC.code.tab$Result.Code == j], ","))))) 
+        {
+        QC.code.tab$Comment[QC.code.tab$Result.Code == j] <- 
+            ifelse(is.na(QC.code.tab$Comment[QC.code.tab$Result.Code == j]),
+                   RCodes.dat$Comment[RCodes.dat$Result.Code == (trimws(
+                       unlist(
+                           strsplit(QC.code.tab$Result.Code[
+                               QC.code.tab$Result.Code == j], ",")))[i])],
+                   paste(QC.code.tab$Comment[QC.code.tab$Result.Code == j],
+                         RCodes.dat$Comment[RCodes.dat$Result.Code == (trimws(
+                       unlist(
+                           strsplit(QC.code.tab$Result.Code[
+                               QC.code.tab$Result.Code == j], ",")))[i])],
+                       collapse = " // "))
+    }   }
+#
+QC.code.tab %<>% arrange(Result.Code) 
+QC.code.tab <- QC.code.tab[c(2:22, 24:nrow(QC.code.tab), 1, 23),]
+#
+htmlTable::htmlTable(QC.code.tab, 
+    css.cell = rbind(rep("padding-left: 1.5em; padding-right: 1.5em; font-size: 0.8em;",
+    times=ncol(QC.code.tab)), matrix(
+    "padding-left: 0.8em; padding-right: 0.8em;font-size: 0.8em;",
+    ncol=ncol(QC.code.tab),
+    nrow=nrow(QC.code.tab))), align=c("cccccl"), total=T,
+    n.tspanner=rep(1,nrow(QC.code.tab)), rnames=F,
+    tspanner=rep("", nrow(QC.code.tab)),
+    caption = "Unique Result.Codes observed in EDDs, by 'Problem.Identifier' code, with result-code definitions"     )
+```
+
+
+#### 6.42 Data Quality Issues to Resolve
+
+**Issues** ::
+
+1) J-flags w/ Prob.Iden = "<"
+2) RC = NA & Prob.Iden = "<"
+3) RC = NA & Prob.Iden = ">"
+
+#### 6.5 Resolve RCode Issues
+
+**Issue #01 : J-flags w/ Prob.Iden = "<"**
+
+```{r RCode_03}
+EDD.dat3 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+    filter(Result.Code == "J" & Problem.Identifier == "<") -> RCode_01
+```
+
++ Sample.Dates :: From (`r min(RCode_01$Sample.Date, na.rm=T)`) to (`r max(RCode_01$Sample.Date, na.rm=T)`)
++ Project Groups :: `r length(unique(RCode_01$TripID2))` unique levels
+    + `r sort(unique(RCode_01$TripID2))`
++ TripIDs ::  `r length(unique(RCode_01$Trip.ID))`  unique levels
+    + `r sort(unique(RCode_01$Trip.ID))` 
++ Method.ID ::   `r length(unique(RCode_01$Method.ID))`  unique levels
+    + `r sort(unique(RCode_01$Method.ID))` 
+
++ Method.ID x Sample.Date
+
+`r RCode_01 %>% {table(.$Sample.Date, .$Method.ID, useNA="ifany", deparse.level=1)} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
++ Method.ID x Analysis.Date
+
+`r RCode_01 %>% {table(.$Analysis.Date, .$Method.ID, useNA="ifany", deparse.level=1)} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+
++ Method.ID x TripID
+
+`r RCode_01 %>% {table(.$Trip.ID, .$Method.ID, useNA="ifany", deparse.level=1)} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+
++ Proj + Sample.Date x Method.ID
+
+`r RCode_01 %>% {addmargins(table(paste(.$TripID2, .$Sample.Date, sep="_"), .$Method.ID, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+**Resolution**
+
++ _Corrections to dataset will occur in -versioned- dataset_ [`EDD.dat4`]
+
+```{r version0304}
+EDD.dat4 <- EDD.dat3
+```
+
+
+Previous email from Alia Rauf (@UPHL) [180618] clarifies suggested corrections to the issue:
+
+1) For 10200H, Drop the `Problem.Identifier` from the record
+2) For 245.1, treat as **Non-Detect**, change `J` to `U`
+3) For 200.8. treat as **Non-Detect**, change `J` to `U`
+
+```{r RCode03_fix}
+EDD.dat4 %<>% mutate(
+    Result.Comment = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+        Method.ID == "200.8" & 
+            Problem.Identifier == "<" & 
+            Result.Code == "J" ~ "U updated (lab erorr)",
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Result.Code = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+        Method.ID == "200.8" & 
+            Problem.Identifier == "<" & 
+            Result.Code == "J" ~ "U",
+        !is.na(Result.Code) ~ Result.Code,
+        is.na(Result.Code) ~ as.character(NA)))
+EDD.dat4 %<>% mutate(
+    Problem.Identifier = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+        Method.ID == "10200H" &
+            Problem.Identifier == "<" &
+            Result.Code == "J" ~ as.character(NA),
+        !is.na(Problem.Identifier) ~ Problem.Identifier,
+        is.na(Problem.Identifier) ~ as.character(NA)))
+
+```
+
++ Confirmation
+
+`r EDD.dat4 %>% filter((is.na(RECORD_status) | RECORD_status == "CHL_rerun") & grepl("J", .$Result.Code)) %>% {addmargins(table(.$Result.Code, .$Problem.Identifier, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+***
+**Issue #02 : RC = NA & Prob.Iden = "<" or ">"**
+
+```{r RCode_04}
+EDD.dat4 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+    filter(is.na(Result.Code) & !is.na(Problem.Identifier) ) -> RCode_02
+```
+
++ Sample.Dates :: From (`r min(RCode_02$Sample.Date, na.rm=T)`) to (`r max(RCode_02$Sample.Date, na.rm=T)`)
+    + **This issue appears to be more wide-spread**
++ Project Groups :: `r length(unique(RCode_02$TripID2))` unique levels
+    + `r sort(unique(RCode_02$TripID2))`
++ TripIDs ::  `r length(unique(RCode_02$Trip.ID))`  unique levels
+
++ Method.ID ::   `r length(unique(RCode_02$Method.ID))`  unique levels
+    + `r sort(unique(RCode_02$Method.ID))` 
+
++ Method.ID x Sample.Date
+    + March through Dec, 2018
+
++ Method.ID x Analysis.Date
+
+`r RCode_02 %>% {table(.$Analysis.Date, .$Method.ID, useNA="ifany", deparse.level=1)} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
++ Method.ID x TripID
+
+`r RCode_02 %>% {addmargins(table(.$Trip.ID, .$Method.ID, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+**Resolution**
+
+1) For Prob.Iden == ">" and Result.Code == NA :: Add "E" to Reslt.Code (For 120.1 and 5210B)
+    + Should "BOD" have an upper limit of "11 mg/L" ?  
+    + **YES in this instance** (email from KHenderson 190122)::
+    + "_BOD values are reported as `>` when dissolved oxygen for dilutions for a sample are close to fully depleted or completely depleted. Thisis a fairly occurrence since I prepare multiple dilutions for all samples to cover the expected range._ We have started flagging these types of results with an "E" flag"
+
+2) ADD "U" flag to CHL (HPLCmod) AND 200.8 (Ni) records w/ Prob.Iden = "<" & Result.Code = NULL
+3) ADD "E" flag to 120.1 (and BOD as well ?) where Prob.Iden = ">" & Result.Code = NULL
+
++ _Emailed UPHL 190122_
+
+```{r RCode_04_fix}
+# openxlsx::write.xlsx(RCode_02, file="issue02.xlsx")
+# TDS - 120.1
+EDD.dat4 %<>% mutate(
+    Result.Comment = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "120.1" &
+            Problem.Identifier == ">" & 
+            is.na(Result.Code) ~ "Reported value above calibration range; Estimated",
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Result.Code = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "120.1" &
+            Problem.Identifier == ">" & 
+            is.na(Result.Code) ~ "E",
+        !is.na(Result.Code) ~ Result.Code,
+        is.na(Result.Code) ~ as.character(NA)))
+# BOD - 5210B
+EDD.dat4 %<>% mutate(
+    Result.Comment = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "5210B" &
+            Problem.Identifier == ">" & 
+            is.na(Result.Code) ~ "Reported value Estimated, DO fully depleted",
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Result.Code = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "5210B" &
+            Problem.Identifier == ">" & 
+            is.na(Result.Code) ~ "E",
+        !is.na(Result.Code) ~ Result.Code,
+        is.na(Result.Code) ~ as.character(NA)))
+# NI - 200.8 (Sept. 2018)
+EDD.dat4 %<>% mutate(
+    Result.Comment = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "200.8" & Param.Description == "NI" &
+            Problem.Identifier == "<" & 
+            is.na(Result.Code) ~ "Not Detected",
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Result.Code = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "200.8" & Param.Description == "NI" &
+            Problem.Identifier == "<" & 
+            is.na(Result.Code) ~ "U",
+        !is.na(Result.Code) ~ Result.Code,
+        is.na(Result.Code) ~ as.character(NA)))
+# CHL concenctrations (calculated) - HPLCMOD
+EDD.dat4 %<>% mutate(
+    Result.Comment = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "HPLCMOD" & 
+            (Param.Description == "CHLOROPHYLL-A (CONC)" | 
+                 Param.Description == "PHEOPHYTIN-A (CONC)") &
+            Problem.Identifier == "<" & 
+            is.na(Result.Code) ~ "Not Detected",
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)),
+    Result.Code = case_when(
+        (is.na(RECORD_status) | RECORD_status == "CHL_rerun") &
+            Method.ID == "HPLCMOD" & 
+            (Param.Description == "CHLOROPHYLL-A (CONC)" | 
+                 Param.Description == "PHEOPHYTIN-A (CONC)") &
+            Problem.Identifier == "<" & 
+            is.na(Result.Code) ~ "U",
+        !is.na(Result.Code) ~ Result.Code,
+        is.na(Result.Code) ~ as.character(NA)))
+```
+
++ Confirmation
+
+`r EDD.dat4 %>% filter((is.na(RECORD_status) | RECORD_status == "CHL_rerun") & grepl("U", .$Result.Code)) %>% {addmargins(table(.$Result.Code, .$Problem.Identifier, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+`r EDD.dat4 %>% filter((is.na(RECORD_status) | RECORD_status == "CHL_rerun") & grepl("E", .$Result.Code)) %>% {addmargins(table(.$Result.Code, .$Problem.Identifier, useNA="ifany", deparse.level=1))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+
+***
+
+#### 6.6 Annotate Result.Comments from Result.Codes
+
+```{r RCode_Comments}
+QC.code.tab_2 <- QC.code.tab; rownames(QC.code.tab_2) <- NULL
+QC.code.tab_2$Comment_02 <- NA
+#
+for (i in 1:(nrow(QC.code.tab_2)-2)) {
+    for (k in RCode_Comments$Result.Code) {
+        if (k %in% stringr::str_split(QC.code.tab_2$Result.Code[i], "[.]", simplify = T)) {
+            if (is.na(QC.code.tab_2$Comment[i]) & is.na(QC.code.tab_2$Comment_02[i])) {
+                QC.code.tab_2[i, "Comment_02"] <- 
+                    RCode_Comments$Comment[RCode_Comments$Result.Code == k]
+            } else if(is.na(QC.code.tab_2$Comment_02[i])) {
+                QC.code.tab_2[i, "Comment_02"] <- 
+                    RCode_Comments$Comment[RCode_Comments$Result.Code == k]
+            } else if(!is.na(QC.code.tab_2$Comment_02[i])) {
+                QC.code.tab_2[i, "Comment_02"] <- 
+                    paste(QC.code.tab_2$Comment_02[i],
+                          RCode_Comments$Comment[RCode_Comments$Result.Code == k],
+                          sep="/")
+            } else {QC.code.tab_2[i, "Comment_02"] <- 
+                RCode_Comments$Comment[RCode_Comments$Result.Code == k]}
+        } else if (!is.na(QC.code.tab_2$Comment_02[i])) {
+            QC.code.tab_2[i, "Comment_02"] <- QC.code.tab_2$Comment_02[i]
+        } else {QC.code.tab_2[i, "Comment_02"] <- NA }
+    }
+}
+#
+QC.code.tab_2$len_comm2 <- nchar(QC.code.tab_2$Comment_02)
+```
+
+**Apply Comments to dataset**
+
+```{r RCode_Comments_apply}
+EDD.dat4 <- left_join(EDD.dat4,
+                      select(QC.code.tab_2,
+                             Result.Code, Comment_02),
+                      by = "Result.Code")
+EDD.dat4 %<>% select(Lab.filename:Result.Comment, Comment_02, everything())
+```
+
+**Will need to concatenate Result.Comments after the next Result.Code cleanup sequence is completed**
+
+
+***
+#### 6.7 Review EDD Comments
+
+```{r comments01}
+sort(unique(EDD.dat4$Sample.Comment)) %>% as.data.frame() -> Samp_Comments
+sort(unique(EDD.dat4$Test.Comment)) %>% as.data.frame() -> Test_Comments
+sort(unique(EDD.dat4$Result.Comment)) %>% as.data.frame() -> Result_Comments
+
+```
+
+
+#### 6.8 Lab Sample Number consistency
+
+While cleaning the previous block of UPHL EDDs, I observed occasions where a Sample.Number could be assigned to _two distinct_ sampling events, including distinct sets of sample-metadata.  My suspicion is that this problem arose during Data-entry at Sample-Receiving and was not identified by 2nd review.  Consequences of this error involved AWQMS-import errors, where a set of Lab-results 
+(from a specific bottle / Sample.Number) had different Sample.Date and/or Sample.Time values, among other issues.  This is a relatively new type of error, since the previous LIMS assigned a Sample.Number to the entire set of lab analyses for a given collection event.
+
++ Cannot seem to find any more of these errors, and while I'm not sure I've developed the most efficient scripting for this question, it may have been mainly an early-LIMS issue from last year.
+
+```{r SampNum_01}
+# EDD.dat4 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+#     {table(.$Sample.Number, .$SKey2, useNA="ifany")} %>%
+#     as.data.frame(.) %>% filter(Freq > 0) -> SampNum.tab01
+# EDD.dat4 %>% filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+#     filter(Method.ID != "HPLCMOD" & is.na(Sample.Type)) %>%
+#     distinct(Sample.Number)
+# nrow(SampNum.tab02[duplicated(SampNum.tab01$Var2),])
+# SampNum.tab01 %>% {table(.$Var1)} %>%
+#     as.data.frame(.) %>% filter(Freq > 0) -> SampNum.tab02
+# rm(SampNum.tab01, SampNum.tab02)
+#
+
+```
+
++ No evidence that this problem persists in the curret set of EDDs
+
+#### 6.9 HAB Method and Parameter Cleanup
+
++ Can HAB-methods and parameters be cleaned up and improved for consistency ?
+
+```{r HAB_method01}
+EDD.dat4 %>% filter(Method.GRP == "HAB") %>%
+    {table(.$ParamX,
+          .$Method.ID, useNA = "ifany",deparse.level = 2)}
+#
+EDD.dat4 %>%  filter(Method.GRP == "HAB") %>%
+    {addmargins(table(.$Param.Description,
+                      .$Method.ID,useNA = "ifany",deparse.level = 2))} %>%
+    htmlTable::htmlTable(.,
+                    css.cell = rbind(
+                     rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                         times = ncol(.) + 1),
+                     matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                            ncol = ncol(.) + 1,nrow = nrow(.))), total = T)
+#
+EDD.dat4 %>%  filter(Method.GRP == "HAB") %>% 
+    {addmargins(table(.$Method.Description,
+                      .$Method.ID,useNA = "ifany",deparse.level = 2))} %>%
+    htmlTable::htmlTable(.,
+                    css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+```
+
+
+***
+
+#### 6.99 Export and Version DF
+
+```{r version0405}
+# save(EDD.dat4, file="EDD4_XXX.RData")
+EDD.dat5 <- EDD.dat4
+# save(EDD.dat5, file="EDD5_00.RData")
+```
+
+***
+
+### 7.0 Monitoring Location metadata
+
+#### 7.1 Import MLIDs from AWQMS-export
+
++ Monitoring Locations file (Review) exported from AWQMS 190123
++ File :: `MonitoringLocationsExport_190123.xlsx`
+
+```{r MonLoc_import}
+# file.monloc <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+MonLoc <- openxlsx::read.xlsx(file.monloc, sheet=1, startRow = 1, rowNames=FALSE)
+#
+MonLoc$Latitude <- format(MonLoc$Latitude, nsmall=5)
+MonLoc$Longitude <- format(MonLoc$Longitude, nsmall=5)
+```
+
++ File :: [`r basename(file.monloc)`]
++ Path :: [`r dirname(file.monloc)`]
++ Last Accessed :: [`r file.mtime(file.monloc)`]
++ `r format(nrow(MonLoc), big.mark=",")` Monitoring Locations
++ `r length(unique(MonLoc$MLID.type))` unique Types of sites
+
+```{r monloc_01}
+drop.fields_mlid <- c("HUC.12", "Date.Established", "Tribal.Land?", "Tribal.Land.Name", "Township/Range/Section",  "Horizontal.Accuracy", "Horizontal.Accuracy.Unit", "Horizontal.Reference.Datum", "Horizontal.Collection.Method", "Source.Map.Scale", "Vertical.Measure", "Vertical.Measure.Unit", "Vertical.Reference.Datum", "Vertical.Collection.Method", "Well.Type", "Well.Formation.Type", "Well.Aquifer.Name", "Well.Hole.Depth", "Well.Hole.Depth.Unit", "Alternate.ID.1", "Alternate.Context.1", "Alternate.ID.2", "Alternate.Context.2", "Alternate.ID.3", "Alternate.Context.3", "Reach.Code", "Waterbody.Name", "Private?", "Project.ID.1", "Project.ID.2", "Project.ID.3", "Project.ID.4", "Project.ID.5", "State", "Country")
+MonLoc %<>% select(., !! -drop.fields_mlid) %>%
+    dplyr::rename(., "ORG" = "Organization.ID", "MLID.uid" = "Monitoring.Location.UID",
+                  "MLID" = "Monitoring.Location.ID", "MLID_name" = "Monitoring.Location.Name",
+                  "MLID.type" = "Monitoring.Location.Type", "HUC8" = "HUC.8",
+                  "LATdd" = "Latitude","LONdd" = "Longitude",
+                  "EcoR_3" = "Eco-Region.3","EcoR_4" = "Eco-Region.4",
+                  "WMU" = "Watershed.Management.Unit","Created_date" = "Created",
+                  "Changed_date" = "Last.Changed") %>% arrange(MLID)
+```
+
+```{r monloc_02}
+MonLoc$QC_type <- ifelse(is.na(MonLoc$Description), NA,
+                            ifelse(grepl("Duplicate", MonLoc$Description),"Replicate",
+                            ifelse(grepl("Blind Duplicate", MonLoc$Description),"Replic_blind",
+                                   ifelse(grepl("Replicate", MonLoc$Description),"Replicate",
+                            ifelse(grepl("Blank", MonLoc$Description),"Blank",
+                                   NA)))))
+MonLoc$QC.parent <- ifelse(is.na(MonLoc$QC_type), NA,
+                           ifelse(grepl("^Replicate", MonLoc$QC_type),
+                                  trimws(substr(MonLoc$Description, 
+                                                regexpr("of ", MonLoc$Description)+3,
+                                                nchar(MonLoc$Description))),NA))
+```
+
+```{r monloc_03}
+# fix dates
+MonLoc$Created_date <- as.Date(MonLoc$Created_date, origin="1899-12-30")
+MonLoc$Changed_date <- as.Date(MonLoc$Changed_date, origin="1899-12-30")
+## Cleanup outlier training sites
+MonLoc %<>% filter(MLID > 490000) %>% arrange (., MLID)
+```
+
+
+#### 7.2 MLID ::  QC_Type
+
+```{r monloc_eval01.tab01}
+addmargins(table(MonLoc$MLID.type, MonLoc$QC_type, useNA = "ifany"))
+```
+
+
+#### 7.3 Join MonLocs with datafile
+
++ Working with `EDD.dat5`
+
+
+```{r MLID_01}
+EDD.dat5 <- left_join(EDD.dat5,
+                      select(MonLoc,
+                             MLID, MLID_name, MLID.type, QC_type, QC.parent),
+                      by = c("MLID2" = "MLID"))
+
+
+```
+
+
+#### 7.4 Sample.Type & Activity.Type
+
++ Identify Issues w/ SType, etc., annotate corrections to **new** `Activity.Comment` field
+
+```{r SampleType_Annotations}
+EDD.dat5 %<>% mutate(Activity.Comment = as.character(NA), SType2 = as.numeric(NA)) %>%
+    select(Lab.filename:Sample.Type, SType2, Cost.Code:Comment_02, Activity.Comment, everything())
+```
+
+
+
+**Q** :: Do all `Useable Records` have an appropriate Sample.Type ?
+
+```{r SType01}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status) | RECORD_status == "CHL_rerun") %>% 
+    {addmargins(table(.$Sample.Type, .$RECORD_status, useNA="ifany", deparse.level = 2))}
+```
+
+**Ans** :: Yes.  
+
++ Records w/ [`NA`] in Sample.Type are all for the CHL_rerun samples, which will still need to be re-calculated and integrated together before importing the CHL data.
+
++ At present, can use the Sample.Type "XX" for the CHL_rerun records
++ ~~Also, convert Sample.Type to 2-digit character (as `SType2`)~~  [Wait till next EDD-block]
+ 
+
++ For MLID.type x Sample.Type review, remove "RECORD_status == "CHL_rerun"" filter, since these records will be re-examined separately...
+    + Note ::  Total Reviewable records changes from (`r EDD.dat5 %>% filter((is.na(RECORD_status) | RECORD_status == "CHL_rerun")) %>% nrow()`) to (`r EDD.dat5 %>% filter((is.na(RECORD_status))) %>% nrow()`)
+
+```{r SType02}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    {addmargins(table(.$MLID.type, .$Sample.Type, useNA="ifany", deparse.level = 2))}
+```
+
+
+**Observed Sample.Type Issues**
+
+1) SType = 02 & MLID.type = River/Streams
+
+
+
+```{r STypeIssues_01}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(MLID.type == "River/Stream" & Sample.Type == "2") %>%
+    distinct(Sample.Date, MLID2, TripID2, RECORD_status)
+
+```
+
++ Incorrect Sample.Type (1 collection); change to ST = 04
+
+```{r STypeIssues_01_fix}
+EDD.dat5 %<>% mutate(
+    Activity.Comment = case_when(
+        MLID.type == "River/Stream" & 
+            Sample.Type == 2 &
+            MLID2 == 5937930 ~ "SType changed to 04",
+        is.na(Activity.Comment) ~ as.character(NA),
+        !is.na(Activity.Comment) ~ Activity.Comment),
+    SType2 = case_when(
+        MLID.type == "River/Stream" & 
+            Sample.Type == 2 &
+            MLID2 == 5937930 ~ 4,
+        is.na(SType2) ~ as.double(NA),
+        !is.na(SType2) ~ SType2)
+    )
+```
+
+***
+2) SType = 04 & MLID.type = Lake
+
+```{r STypeIssues_02}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(MLID.type == "Lake" & Sample.Type == "4") %>%
+    distinct(Sample.Date, MLID2, TripID2, Proj_SET, SType2, QC_type, MLID.type) %>%
+    arrange(Proj_SET, Sample.Date, QC_type)
+
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(MLID.type == "Lake" & Sample.Type == "4") %>%
+    {addmargins(table(.$TripID2, .$QC_type, useNA="ifany"))}
+```
+
++ Incorrect Sample.Type for `Lakes` that are _not_ `Blanks` and _not_ `UTLK`: Should be ST = 02
++ All Blanks should have ST = 04
++ All Utah Lake `Lakes` should change to ST = 02
+
+```{r STypeIssues_02_fix}
+EDD.dat5 %<>% mutate(
+    Activity.Comment = case_when(
+        MLID.type == "Lake" & 
+            Sample.Type == 4 &
+            (is.na(QC_type) | QC_type == "Replicate") ~ "SType changed to 02",
+        MLID.type == "Lake" & 
+            Sample.Type == 4 &
+            QC_type == "Blank" ~ "QC blanks ST = 04",
+        is.na(Activity.Comment) ~ as.character(NA),
+        !is.na(Activity.Comment) ~ Activity.Comment),
+    SType2 = case_when(
+        MLID.type == "Lake" & 
+            Sample.Type == 4 &
+            (is.na(QC_type) | QC_type == "Replicate") ~ 2,
+        MLID.type == "Lake" & 
+            Sample.Type == 4 &
+            QC_type == "Blank" ~ 4,
+        is.na(SType2) ~ as.double(NA),
+        !is.na(SType2) ~ SType2)
+    )
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(MLID.type == "Lake" & Sample.Type == "4") %>%
+    {addmargins(table(.$TripID2, .$QC_type, useNA="ifany"))}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(MLID.type == "Lake" & Sample.Type == "4" & is.na(QC_type)) %>%
+    {addmargins(table(.$TripID2, .$SType2, useNA="ifany"))}
+```
+
+***
+3) SType = 02 & MLID.type = `NA`
+
+```{r STypeIssues_03}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(is.na(MLID.type) & Sample.Type == "2") %>%
+    distinct(Sample.Date, MLID2, TripID2, Proj_SET, Sample.Type, SType2, MLID.type, QC_type)
+
+
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(grepl("BORLP", .$Trip.ID)) %>%
+    distinct(Sample.Date, Sample.Time, MLID2, TripID2, Sample.Type, SType2, MLID.type, QC_type) %>%
+    arrange(Sample.Date)
+```
+
++ Missing Site in MonLoc.file?  Or Incorrect MLID?
+    + BOR Trip.Sheets in poor order, no MLID found in AWQMS, no request for MLID found
++ **Will Leave Data-Error in place for now**
+
+
+```{r STypeIssues_03_fix}
+EDD.dat5 %<>% mutate(
+    Activity.Comment = case_when(
+        grepl("BORLP", .$Trip.ID) & 
+            MLID2 == "5952370" ~ "MLID not in awqms; Found 5952920",
+        !is.na(Activity.Comment) ~ Activity.Comment,
+        is.na(Activity.Comment) ~ as.character(NA)),
+    SITE_status = case_when(
+        grepl("BORLP", .$Trip.ID) & 
+            MLID2 == "5952370" ~ "BORLP_NoMLID",
+        !is.na(SITE_status) ~ SITE_status,
+        is.na(SITE_status) ~ as.character(NA))
+    )
+```
+
+***
+
+4) SType = 04 & MLID.type = `NA`
+    + Need to account for SITE_statuses (non-AWQMS data)
+
+```{r STypeIssues_04}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(is.na(MLID.type) & Sample.Type == "4") %>%
+    select(-Project.Name, -Cost.Code, -Agency.Bill.Code, -Collector, -Chain.of.Custody,
+           -Replicate.Number, -Test.Number, -Method.Agency, -Sample.Description)
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(is.na(MLID.type) & Sample.Type == "4") %>% distinct(TripID2, MLID2) %>%
+    arrange(TripID2, MLID2)
+    # {table(.$TripID2)}
+```
+
++ BORLP sites :: 5952370 
++ UTLK :: 4910009 [Not in MonLoc.file... RyanP is adding "Utah Lake Field Blank"]
++ LOGANRV :: 4905152 [Not in MonLoc.file :: Quoted in Lab Sheet as "QZ/QC Replicate of 4905140 Logan River at 1000W"]
++ UGSWET :: Wetlands; not in MonLoc.file (yet)
++ GSLWET :: Wetlands; not in MonLoc.file (yet)
++ WS (WSpur) :: Wetlands; not in MonLoc.file (yet)
+  
+  
++ Add Comments to Activity
+
+```{r STypeIssues_04_fix}
+EDD.dat5 %<>% mutate(
+    Activity.Comment = case_when(
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("BORLP", .$Trip.ID) &
+            MLID == "5952370" ~ "MLID Not Found",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("UTLK", .$Trip.ID) &
+            MLID == "4910009" ~ "MLID Not Found",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("LOGANRV", .$Trip.ID) &
+            MLID == "4905152" ~ "MLID Not Found",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            TripID2 %in% c("UGSWET", "GSLWET", "WS") ~ "MLIDs Not Yet Assigned",
+        !is.na(Activity.Comment) ~ Activity.Comment,
+        is.na(Activity.Comment) ~ as.character(NA)),
+    SITE_status = case_when(
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("BORLP", .$Trip.ID) &
+            MLID == "5952370" ~ "BORLP_NoMLID",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("UTLK", .$Trip.ID) &
+            MLID == "4910009" ~ "UTLK_NoMLID",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            grepl("LOGANRV", .$Trip.ID) &
+            MLID == "4905152" ~ "LOGANRV_NoMLID",
+        is.na(RECORD_status) &
+            is.na(MLID.type) & 
+            Sample.Type == "4" &
+            TripID2 %in% c("UGSWET", "GSLWET", "WS") ~ "IGNORE_wetlands",
+        !is.na(SITE_status) ~ SITE_status,
+        is.na(SITE_status) ~ as.character(NA))
+)
+```
+
+
+***
+
+5) SType = 29 & MLID.type = `NA`
+
+```{r STypeIssues_05}
+EDD.dat5 %>% 
+    filter(is.na(RECORD_status)) %>% 
+    filter(is.na(MLID.type) & Sample.Type == "29") %>%
+    distinct(Sample.Date, MLID2, TripID2, Proj_SET, RECORD_status, QC_type)
+
+```
+
++ Add annotation for BORLP (5952370) to remaining records in set
+    + _See correction in Item #3 above_
+
+***
+
+**Apply _status changes to RECORD_status and Examine results**
+
++ Leave BORLP, UTLK, and LOGANRV sites alone w/r to RECORD_status, but adjust the others
+
+```{r Update_RECORDstatus}
+EDD.dat5 %>% {addmargins(table(.$SITE_status, .$RECORD_status, useNA="ifany", deparse.level = 2))}
+#
+EDD.dat5 %<>% mutate(
+    RECORD_status = case_when(
+        SITE_status == "IGNORE_wetlands" ~ "IGNORE",
+        !is.na(RECORD_status) ~ RECORD_status,
+        is.na(RECORD_status) ~ as.character(NA))
+)
+#
+EDD.dat5 %>% {addmargins(table(.$SITE_status, .$RECORD_status, useNA="ifany", deparse.level = 2))}
+```
+
+
+#### 7.5 Export and Version DF
+
+```{r export_df05}
+# save(EDD.dat5, file="EDD5_XXX.RData")
+```
+
+```{r version0506}
+EDD.dat6 <- EDD.dat5
+# also, update SType2
+EDD.dat6 %<>%
+    mutate(SType2 = case_when(
+        !is.na(SType2) ~ as.integer(SType2),
+        is.na(SType2) ~ as.integer(Sample.Type)))
+# save(EDD.dat6, file="EDD6_00.RData")
+```
+
+***
+***
+
+### 8.0 Duplicate Records
+
+#### 8.1 Find Duplicate IDs
+
++ Build SKey4 :: MLID + SDate + SampType
++ Build SKEy5 :: SKey4 + PARAM.key
++ Build SKey6 :: SKey5 + TripID2 (for easier use)
+
+```{r SKey4}
+EDD.dat6 %<>% mutate(
+    SKey4 = paste(.$MLID2,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  sprintf("%.2d", as.integer(.$SType2)),
+                  sep="."))
+EDD.dat6 %<>% mutate(
+    SKey5 = paste(.$SKey4,
+                  .$PARAM.key,
+                  sep="."))
+EDD.dat6 %<>% mutate(
+    SKey6 = paste(paste(.$MLID2,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  sprintf("%.2d", as.integer(.$SType2)),
+                  .$PARAM.key,
+                  sep="."),
+                  .$TripID2, sep="_"))
+```
+
+
+**Basis** ::  
+
+1) RECORD_status == `NA`
+
+```{r dupe01}
+EDD.dat6 %>%
+    filter(is.na(RECORD_status)) %>%
+    {table(.$SKey5,useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    {table(.$Freq)}
+#
+# EDD.dat6 %>%
+#     filter(is.na(RECORD_status)) %>%
+#     {table(.$SKey5,useNA="ifany")} %>%
+#     as.data.frame(.) %>%
+#     filter(.$Freq > 1) -> Dupe01
+##
+# EDD.dat6 %<>% mutate(dupe_sk5 = NA) %>% mutate(
+#     dupe_sk5 = case_when(
+#         SKey5 %in% Dupe01$Var1 ~ "dupe.rec",
+#         TRUE ~ as.character(NA)))
+```
+
+**Q**: Do TripIDs matter?
+
+```{r dupe02}
+EDD.dat6 %>%
+    filter(is.na(RECORD_status)) %>%
+    {table(.$SKey6, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    {table(.$Freq)}
+#
+EDD.dat6 %>%
+    filter(is.na(RECORD_status)) %>%
+    {table(.$SKey6, useNA="ifany")} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) %>% arrange(Var1) -> Dupe02
+##
+EDD.dat6 %<>% mutate(dupe_sk6 = NA) %>% mutate(
+    dupe_sk6 = case_when(
+        paste(.$SKey5, .$TripID2, sep="_") %in% Dupe02$Var1 ~ "dupe.rec",
+        TRUE ~ as.character(NA) ))
+
+```
+
++ **Yes**.  
+    + TripID2 clarifies Clean Lakes (blank) and State Canal (site) sampling among two distinct projects on the same day.
+    + Use `Dupe02`
+
+
++ Tabulate Dupe-recrods after omitting ::
+    + `is.na(RECORD_status)` && 
+    + `Method.GRP !%in% "CHL"`
+        + Recall that UTLK chlorophylls were triplicate for study...
+
+```{r SKey6_tab01}
+
+EDD.dat6 %>% 
+    filter(is.na(RECORD_status)) %>%
+    filter(!grepl("CHL", .$Method.GRP)) %>%
+    {table(.$SKey6)} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1)
+#
+EDD.dat6 %>% 
+    filter(is.na(RECORD_status)) %>%
+    filter(!grepl("CHL", .$Method.GRP)) %>%
+    {table(.$SKey6)} %>%
+    as.data.frame(.) %>%
+    filter(.$Freq > 1) %>% arrange(Var1) -> Dupe03
+
+```
+
+#### 8.2 Compare Duplicate Records
+
+**Compare _duplicated_ records by Field, based on _numeric_ or _text_ fields**
+
++ Continue to _IGNORE_ CHL-related records for now...
+
+```{r SKey6_dupe03Compare}
+# keep order of SKey6 for matchup
+Dupe03  %<>% arrange(Var1) 
+EDD.dat6 %<>% arrange(SKey6)
+#
+CharDIFF <- data.frame(); NumDIFF <- data.frame()
+#
+for (j in Dupe03$Var1) {
+    DUPE.j <- EDD.dat6[EDD.dat6$SKey6 == j,]
+# numeric fields
+    DIFF.rv <- ifelse(
+                var(c(DUPE.j$Result.Value), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.sampnum <- ifelse(
+                var(as.numeric(c(DUPE.j$Sample.Number)), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.samptype <- ifelse(
+                var(c(DUPE.j$SType2), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.testnum <- ifelse(
+                var(c(DUPE.j$Test.Number), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.lrl <- ifelse(
+                var(c(DUPE.j$Lower.Report.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.mdl <- ifelse(
+                var(c(DUPE.j$Method.Detect.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.df <- ifelse(
+                var(c(DUPE.j$Dilution.Factor), na.rm=TRUE) > 0, "YES", "no")
+    NumDIFF <- rbind(NumDIFF, data.frame(KEY.1 = j, DIFF.rv, DIFF.sampnum, DIFF.samptype, DIFF.testnum, DIFF.lrl, DIFF.mdl, DIFF.df))
+    ## character fields
+    for (k in 1:nrow(DUPE.j)) {
+        DIFF.labfile <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.projnm <- ifelse(
+            as.logical(setequal(DUPE.j$Project.Name[k], DUPE.j$Project.Name)),
+            "no", "YES")
+        DIFF.batchnum <- ifelse(
+            as.logical(setequal(DUPE.j$Batch.Number[k], DUPE.j$Batch.Number)),
+            "no", "YES")
+        DIFF.anldate <- ifelse(
+            as.logical(setequal(DUPE.j$Analysis.Date[k], DUPE.j$Analysis.Date)),
+            "no", "YES")
+        CharDIFF <- rbind(CharDIFF, data.frame(KEY.1 = j, DIFF.labfile, DIFF.projnm, DIFF.batchnum, DIFF.anldate)) }  
+    DIFFs <- merge(CharDIFF, NumDIFF)  }
+## bring it all together
+DIFFs %<>% distinct(.)
+edd06_compareDupes <- left_join(EDD.dat6, distinct(DIFFs),
+                                by = c("SKey6" = "KEY.1"))
+```
+
+#### 8.3 Generate Pattern of Duplicated Records
+
+```{r dupe04, eval=F}
+# combine all Dupe-responses
+edd06_compareDupes$DIFF.all <- paste(paste(edd06_compareDupes$DIFF.labfile, edd06_compareDupes$DIFF.projnm, edd06_compareDupes$DIFF.batchnum, edd06_compareDupes$DIFF.anldate, sep="."), paste(edd06_compareDupes$DIFF.rv, edd06_compareDupes$DIFF.sampnum, edd06_compareDupes$DIFF.samptype, edd06_compareDupes$DIFF.testnum, edd06_compareDupes$DIFF.lrl, edd06_compareDupes$DIFF.mdl, edd06_compareDupes$DIFF.df, sep="."), sep="_")
+##
+edd06_compareDupes %<>% mutate(
+    DIFF.all = case_when(
+        DIFF.all == "NA.NA.NA.NA_NA.NA.NA.NA.NA.NA.NA" ~ as.character(NA),
+        !is.na(DIFF.all) ~ DIFF.all,
+        is.na(DIFF.all) ~ as.character(NA)
+    ))
+```
+
++ Found `r length(unique(edd06_compareDupes$DIFF.all))-1` unique patterns of field-differences among duplicated SKey6
+
+**Order of Differences by Field** 
+
++ Character / Test Fields ::
+    + Lab.filename
+    + Project.Name
+    + Batch.Number
+    + Analysis.Date
++ Numeric Fields ::
+    + Result.Value
+    + Sample.Number
+    + Sample.Type
+    + Test.Number
+    + Lower.Report.Limit
+    + Method.Detect.Limit
+    + Dilution.Factor
+
+
+```{r dupe05}
+edd06_compareDupes %>% 
+    filter(is.na(RECORD_status)) %>%
+    filter(!grepl("CHL", .$Method.GRP)) %>%
+    {addmargins(table(.$DIFF.all, .$Proj_SET, useNA="ifany", deparse.level = 2))} %>%
+    as.data.frame.matrix(.) %>% tibble::rownames_to_column(var="GRP") %>%
+    htmlTable::htmlTable(., align=c("rlccccccc"),
+                         css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+```
+
+Different sets of duplicate-differences by Field require distinct corrective measures.  
+
+Key Fields to examine include:
+
+**Result.Value** [posn 5] :: Needs careful review to determine why / how values changed  
+
+**Test.Number** [posn 8] :: Reflects re-analysis by UPHL  
+
++ Fix :: Usually select most recent / highest Test.Number
+
+**Dilution.Factor** [posn 11] :: A subset of DIFF.TestNumber, where sample was reanalyzed after change in dilution
+
++ Fix :: Compare results 
+    + If agreement within (+/- 20%; per QAPP), then go w/ most recent analysis [??]
+    + If no agreement, examine records
+
+**Analysis.Date & Batch.Number** [posn 4, 3] :: Subsets of DIFF.TestNumber w/ analyses performed on different days
+
+**Lab.filename** [posn 1] :: Could be either true-duplicated record or a lag in result-reporting by UPHL.  _Can usually use the most recently reported result_
+
++ **Compare older `dupe_sk3` and newer `dupe_sk6` lists for consistency**
+
+```{r dupe_sets}
+edd06_compareDupes %>% 
+    filter(is.na(RECORD_status)) %>%
+    filter(!grepl("CHL", .$Method.GRP)) %>%
+    {table(.$dupe_sk3, .$dupe_sk6, useNA="ifany", deparse.level = 2)}
+```
+
++ All records identifed as dupes in `dupe_sk3` are contained within `dupe_sk6`, so no additional examination is needed here.
+
+
++ Export Dupe-file for review
+
+```{r export_dupes}
+# edd06_compareDupes %>% filter(!is.na(DIFF.all)) %>%
+#     openxlsx::write.xlsx(., file="DupeRec_review_edd6.xlsx")
+```
+
+***
+
+#### 8.4 Duplicate Record Summary
+
++ Based on SKey5 [MLID + SDate + SType + PARAM.key], there are `r length(unique(EDD.dat6$SKey5[duplicated(EDD.dat6$SKey5)]))` records that have at least one apparent duplicate
+
++ Based on SKey6 [MLID + SDate + SType + PARAM.key + TripID2], there are `r sum(!is.na(EDD.dat6$dupe_sk6))` records with at least one apparent duplicate
+    + Trip.IDs (generalized) account for occasions where the same site was sampled on the same day by different projects (e.g. Clean Lakes blanks, and a wetland site in JRULI)
+
++ Appropriate records for this examination are those w/ _NULL_ in `RECORD_status` as well as those with "CHL" in `Method.GRP` (since the CHL records will be handled separately, there is no need to work through any repeated records now)
+
++ Find `r EDD.dat6 %>% filter(is.na(RECORD_status) & !grepl("CHL", .$Method.GRP)) %>% {table(.$SKey6, useNA="ifany")} %>% as.data.frame(.) %>% {table(.$Freq)} %>% as.data.frame(., stringsAsFactors = F) %>% filter(Var1 > 1) %>% {sum(.$Freq)}` unique SKey6 levels with mor than 1 occurrence in the dataset
+
++ Found `r length(unique(edd06_compareDupes$DIFF.all))-1` unique patterns of Character- and Numeric-fields among records w/ duplicated SKey6 (omitting RECORD_status = _NULL_ and CHL-related records)
+
++ Working datafile (`edd06_compareDupes`): `r nrow(edd06_compareDupes)` records and `r ncol(edd06_compareDupes)` variables
+
+#### 8.5 Duplicate Record Corrections
+
++ For pattern ID-numbers, refer to table above
+
+**GRP = 01** :: "no.no.no.no_no.no.no.YES.no.no.YES"
+
++ Select record w/ higher Test.Number
++ _These records were rerun at higher dilution [possibly for a different constituent], but result.values were consistent (i.e. no change)_
+
+```{r grp01}
+# Remove dupe_sk6 for specified record
+edd06_compareDupes %<>% mutate(
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_no.no.no.YES.no.no.YES" & 
+            Test.Number == 10352629 ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+        ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_no.no.no.YES.no.no.YES" & 
+            Test.Number == 10352629 &
+            is.na(Result.Comment) ~ "Duplicated result",
+        DIFF.all == "no.no.no.no_no.no.no.YES.no.no.YES" & 
+            Test.Number == 10352629 &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicated result", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 02** :: "no.no.no.no_no.YES.no.YES.no.no.no"
+
++ Several issue-types 
++ Error found in translation from lab sheets
+1) Project [C2018-01776], SNums [2124653, 2124656], Blanks, SRecvd [5/10/2018], MLID=4990755
++ SNum = 2124653 :: Filtered
++ SNum = 2124656 :: Total
+
+```{r grp02-1}
+edd06_compareDupes %<>% mutate(
+    Sample.Matrix = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 ~ "DIS",
+        !is.na(Sample.Matrix) ~ Sample.Matrix),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 &
+            is.na(Result.Comment) ~ "Matrix corrected to DIS",
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Matrix corrected to DIS", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
++ **This fixes several other errors in different Dupe-Groups for this event [4990755.43229]**
+
+
+2) Project [**C2018-00858**], JRULI, SNums [2116914, 2116915, 2116905, 2116906, 2116909, 2116910, 2116873, 2116874], Not-blank, SReceived [3/19/18], MLID = 4999000, STimes = 14:18  & 13:50
++ Labsheet [18-0319, pp 2 & 3]
++ [p.2] 4999000 (was 4998985, or 4998996; both crossed out), STime = 1418, "Provo River below Duchesne Tunnel" // chem=2116873, TNut=2116905, FNut=2116909, FMet=2116914, TMet=2116919; see also comment on lab sheet :: [_see below:: Change MLID to 4998996_]
++ [p.3] 4999000 "Provo Rover at Cobble Rest Campground", STime=1350 // chem=2116874, TNut=2116906, FNut=2116910, FMet=2116915, TMet=2116920
+~~**NEED to Look at Field-data to identify corrections to be made**~~
++ Resolution ::
+    + Proj C2018-00858 w/ STime == 1418 :: Change MLID to 4998996
+
+```{r grp02-2}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" ~ "4998996",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" &
+            is.na(Result.Comment) ~ "MLID corrected to 4998996",
+        DIFF.all == "no.no.no.no_no.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "MLID corrected to 4998996", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+3) Project[c2018-00924], SNums [2117577, 2117578, 2117528, 2117529, 2117599, 2117600, 2117702, 2117703], Blank, SReceived=3/26/18, MLID=5952422, STimes[1600, 1610], BORLP
++ Labsheet [18-0326], pp 12, 24, ("QAQC Blank")
++ [p.12] 5952422, STime=1600, Chem=2117528, TNut=2117599, FNut=2117702, FMet=2117577 (FMet added by hand)
++ [p.24] 5952422, STime=1610, Chem=2117529 [added by hand] TNut=2117600, FNut=2117703, FMet=2117578, sample.type crossed out ("29"?), reaplced w/ "4"
+
+**Unclear :: BORLP.  If both are Blanks, there is NO STYPE-29 for blanks. Need resolution**
+
+```{r grp02-3}
+edd06_compareDupes %<>% mutate(
+    RECORD_status = case_when(
+        Project.Name == "C2018-00924" & 
+            is.na(RECORD_status) ~ "NeedReview_BORLP",
+        Project.Name == "C2018-00924" & 
+            !is.na(RECORD_status) ~ paste(.$RECORD_status,
+                                          "NeedReview_BORLP",
+                                          sep=". "),
+        !is.na(RECORD_status) ~ RECORD_status,
+        is.na(RECORD_status) ~ as.character(NA) ))
+```
+
+4) Project[c2018-07211], SNums [2166817, 2166818, 2166855, 2166856], Blanks, SRec=12/17/18, MLID=5952422, STimes[1115, 1120], BORLP
++ Labsheet [18-1217], pp. 11, 22,
++ [p.11] 5952422, STime=1115, Chem=2166745, TNut=2166817, FNut=2166855, Reagent-Blank
++ [p.22] 5952422, STime=1120, TNut=2166818, FNut=2166856, FMet=2166888, SType was 29 replaced w/ "4"
+
+**Unclear :: BORLP  If both are Blanks, there is NO STYPE-29 for blanks. Need resolution**
+
+```{r grp02-4}
+edd06_compareDupes %<>% mutate(
+    RECORD_status = case_when(
+        Project.Name == "C2018-07211" & 
+            is.na(RECORD_status) ~ "NeedReview_BORLP",
+        Project.Name == "C2018-07211" & 
+            !is.na(RECORD_status) ~ paste(.$RECORD_status,
+                                          "NeedReview_BORLP",
+                                          sep=". "),
+        !is.na(RECORD_status) ~ RECORD_status,
+        is.na(RECORD_status) ~ as.character(NA) ))
+```
+
+**GRP = 03** :: "no.no.no.no_YES.no.no.YES.no.no.no"
+
++ 5 pairs of issues; Use higher ~~Replicate.Number or~~ Test.Number
++ Records are for TP or NO32, unclear why data were re-sent
+
+```{r grp03}
+edd06_compareDupes %<>% mutate(
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_YES.no.no.YES.no.no.no" & 
+            Test.Number %in% c(10344506, 10344507, 10322864, 10342095, 10368923) ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_YES.no.no.YES.no.no.no" & 
+            Test.Number %in% c(10344506, 10344507, 10322864, 10342095, 10368923) &
+            is.na(Result.Comment) ~ "Duplicated result; higher TestNum selected",
+        DIFF.all == "no.no.no.no_YES.no.no.YES.no.no.no" & 
+            Test.Number %in% c(10344506, 10344507, 10322864, 10342095, 10368923) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicated result; higher TestNum selected",
+                                           sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 04** :: "no.no.no.no_YES.no.no.YES.no.no.YES"
+
++ "Take higher TNum or DF; unless both recs have U-flag, then take lowest…"
++ Samples were apparently re-run under different dilution.factor, but both records submitted in same EDD; ADates [Jan-Oct, 2018]
+
+```{r grp04}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) &
+        !is.na(edd06_compareDupes$DIFF.all) &
+        edd06_compareDupes$DIFF.all == "no.no.no.no_YES.no.no.YES.no.no.YES"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k, ]
+    for (i in 1:nrow(resent_j)) {
+    edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <-
+        if (all(any(!is.na(resent_j$Result.Code)) &
+            length(unique(resent_j$Result.Code)) == 1 &
+            unique(resent_j$Result.Code) == "U")) { ifelse(
+                    edd06_compareDupes$Dilution.Factor[edd06_compareDupes$SKey6 == k][i] <
+                        max(edd06_compareDupes$Dilution.Factor[edd06_compareDupes$SKey6 == k]),
+                    NA,
+                    "dupe_rec")
+        } else { ifelse(
+                    edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] <
+                        max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                    "dupe_rec",
+                    NA)
+        }
+    edd06_compareDupes$Result.Comment[edd06_compareDupes$SKey6 == k][i] <-
+        if (all(any(!is.na(resent_j$Result.Code)) &
+            length(unique(resent_j$Result.Code)) == 1 &
+            unique(resent_j$Result.Code) == "U")) { ifelse(
+                    edd06_compareDupes$Dilution.Factor[edd06_compareDupes$SKey6 == k][i] <
+                        max(edd06_compareDupes$Dilution.Factor[edd06_compareDupes$SKey6 == k]),
+                    "Duplicate result; non-detect, result w/ lower DF used",
+                    NA)
+        } else {
+                ifelse(
+                    edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] <
+                        max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                    NA,
+                    "Duplicate result; higher TestNum used")
+        }
+    }
+}
+# k <- "4995480.43166.04.Be.DIS_JRULI"
+```
+
+
+
+**GRP = 05** :: "no.no.no.no_YES.YES.no.YES.no.no.no"
+
++ Multiple issues
+1) Proj=c2018-02841; SNums=(2132850, 2135851) [this project also includes another dupe-pair [2132856/7] for TP [GRP08]], SRec=6/21/18
++ Labsheet [18-0621], pp 17,18 [same MLID, 1 is blank]
++ [p.17] 4936685, STime=2110, Chem=2162850, TNut=2132856, "Strawberry River at East Daniels Allotment"
++ [p.18] 4936685, STime=2010, Chem=2132851, TNut=2132857, "DWRSR QA/QC BLANK"
+
+~~**Correction requres Field-data Review**~~
++ Resolution ::
+    + Proj C2018-02841 & STime == 2010 :: MLID = 4936305
+    
+```{r grp05-1}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ "4936305",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" &
+            is.na(Result.Comment) ~ "MLID corrected to 4936305",
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ paste(Result.Comment,
+                                           "MLID corrected to 4936305", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+2) Proj=c2018-04091; SNums=[2142577, 2412578], BORFG, apparent dupe lab sheet; SampleType
++ Labsheet [18-0809], pp 23, 36 (same site, diff SType and diffSTime ?)
++ [p.23] 4938574, STime=1210, SType=02, Chem=2142520, TNut=2142543, FNut=**2142577** [no FMet submitted]
++ [p.36] 4938574, STime=1215, SType=29, No-chem, TNut=2142544, FNut=**2142578**, FMet=2142623, "FG-Sheeps Creek Bay Mouth"; SNum[2142578] should have STime=1215 and SType=29 (FNut bottle was incorrectly entered)
+
+```{r grp05-2}
+edd06_compareDupes %<>% mutate(
+    SType2 = case_when(
+        Sample.Number == 2142578 &
+            Project.Name == "C2018-04091" ~ as.integer(29),
+        !is.na(SType2) ~ SType2),
+    Sample.Time = case_when(
+        Sample.Number == 2142578 &
+            Project.Name == "C2018-04091" ~ "12:15",
+        !is.na(Sample.Time) ~ Sample.Time),
+    dupe_sk6 = case_when(
+        Sample.Number == 2142578 &
+            Project.Name == "C2018-04091" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        Sample.Number == 2142578 &
+            Project.Name == "C2018-04091" &
+            is.na(Result.Comment) ~ "Sample.Type corrected to [29]",
+        Sample.Number == 2142578 &
+            Project.Name == "C2018-04091" &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Sample.Type corrected to [29]",
+                                           sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+3) Proj=c2018-01776, SNums=2124653, 2124656; incorrect matrix for 2124653 [FILT]
++ Labsheet = 18-0510, pp. 32, 63 
++ [p.32] 4990755, STime=1500, Chem=2124434, ..., FMET=2124653, TMet=2124656...
++ [p.32] 4990755, STime=1500, SDate=5/10/18, ....
++ change SNum=2124653 Matrix to **DIS** instead of TOT
+
+```{r grp05-3}
+edd06_compareDupes %<>% mutate(
+    Sample.Matrix = case_when(
+        Sample.Number == 2124653 &
+            Project.Name == "C2018-01776" ~ "DIS",
+        !is.na(Sample.Matrix) ~ Sample.Matrix),
+    dupe_sk6 = case_when(
+        Sample.Number == 2124653 &
+            Project.Name == "C2018-01776" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        Sample.Number == 2124653 &
+            Project.Name == "C2018-01776" &
+            is.na(Result.Comment) ~ "Matrix corrected to DIS",
+        Sample.Number == 2124653 &
+            Project.Name == "C2018-01776" &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Matrix corrected to DIS",
+                                           sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+4) Proj=C2018-00858, SNums=2116914, 2116915, 2116919, 2116920, 2116909, 2116910, 2116905, 2116906, 2116873, 2116874; MLID-dupe, see STime [1418, 1350], JRULI [4999000], see also GRP02, #02, Rec=3/19
++ LabSheet=18-0319, pp. 2, 3
++ [p.02] STime=1418, Chem=2116873, TNut=2116905, FNut=2116909, FMet=2116914, TMet=2116919 [description crossed out, Temp=2.06, EC=28.5, pH=7.76, DO.c=10.78]
++ [p.03] STime=1350. Chem=2116874, TNut=2116906, FNUT=2116910, FMet=2116915, TMet=2116920; see field (temp=0.00C, EC=32.4, pH=7.96, DO.c=10.7)
+
+~~**Correction requres Field-data Review**~~
++ Resolution ::
+    + Proj C2018-00858 w/ STime == 1418 :: Change MLID to 4998996
+
+```{r grp05-4}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" ~ "4998996",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-00858" &
+            Sample.Time == "14:18" &
+            is.na(Result.Comment) ~ "MLID corrected to 4998996",
+        DIFF.all == "no.no.no.no_YES.YES.no.YES.no.no.no" & 
+            Sample.Number == 2124653 &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "MLID corrected to 4998996", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+5) Proj=C2018-07211, SNums=2166855, 2166856, MLID-dupe, see STime, BORLP, Recd=12/17/18
++ LAbsheet=18-1217, pp. 11, 22
++ [p.11] 5952422, 1115, FNut=2166855, SType=4 (from 02), Chem=2166745, TNut=2166817
++ [p.22] 5952422, EQBK, 1120, FNut=2166856 SType=4 (from 29), FMet=2166888, TNut=2166818
++ Why are there two blanks?  How do you get unfiltered-analytes from equipment blank (p.22)?
+
+**Correction requres Field-data Review**
+
+```{r grp05-5}
+## See GRP02-4 [above] :: Comment in RECORD_status
+```
+
+
+**GRP = 06** :: "no.no.YES.no_no.no.no.YES.no.no.no"
+
++ Use higher TNum; sample re-run but both results submitted
+
+```{r grp06}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "no.no.YES.no_no.no.no.YES.no.no.no"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "no.no.YES.no_no.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "no.no.YES.no_no.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 07** :: "no.no.YES.no_YES.no.no.YES.no.no.YES"
+
++ Multiple projects; sample re-run, under different DF, RV differs too
++ Use higher Test.Num.  some projects have 3 or 4 records of same result, why?
++ Also, partial records of 2 sets have P-flag (pH of sample not in spec), why only some?
+
+```{r grp07}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "no.no.YES.no_YES.no.no.YES.no.no.YES"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "no.no.YES.no_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "no.no.YES.no_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 08** :: "no.no.YES.no_YES.YES.no.YES.no.no.no"
+
++ 2 sets
+1) ~~Use higher TNum (proj=c2018-02841)?~~ (STime differs) // MLID=4936685, DWRSR; see GRP05, #01
++ Labsheet=18-0621, pp. 17, 18
++ STime=2110, Chem=2132850, TNut=2132856 - "Strawberry river at east Daniels"
++ STime=2010, BLANK, Chem=2132851, TNut=2132857
+
+~~**Correction requres Field-data Review**~~  Need MLID for "Blank" sample
+
+```{r grp08_1}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "no.no.YES.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ "4936305",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.YES.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6
+    ),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.YES.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" &
+            is.na(Result.Comment) ~ "MLID corrected to 4936305",
+        DIFF.all == "no.no.YES.no_YES.YES.no.YES.no.no.no" & 
+            Project.Name == "C2018-02841" &
+            Sample.Time == "20:10" ~ paste(Result.Comment,
+                                           "MLID corrected to 4936305", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+2) Proj=C2018-04091; MLID=4938574, SType error, SNum[2142578] should have SType = 29 (instead of 04)
++ SType=29, 4938574, STime=1215, "FG-Sheeps...", TNut=2142544, FNut=2142578, FMet=2142623
+
++ [_See GRP05-2 above_] **BORLP** [ok, fixed]
+
+**GRP = 09** :: "no.no.YES.YES_no.YES.no.YES.no.no.no"
+
++ Proj=C2018-01776, Wrong SNums :: 2124653 should have FILT, 2124656 should have TOT
+
+```{r grp09}
+# This was already corrected in Grp05-3 (above)
+```
+
+
+**GRP = 10** :: "no.no.YES.YES_YES.no.no.YES.no.no.YES"
+
++ Proj=c2018-06237, STime=0950, SNum=2157420, Rec=10/18/19; use higher TNum, sample re-run under higher dilution but both records submitted
+
+```{r grp10}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "no.no.YES.YES_YES.no.no.YES.no.no.YES"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "no.no.YES.YES_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "no.no.YES.YES_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 11** :: "no.no.YES.YES_YES.no.no.YES.YES.YES.no"
+
++ Selenium, 4 projects w/ 2 methods (200.8 then 3114c).  
+**Rule is if SE-200.8 > 1.0, re-run using 3114C**
+1) Proj=C2018-01003; mLID=4937750, use higher TestNum (usually 3114c), why RV so different? COND=696 uS/cm
+2) Proj=c2018-01348; MLID=4954230; p. 14; COND=456, FMet
+3) Proj=c2018-01349; MLID=4957430, p. 15; COND=431, FMet
+4) Proj=c2018-01336; MLID=4998030, p. 2; COND=N/A, FMet (TMet sample looks ok)
+
+**For Se-200.8 w/ RV > 1 ug/L, use SM3114C result**
+
+```{r grp11}
+edd06_compareDupes %<>% mutate(
+    dupe_sk6 = case_when(
+        DIFF.all == "no.no.YES.YES_YES.no.no.YES.YES.YES.no" &
+            Method.ID == "3114C" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "no.no.YES.YES_YES.no.no.YES.YES.YES.no" &
+            Method.ID == "3114C" & 
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Se-200.8 result > 1 ug/L, use Se-3114C",
+        DIFF.all == "no.no.YES.YES_YES.no.no.YES.YES.YES.no" &
+            Method.ID == "3114C" & 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Se-200.8 result > 1 ug/L, use Se-3114C", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 12** :: "no.no.YES.YES_YES.YES.no.YES.no.no.no"
+
++ Proj=c2018-01776; MLID=4990755, Wrong SNums :: 2124653 should have FILT, 2124656 should have TOT
+
+```{r grp12}
+# This was already corrected in Grp05-3 (above)
+```
+
+**GRP = 13** :: "no.YES.no.no_YES.YES.no.YES.no.no.no"
+
++ Proj=c2018-04558; SNum=2145250, STime=1030, MLID=4997130, Midway FH Outfall [No Change]
++ Proj=c2018-04562; SNum=2145253, STime=1000, MLID=~~4997130~~; change MLID to 4990475
+
+```{r grp13}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "no.YES.no.no_YES.YES.no.YES.no.no.no" &
+        Sample.Number == 2145253 &
+            MLID2 == "4997130" ~ "4990475",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "no.YES.no.no_YES.YES.no.YES.no.no.no" &
+        Sample.Number == 2145253 &
+            MLID2 == "4990475" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "no.YES.no.no_YES.YES.no.YES.no.no.no" &
+        Sample.Number == 2145253 &
+            MLID2 == "4990475" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected MLID to 4990475",
+        DIFF.all == "no.YES.no.no_YES.YES.no.YES.no.no.no" &
+        Sample.Number == 2145253 &
+            MLID2 == "4990475" & 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected MLID to 4990475", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 14** :: "YES.no.no.no_no.no.no.no.no.no.no"
+
++ Large set, 562 records; Only Lab.filename differs; Re-sent, why ?
++ 8 distinct projects, 38 SNums, 9 Lab.filenames
++ Proj=c2018-03971 :: Resent due to TDS value change
++ Proj=c2018-05597 :: Resent due to T.AL re-run
++ Proj=c2018-05598 :: Resent due to T.AL re-run
++ Proj=c2018-05599 [??] :: Resent due to T.AL re-run
++ Proj=c2018-05620 :: Resent due to T.AL re-run
++ Proj=c2018-02618 :: Resent due to T.TL re-run (thallium)
++ Proj=c2018-01932 :: Why ?  [UDWQ_EDD_20181022.txt, UDWQ_EDD_20181109_092258.txt]
++ Proj=c2018-05380 :: Why ?  [UDWQ_EDD_20180619.txt, UDWQ_EDD_20181012.txt]  
+
++ **Use more recent Lab.filename**
+
++ _Itemize the Projects where records appeared to be solely resent_
+
+```{r grp14}
+edd06_compareDupes %>%
+    filter(DIFF.all == "YES.no.no.no_no.no.no.no.no.no.no") %>%
+    {addmargins(table(.$Project.Name, .$DIFF.all, useNA="ifany"),1)}
+```
+
+Project Comments
+1) C2018-01932 :: Some 200.8_M results re-analyzed later, Oct-18, and resent
+2) C2018-02618 :: TL added and Zn rerun
+3) C2018-03971 :: TDS corrected and resent
+4) C2018-05380 :: New analytes in 2nd EDD [B.dis, Ca.dis, Fe.dis, K.dis, Mg.dis, K.dis]
+5) C2018-05597 :: AL.tot added and resent
+6) C2018-05598 :: AL.tot added and resent
+7) C2018-05599 :: AL.tot added and resent
+8) C2018-05620 :: AL.tot added and resent
+
+```{r grp14_fix}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "YES.no.no.no_no.no.no.no.no.no.no"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Lab.filename[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Lab.filename[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "YES.no.no.no_no.no.no.no.no.no.no" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; latest lab-EDD used",
+        DIFF.all == "YES.no.no.no_no.no.no.no.no.no.no" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; latest lab-EDD used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+***
+
+**GRP = 15** :: "YES.no.no.no_YES.no.no.no.no.no.no"
+
++ Proj=C2018-03971, MLID=4994950, SNum=2141983 [TDS] use more recent File.Name
+
+```{r grp15}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "YES.no.no.no_YES.no.no.no.no.no.no"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Lab.filename[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Lab.filename[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "YES.no.no.no_YES.no.no.no.no.no.no" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; recent lab-EDD used",
+        DIFF.all == "YES.no.no.no_YES.no.no.no.no.no.no" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; recent lab-EDD used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+**GRP = 16** :: "YES.no.YES.YES_no.no.no.YES.no.no.no"
+
++ Proj=c2018-01932; use higher TestNum (more recent ADate)
+
+```{r grp16}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "YES.no.YES.YES_no.no.no.YES.no.no.no"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "YES.no.YES.YES_no.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "YES.no.YES.YES_no.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 17** :: "YES.no.YES.YES_YES.no.no.YES.no.no.no"
+
++ Use higher TestNum [as GRP-16 above, but RV differs]
+
+```{r grp17}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.no"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.no" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 18** :: "YES.no.YES.YES_YES.no.no.YES.no.no.YES"
+
++ Samples re-run at lower DF, use higher Test.Num; _Strange that RVs were much higher at lower dilution..._
+
+```{r grp18}
+for (k in edd06_compareDupes$SKey6[!is.na(edd06_compareDupes$dupe_sk6) & !is.na(edd06_compareDupes$DIFF.all) &
+    edd06_compareDupes$DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.YES"]) {
+    resent_j <- edd06_compareDupes[edd06_compareDupes$SKey6 == k,]
+    for (i in 1:nrow(resent_j)) {
+        edd06_compareDupes$dupe_sk6[edd06_compareDupes$SKey6 == k][i] <- 
+            ifelse(
+                edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k][i] < 
+                    max(edd06_compareDupes$Test.Number[edd06_compareDupes$SKey6 == k]),
+                "dupe_rec",
+                NA)
+    } }
+edd06_compareDupes %<>% mutate(
+    Result.Comment = case_when(
+        DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Duplicate result; higher TestNum used",
+        DIFF.all == "YES.no.YES.YES_YES.no.no.YES.no.no.YES" &
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Duplicate result; higher TestNum used", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 19** :: "YES.YES.no.no_no.YES.no.YES.no.no.no"
+
++ Proj=c2018-02561 / c2018-02446 [NH4 / TN, DIS]; Many differences [UTLK]; MLID=4930009
++ LabSheet [18-0611], p.08; S.Recd=6/11/18, STime=2021, SDate=2/10/18, SNum=2130093 [FNut] as EQBK
++ Labsheet [18-1613], p.27 ; S.Recd=6/13/18, STime=1200, SDate=6/10/18, SNum=2130721 [FNut], as Trip.Blanks (was 4930015, crossed out) in group w/ SDates 6/11 to  6/12... (wrong SDate here?)
+
+```{r grp19-1}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930009" ~ "4930015",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected MLID to 4930015",
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" & 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected MLID to 4930015", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
++ Proj=c2018-02619 / c2018-02542 [metals]; Many differences [JRULI]; MLID=4990755;
++ LabSheet [18-0316], p.12 ; S.Recd=6/13/18, STime=1700, EQ.BK; FNut=2130703, FMet=2130769, TMet=2130804
++ LabSheet [18-0614], p.11 ; S.Recd=6/14/18, STime=1430, EQ.BK; SDate=6/13 [crossed out, msg from AA], FNut=2131051, FMet=2131072, TMet=2131082; 
+
+~~**This group requires Field-data Review**~~
+
+```{r grp19-2}
+edd06_compareDupes %<>% mutate(
+    Sample.Date = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.Date("2018-06-13"),
+        !is.na(Sample.Date) ~ Sample.Date),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected SampDate to 6/13/18",
+        DIFF.all == "YES.YES.no.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619"& 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected SampDate to 6/13/18", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 20** :: "YES.YES.YES.no_no.YES.no.YES.no.no.no"
+
++ Different samples ??  (as #02 for GRP-019 above), JRULI, 6/13,14/18; MLID=4990755
+
+~~**Correction requres Field-data Review**~~
+
+```{r grp20}
+edd06_compareDupes %<>% mutate(
+    Sample.Date = case_when(
+        DIFF.all == "YES.YES.YES.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.Date("2018-06-13"),
+        !is.na(Sample.Date) ~ Sample.Date),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.YES.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.YES.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected SampDate to 6/13/18",
+        DIFF.all == "YES.YES.YES.no_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619"& 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected SampDate to 6/13/18", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+
+**GRP = 21** :: "YES.YES.YES.YES_no.YES.no.YES.no.no.no"
+
++ Difference samples:  see GRP-19 above
++ **Repeated MLID & SDate but different samples submitted...**
+
+~~**Correction requres Field-data Review**~~
+
+```{r grp21}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930009" ~ "4930015",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected MLID to 4930015",
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" & 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected MLID to 4930015", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+#
+edd06_compareDupes %<>% mutate(
+    Sample.Date = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.Date("2018-06-13"),
+        !is.na(Sample.Date) ~ Sample.Date),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected SampDate to 6/13/18",
+        DIFF.all == "YES.YES.YES.YES_no.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619"& 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected SampDate to 6/13/18", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+**GRP = 22** :: "YES.YES.YES.YES_YES.YES.no.YES.no.no.no"
+
++ Two distinct SETS (see GRP 19)
++ C2018-02561/-02446; MLID=4930009 [TOC/dis]
++ C2018-02619/-02542; MLID=4990755 [TN/dis & TP/tot]
+**Distinct samples submitted w/ same Lab Sheet info**
+
+~~**Correction requres Field-data Review**~~
+
+```{r grp22}
+edd06_compareDupes %<>% mutate(
+    MLID2 = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930009" ~ "4930015",
+        !is.na(MLID2) ~ MLID2),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected MLID to 4930015",
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02561" &
+            MLID2 == "4930015" & 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected MLID to 4930015", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+#
+edd06_compareDupes %<>% mutate(
+    Sample.Date = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.Date("2018-06-13"),
+        !is.na(Sample.Date) ~ Sample.Date),
+    dupe_sk6 = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" ~ as.character(NA),
+        is.na(dupe_sk6) ~ as.character(NA),
+        !is.na(dupe_sk6) ~ dupe_sk6),
+    Result.Comment = case_when(
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619" &
+            is.na(dupe_sk6) &
+            is.na(Result.Comment) ~ "Corrected SampDate to 6/13/18",
+        DIFF.all == "YES.YES.YES.YES_YES.YES.no.YES.no.no.no" &
+        Project.Name == "C2018-02619"& 
+            is.na(dupe_sk6) &
+            !is.na(Result.Comment) ~ paste(Result.Comment,
+                                           "Corrected SampDate to 6/13/18", sep=". "),
+        !is.na(Result.Comment) ~ Result.Comment,
+        is.na(Result.Comment) ~ as.character(NA)
+        ))
+```
+
+***
+
+#### 8.6 Re-calculate Sample Keys from Updated Records
+
+```{r recalc_keys}
+edd06_compareDupes %<>% 
+    mutate(
+        SKey1 = paste(.$MLID2, 
+                      as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                      sep="."),
+        SKey2 = paste(.$MLID2, 
+                      as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                      .$Sample.Number,
+                      sep="."),
+        PARAM.key = paste(.$ParamX,
+                          .$Sample.Matrix,
+                          sep=".")) %>%
+    mutate(
+        SKey3 = paste(.$SKey2,
+                      .$PARAM.key,
+                      sep="."),
+        SKey4 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      sep="."),
+        SKey5 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      .$PARAM.key,
+                      sep="."), 
+        SKey6 = paste(.$SKey1, 
+                      sprintf("%.2d", as.integer(.$SType2)),
+                      .$PARAM.key,
+                      .$Proj2,
+                      sep="."))
+```
+
+#### 8.7 Update Monitoring Location Information
+
+```{r MonLoc_2}
+edd06_compareDupes_02 <- left_join(edd06_compareDupes,
+                      select(MonLoc,
+                             MLID, MLID_name, MLID.type, QC_type, QC.parent),
+                      by = c("MLID2" = "MLID")) %>%
+    select(-ends_with(".x"), -ends_with(".y"), everything())
+#
+unique(edd06_compareDupes_02[!is.na(edd06_compareDupes_02$MLID_name.x) & edd06_compareDupes_02$MLID_name.x != edd06_compareDupes_02$MLID_name.y, c("MLID2", "MLID_name.x", "MLID_name.y", "MLID.type.x", "MLID.type.y", "QC_type.x", "QC_type.y","Result.Comment")]) -> set01
+## Summary of MLID-based changes
+htmlTable::htmlTable(set01, 
+                     css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(set01) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(set01) + 1,nrow = nrow(set01))),
+                     n.tspanner=rep(1,nrow(set01)), tspanner=rep("", nrow(set01)))
+
+```
+
+```{r EDD_file_UPDATE}
+edd06_compareDupes_03 <- edd06_compareDupes_02 %>%
+    select(-ends_with(".x"),
+           MLID_name = MLID_name.y,
+           MLID.type = MLID.type.y,
+           QC_type = QC_type.y,
+           QC.parent = QC.parent.y)
+    
+```
+
++ Back up Workspace
+
+```{r workspace}
+# save.image("C:/R_PROJECT_WORK/uphl_18apr_18dec_r/190129-1.RData")
+```
+
+
+
+#### 8.8 Exrpot & Version Datafile
+
+```{r export_edd6Dupe}
+# openxlsx::write.xlsx(edd06_compareDupes, file=paste("EDD06dupes_XXX_ForReview_",
+#                                                     format(Sys.Date(), "%y%m%d"),
+#                                                     ".xlsx", sep=""))
+```
+
++ **Use the XLS file (above) to work through sample metadata issues w/ field managers**
++ For records that were not _yet_ corrected, add `RECORD_status` [in XLS file] as **"Needs.Review"**
+
+
++ `edd06_compareDupes_03` ==> `EDD.dat7`
++ This dataframe w/ include the Dupe-comparisons conducted in 8.4 & 8.5 above.
+    
+```{r vers0607}
+EDD.dat7 <- edd06_compareDupes_03
+```
+    
+***
+***
+
+### 9.0 Prepare Chem Data for Field Matchup and Import to AWQMS
+
++ Working dataframe :: `EDD.dat7`
+
+**Filters to use to Isolate Records for AWQMS Import**
+
+1) `RECORD_status` == `NA`
+2) `Method.ID` != ~ "`CHL`" _or_ "`Filter`"
+3) `dupe_sk6` == `NA`
+
+```{r preImport_table}
+EDD.dat7 %>% {addmargins(table(.$Method.ID, .$RECORD_status, useNA="ifany", deparse.level = 2))}
+
+EDD.dat7 %>% {addmargins(table(.$Method.GRP, .$RECORD_status, is.na(.$dupe_sk6),
+                               useNA="ifany", deparse.level = 2), c(1,2))}
+
+EDD.dat7 %>% 
+    filter(is.na(dupe_sk6)) %>%
+    {addmargins(table(.$Method.GRP, .$RECORD_status, 
+                      useNA="ifany", deparse.level = 2, 
+                      exclude = c("CHL", "CHL_hplc", "Filter")))}
+```
+
+#### 9.1 Add IMPORT_status
+
+```{r import_status_00}
+EDD.dat7 %<>% mutate(IMPORT_status = NA)
+```
+
++ Use this field to keep track of records that were imported, etc.
+
+#### 9.2 Export [Import-Ready] file for Matchup w/ Field Data
+
+```{r export_4ImportREV}
+IMPORT_00 <- EDD.dat7 %>%
+    filter(is.na(RECORD_status)) %>%
+    filter(!Method.GRP %in% c("CHL", "CHL_hplc", "Filter")) %>%
+    filter(is.na(dupe_sk6))
+##
+openxlsx::write.xlsx(IMPORT_00,
+                     file=paste("uphlAprDec18_Chem_IMPORT_00_",
+                                format(Sys.Date(), "%y%m%d"),
+                                ".xlsx", sep=""))
+
+```
+
++ File exported :: `"uphlAprDec18_Chem_IMPORT_00_190130.xlsx"`
+
+#### 9.3 Comments on Lab data prep for AWQMS Import
+
+1) Will Need to Generate `AWQMS.key`
+2) Will Need to Ensure that `TripIDs` are accurate and matching to Field data
+3) Will Need to Generate `Activity.ID`
+4) Need to Correct `Result.Value` and _Reporting-Limit fields_ for Import.Config
+
+
+***
+
+## WORK
+ 
+```{r sandbox, eval=FALSE, include=FALSE}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+
+# EDD.dat6 %>% filter(is.na(RECORD_status) & !grepl("CHL", .$Method.GRP)) %>% {table(.$SKey6, useNA="ifany")} %>% as.data.frame(.) %>% {table(.$Freq)} %>% as.data.frame(., stringsAsFactors = F) %>% filter(Var1 > 1) %>% {sum(.$Freq)}
+#
+# select(data08_rename, contains("Comment", ignore.case = T)) %>% names(.)
+# Data_proj02 <- add_row(Data_proj02,
+#                        Trip.ID = NA, Project = "NoTrip", Proj_GRP = "NoTrip", Proj_SET = "NoTrip")
+# EDD.dat6 %>%
+#     filter(is.na(RECORD_status)) %>%
+#     {table(.$Result.Code, .$Problem.Identifier, useNA="ifany")}
+# select(MonLoc, contains("Blank", ignore.case = T)) %>% names(.)
+# grep("Blank", MonLoc$Description, value = T) %>% {table(.)}
+```
+
+***
+
+## END
+
+```{r lastwork}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
