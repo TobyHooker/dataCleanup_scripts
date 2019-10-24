@@ -1,0 +1,274 @@
+---
+title: "Hg Screening"
+date: "24 October, 2017"
+output: 
+    html_notebook:
+        df_print: paged
+        toc: yes
+        toc_depth: 4
+        toc_float: FALSE
+        theme: flatly
+        highlight: default
+        smart: TRUE
+---
+***
+
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+
+```{r STARTUP, eval=FALSE, include=FALSE, results='hide'}
+#packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "xtable", "dplyr")
+#lapply(packge.set, library, character.only=T)
+#options(table_counter=FALSE)
+options(scipen = 999)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+Goal: Check out mercury results...how often are there exceedences?
+
++ Queried AWQMS (171024) for all sites w/ Hg results where the units were in ug/L
+
+
+***
+
+### 1.0 Import AWQMS Export file (_abrev._)
+
+```{r Import1, eval=FALSE}
+## This code-block only needs to be run when the dataset has changed...
+library(openxlsx)
+library(lubridate)
+file <- choose.files(caption="Select _Working_ DATA file [*.xlsx]", multi = FALSE)
+DATA.file0 <- read.xlsx(file, sheet=1, startRow = 1, colNames=TRUE, rowNames=FALSE, detectDates=TRUE);  
+filename <- basename(file)
+path.filename <- dirname(file)
+DATA0 <- DATA.file0[,c(-1,-2,-5,-6,-7,-13,-16,-18,-20,-21,-22,-23,-24,-25,-26,-28,
+                       -36,-37,-38,-42,-43,-44,-45,-46,-48,-49,-50,-51)]
+```
+
+**Dataset Info**::  
+
++ **Data File Name:**  `r filename`  
++ **Data File Path:**  `r path.filename`
++ Imported datafile has **`r length(names(DATA.file0))`** Columns and **`r format(nrow(DATA.file0), big.mark = ",") `** records
+
+***
+
+### 2.0 Examine dataset
+
+**Site Types / {Monitoring Location Type}**
+
++ There are `r length(unique(DATA0$Monitoring.Location.Type))` unique Site-Types
+
+```{r dat1.1}
+(unique(DATA0$Monitoring.Location.Type))
+```
+
+**Activity Types**
+
++ There are `r length(unique(DATA0$Activity.Type))` unique Activity Types
+
+```{r dat1.2}
+(unique(DATA0$Activity.Type))
+```
+
+**Monitoring Locations**
+
++ There are `r length(unique(DATA0$Monitoring.Location.ID))` unique Sites
+
+**Sampling Dates**
+
++ Earliest Sampling Date ::  (`r min(as.Date(DATA0$Activity.Start.Date,format = "%m/%d/%Y"))`)
++ Most recent Sampling Date :: (`r max(as.Date(DATA0$Activity.Start.Date,format = "%m/%d/%Y"))`)
+
+**Relative Depth of Sample**
+
++ There are `r length(unique(DATA0$Relative.Depth))` unique Relative Depths
+
+```{r dat1.3}
+(unique(DATA0$Relative.Depth))
+as.data.frame(table(DATA0$Relative.Depth, useNA = "ifany"))
+```
+
+**Sample Fractions / Matrix**
+
++ There are `r length(unique(DATA0$Sample.Fraction))` unique Sample Fractions
+
+```{r dat1.4}
+unique(DATA0$Sample.Fraction)
+as.data.frame(table(DATA0$Sample.Fraction, useNA = "ifany"))
+```
+
+```{r dat1.5}
+addmargins(table(DATA0$Monitoring.Location.Type, DATA0$Sample.Fraction, useNA = "ifany"))
+```
+
+**Detection Condition / Result-Flags**
+
+```{r dat1.6}
+
+data.frame(DetCond = table(DATA0$Detection.Condition, useNA = "ifany"))
+
+```
+
+**Drop any cases where DetCon = "Present Above Quantification Limit"**
+
+**Result Units**
+
++ There are `r length(unique(DATA0$Result.Unit))` unique Result Units
+    + `r unique(DATA0$Result.Unit)`
+
+**Null Result-Values**
+
++ There are `r nrow(DATA0[is.na(DATA0$Result.Value),])` records where Result Value is missing / _NULL_
+
+**Types of Quantitation / Reporting Limits**
+
++ There are `r length(unique(DATA0$Detection.Limit.Type1))` unique Reporting Limits
+
+```{r dat1.7, warning=FALSE}
+unique(DATA0$Detection.Limit.Type1)
+```
+
+```{r dat1.8}
+data.frame(DetLim.Type = table(DATA0$Detection.Limit.Type1, useNA = "ifany"))
+
+```
+
+
+
+**Range of values of MDL / LRLs**
+
++ "Method Detection Level" ::  `r min(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Method Detection Level"], na.rm=T)` to `r max(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Method Detection Level"], na.rm=T)`
+
++ "Lower Reporting Limit" ::  `r min(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Lower Reporting Limit"], na.rm=T)` to `r max(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Lower Reporting Limit"], na.rm=T)`
+
+
++ "Lower Quantitation Limit" ::  `r min(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Lower Quantitation Limit"], na.rm=T)` to `r max(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Lower Quantitation Limit"], na.rm=T)`
+
++ "Upper Quantitation Limit" :: `r min(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Upper Quantitation Limit"], na.rm=T)` to `r max(DATA0$Detection.Limit.Value1[!is.na(DATA0$Detection.Limit.Type1) & DATA0$Detection.Limit.Type1 == "Upper Quantitation Limit"], na.rm=T)`
+
+_Note that all these levels / limits are much greater that the numeric criterion for aquatic life (0.012 ug/L; 2.0 ug/L for DW (BUC 1C))_
+
+***
+
+### 3.0 Select Data
+
+```{r dat2.1}
+htmlTable::htmlTable(as.data.frame(table(DATA0$Monitoring.Location.Type[!is.na(DATA0$Result.Value)], useNA = "ifany")), rnames=FALSE)
+```
+
+```{r dat2.2, eval=FALSE}
+# recode MONLOC.Type to fewer groups
+DATA0$Site.Type <- ifelse(DATA0$Monitoring.Location.Type == "Canal Drainage" | 
+                DATA0$Monitoring.Location.Type == "Canal Irrigation" | 
+                DATA0$Monitoring.Location.Type == "Canal Transport", "Canal",
+            ifelse(DATA0$Monitoring.Location.Type == "Facility Other" |
+                       DATA0$Monitoring.Location.Type == "Storm Sewer" | 
+                       DATA0$Monitoring.Location.Type == "Waste Sewer", "Facility",
+            ifelse(DATA0$Monitoring.Location.Type == "Wetland Undifferentiated" | 
+                       DATA0$Monitoring.Location.Type == "Seep" | 
+                       DATA0$Monitoring.Location.Type == "Spring", "Wetland",
+            ifelse(DATA0$Monitoring.Location.Type == "Other-Ground Water" | 
+                       DATA0$Monitoring.Location.Type == "Well" | 
+                       DATA0$Monitoring.Location.Type == "Mine/Mine Discharge", "GW",
+            ifelse(DATA0$Monitoring.Location.Type == "Lake", "Lake",
+                   ifelse(DATA0$Monitoring.Location.Type == "River/Stream", "Stream", "missing"))))))
+#
+## Clean out any RV's = 0 or MDLs < 0
+DATA0$Result.Value <- as.numeric(DATA0$Result.Value)
+DATA0$Result.Value2 <- ifelse(!is.na(DATA0$Result.Value),
+                             ifelse(DATA0$Result.Value == 0, NA, 
+                                    as.numeric(DATA0$Result.Value)), NA)
+DATA0$Detection.Limit.Value1 <- as.numeric(DATA0$Detection.Limit.Value1)
+DATA0$Detection.Limit.Value2 <- ifelse(!is.na(DATA0$Detection.Limit.Value1),
+                             ifelse(DATA0$Detection.Limit.Value1 <= 0, NA, 
+                                    as.numeric(DATA0$Detection.Limit.Value1)), NA)
+#
+DATA0$RESULT_x <- ifelse(!is.na(DATA0$Result.Value2), as.numeric(DATA0$Result.Value2),
+                         ifelse(!is.na(DATA0$Detection.Limit.Value2), 
+                                as.numeric(DATA0$Detection.Limit.Value2),
+                                NA))
+```
+
+
+### 4.0 Inspect data patterns
+
+```{r plot.data, eval=FALSE}
+# Subset data
+DATA.hg <- DATA0[(!is.na(DATA0$RESULT_x) & DATA0$Site.Type != "missing" & (is.na(DATA0$Detection.Condition) | DATA0$Detection.Condition != "Present Above Quantification Limit")),]
+```
+
+
+
+```{r fig1.1}
+library(ggplot2); library(scales);
+z <- ggplot(data = DATA.hg) + theme_bw()
+z0 <- z + stat_ecdf(aes(x=(RESULT_x)), na.rm=T) + ggtitle("All Hg Records") +
+    scale_x_continuous(trans = "log10", breaks = c(0.012, 0.1, 1.0, 5, 20, 100), limits=c(NA, 200), oob=squish) + scale_y_continuous(labels=percent) +
+    xlab("Hg concentration [ug/L]") + ylab("% of records below X-value")
+z0
+```
+
+```{r fig1.2}
+library(ggplot2); library(scales);
+z <- ggplot(data = DATA.hg) + theme_bw()
+z0 <- z + stat_ecdf(aes(x=(RESULT_x), color=Site.Type), na.rm=T) + 
+    ggtitle("Hg Records by Site.Type") +
+    scale_x_continuous(trans = "log10", breaks = c(0.001, 0.012, 0.1, 1.0, 5, 20, 100), limits=c(0.01, 5), oob=squish) + scale_y_continuous(labels=percent) +
+    xlab("Hg concentration [ug/L]") + ylab("% of records below X-value") + 
+    geom_vline(xintercept=0.012, lty=2, color="red")
+z0
+
+```
+
+```{r fig1.3}
+#
+library(ggplot2); library(scales);
+z <- ggplot(data = DATA.hg) + theme_bw()
+z0 <- z + stat_ecdf(aes(x=(RESULT_x), color=Detection.Condition)) + 
+    ggtitle("Hg Records by Detection Condition") +
+    scale_x_continuous(trans = "log10", breaks = c(0.012, 0.1, 1.0, 5, 20, 100), limits=c(0.01, 5), oob=squish) + scale_y_continuous(labels=percent) +
+    xlab("Hg concentration [ug/L]") + ylab("% of records below X-value") + geom_vline(xintercept=0.012, lty=2, color="red")
+z0
+```
+
+***
+
+Total number of 'non-detect' records :: `r format(nrow(DATA.hg[!is.na(DATA.hg$Detection.Condition),]), big.mark=",")`
+
+```{r fig1.4}
+DATA.hg2 <- DATA.hg[!is.na(DATA.hg$Detection.Condition),]
+#
+ggplot(data=DATA.hg2) + stat_count(aes(x=Detection.Limit.Value2), na.rm=T) + scale_x_continuous(limits=c(0.009,2.1), trans="log10", breaks = c(0.01,0.02, 0.05, 0.1, 0.5, 1.0)) + scale_y_continuous(limits = c(0,400), oob=squish) + ggtitle("Distribution of Detection and Reporting Limits for 'Non-Detect' samples") + theme_bw() + geom_vline(xintercept=0.012, lty=2, color="red")
+```
+
++ Number of samples greater than Detection Limits :: `r format(nrow(DATA.hg[is.na(DATA.hg$Detection.Condition),]), big.mark=",")`
+    + Number of these records where Result.value < numeric criteria (0.012 ug/L) :: `r nrow(DATA.hg[!is.na(DATA.hg$Result.Value) & DATA.hg$Result.Value < 0.012,]) / nrow(DATA.hg[is.na(DATA.hg$Detection.Condition),])`
+    + **All sample hits (quantitated result values) exceeded numeric criteria**
+
++ Proportion of records where result was detected :: `r as.numeric(format(nrow(DATA.hg[is.na(DATA.hg$Detection.Condition),]) / nrow(DATA.hg), digits=3))*100`%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
