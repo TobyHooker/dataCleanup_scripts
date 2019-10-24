@@ -1,0 +1,184 @@
+---
+title: "GSL Storm Frequency [1]"
+author: "T.Hooker"
+date: "17 December, 2018"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+graph_package <- c("ggplot2", "scales")
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+### Notes
+
+Evaluation of PPT data from GSL sites (Davis County, etc.) associated w/ West Davis Corridor (WDC) 401 Certification.  Goal is to review Stormwater Runoff Events using 90th percentile of ppt events.
+
+
+### 1.0 Import PPT datafile
+
++ Data from NOAA NCDC for sites along western Wasatch Front w/ > 10 yr period of record, and near current data
+
+```{r import01}
+file01 <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+ppt0 <- read.csv(file01)
+```
+
+#### 1.1 Examine Data Structure
+
+```{r Datavars01}
+data.file <- ppt0
+# 
+Data.Vars <- data.frame()
+for (i in 1:length(names(data.file))) {
+  class_i <- class(data.file[,i])
+  name_i <- names(data.file[i])
+  num.NAs <- sum(is.na(data.file[,i]))
+  count_levels <- as.numeric(length(unique((data.file[,i]))))
+  num.blanks <- length(data.file[as.character(data.file[,i]) == "",c(i)]) # fixed for dates
+  num.Obs <- nrow(data.file)-num.blanks
+Data.Vars <- rbind(Data.Vars, data.frame(i, name_i, class_i, num.NAs, count_levels, num.blanks, num.Obs)) }
+```
+
++ Key fields
+
+```{r fields01}
+fields.ls <- c("STATION",
+               "DATE",
+               "PRCP", "PRCP_ATTRIBUTES",
+               "SNOW", "SNOW_ATTRIBUTES", "SNWD", "SNWD_ATTRIBUTES",
+               "TAVG", "TAVG_ATTRIBUTES", 
+               "TMAX", "TMAX_ATTRIBUTES",
+               "TMIN", "TMIN_ATTRIBUTES",
+               "TOBS", 
+               "WESD", "WESD_ATTRIBUTES",
+               "WESF", "WESF_ATTRIBUTES")
+
+```
+
++ Stations :: `r length(unique(ppt0$STATION))`
+    + `r unique(ppt0$STATION)`
+
+```{r stations01}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+sites <- ppt0 %>% distinct(STATION, NAME, ELEVATION)
+sites %<>% mutate(Elev_ft = ELEVATION * 3.28084)
+sites %<>% mutate(Elev_dev4208 = round(Elev_ft - 4208,0))
+sites
+```
+
+```{r data_record}
+ppt0 %>% {table(.$NAME, useNA = "ifany")} %>% as.data.frame(.)
+```
+
+### 2.0 SLC Airport Data
+
+```{r data01}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+SLC.ppt0 <- ppt0 %>% 
+    filter(STATION == "USW00024127") %>%
+    select(STATION,DATE, fields.ls, NAME) %>% select(-TOBS, -WESF, -WESF_ATTRIBUTES)
+    
+```
+
++ SLC Airport data
+    + Date Range (From `r min(lubridate::mdy(SLC.ppt0$DATE))` to `r max(lubridate::mdy(SLC.ppt0$DATE))` )
+
+***
+
+#### 2.1 PPT CDF figure
+
+```{r slc_fig01}
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+
+SLC.ppt0 %>% filter(PRCP > 0.10) %>%
+    ggplot() + theme_bw() +
+    stat_ecdf(aes(x=PRCP), na.rm=T) +
+    scale_x_continuous(name="Precipitation (inches) SLC Airport",
+                       limits=c(NA, 1.5),
+                       breaks=c(0,0.1,0.25,0.5,0.6,0.8,1.0,1.25,1.5)) +
+    scale_y_continuous(labels=percent,
+                       name="% of Records less than Result Value") +
+    geom_hline(yintercept = c(0.1, 0.5, 0.85, 0.9), lty=2, col="darkgreen", size=0.9)
+##
+SLC.ppt0 %>% filter(PRCP > 0.10) %>% summarize("10%ile"=quantile(PRCP, probs=0.1),
+                                               "median"=quantile(PRCP, probs=0.5),
+                                               "85%ile"=quantile(PRCP, probs=0.85),
+                                               "90%ile"=quantile(PRCP, probs=0.9))
+
+```
+
+```{r sites_fig02}
+ppt0 %>% filter(PRCP > 0.10) %>%
+    ggplot() + theme_bw() +
+    stat_ecdf(aes(x=PRCP, col=STATION), na.rm=T) +
+    scale_x_continuous(name="Precipitation (inches) SLC Airport",
+                       limits=c(NA, 1.2),
+                       breaks=c(0,0.1,0.25,0.5,0.6,0.8,1.0,1.2)) +
+    scale_y_continuous(labels=percent,
+                       name="% of Records less than Result Value") +
+    geom_hline(yintercept = c(0.1, 0.5, 0.85, 0.9), lty=2, col="darkgreen", size=0.9)
+##
+ppt0 %>% filter(PRCP > 0.10) %>% group_by(STATION) %>%
+    summarize("10%ile"=quantile(PRCP, probs=0.1),
+                                               "median"=quantile(PRCP, probs=0.5),
+                                               "85%ile"=quantile(PRCP, probs=0.85),
+                                               "90%ile"=quantile(PRCP, probs=0.9))
+```
+
+
+***
+
+### WORK
+ 
+```{r sandbox}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+### options for loading .RData files and getting either (i) known df-names, or
+### (ii) finding df-names
+## (i)  obj2 <- get(load("201718wy_FLDimport_FLOW_import04_181211.RData"))
+## (ii) obj <- load("201718wy_FLDimport_FLOW_import04_181211.RData")
+## (ii-cont) obj  ## this line gives the name of the imported / loaded DF
+
+# LabRef$Sample.Received.Date <- as.Date(LabRef$Sample.Received.Date, origin="1899-12-30")
+# LabRef$Sample.Date <- as.Date(LabRef$Sample.Date, origin="1899-12-30")
+
+```
+
+```{r clusterfuck01}
+# data04 %>% filter(MLID.type == "Lake") %>%
+#     filter(., SampType == "04") %>% select(ACTID) %>% distinct(.)
+```
+
+### END
+***
+```{r lastwork}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`  
+
+***
+eof
+
+***

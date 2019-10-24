@@ -1,0 +1,2526 @@
+---
+title: "UPHL Bill Tracking [4]"
+author: "T.Hooker"
+date: "23 August, 2019"
+output: 
+    html_notebook:
+        df_print: paged
+        toc: yes
+        toc_depth: 4
+        toc_float: FALSE
+        theme: flatly
+        highlight: default
+        smart: TRUE
+ 
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+***
+```{r STARTUP}
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+graph_package <- c("ggplot2", "scales")
+if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE,
+        width=75)
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## Notes
+
+This notebook compiles UPHL invoices for budget summaries and sample-tracking purposes  
+
+The work included here builds off `UPHL_Billing_01_v04_180125.Rmd`, which had been updated through Dec. 2017.
+
+Earlier files::  
+
+1) `bills1`  [df]; includes all records (including dupes)
+~~2) `bills_XX` [df]; includes only singular records (no dupes), with additional calculated-fields~~
+
+The script identified above can be used to re-develop the calculated fields, based on the updated invoice-records
+
+The above-listed df's are contained w/in the list ::  `uphl_bills1.list` and saved as:  
+
++ XLSX format :: filename: `"UPHL_bills_data_01_180411.xlsx"`  
++ RData format :: filename: `"UPHL_bills_data_01_180411.RData"`
+
+The XLSX file contains both DFs as tabs.  The RDATA file contains DFs in a list.
+
+***
+
+## Updates
+
++ [181001] Updated Invoice Logs
++ [190110] Update Invoices through Dec.18
++ [190401] New Notebook version, building off `UPHL_Billing_02_TRACKING_v04_190110.Rmd`, Updating invoices through March-19 (1)
++ [190417] Updating March-19 (2) invoices and summarizing available funds for EG information request
++ [190823] Updating FY2019 invoices, etc.
+    + Environment cleanup...
+    + Add stable prior FY data-sets
+
+
+## 1.0 Import Base-data-file
+
+### 1.1 Import Base-invoice-data
+
+```{r import01, eval=F}
+# invoice.0 <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# load(invoice.0)
+```
+
+**Extract list to DFs**
+
+```{r unlist01, eval=F}
+# bills1.df <- plyr::ldply(uphl_bills1.list[1], data.frame)
+# #bills1.df <- bills1.df[,-1]
+# bills_XX.df <- plyr::ldply(uphl_bills1.list[2], data.frame)
+# #bills_XX.df <- bills_XX.df[,-1]
+```
+
+### 1.2 Import/Append Invoices
+
++ The following subsections import bi-weekly sets of UPHL invoice details, translate field names, bind the sets of invoices monthly, and then that set of [_quarterly_] invoices is compiled to the base invoice dataset [_190401_]
+
+### 1.21  Dec-2017 through March, 2018 :: _180411_
+
+**Dec.2017**
+
+```{r append.01, eval=F}
+files01 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.01 <- openxlsx::read.xlsx(files01, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.01 <- basename(files01)
+# update field names
+names(bill.01) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+bill.01$File <- "17.Dec2"
+```
+
+(_There was an error w/ the Dec.17 import, 3 rows were missing.  This file will be re-imported and then cleaned_)
+
+**Jan.2018**
+
+```{r append.02, eval=F}
+files02 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.02 <- openxlsx::read.xlsx(files02, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.02 <- basename(files02)
+# update field names
+names(bill.02) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#  2nd sheet
+bill.02_b <- openxlsx::read.xlsx(files02, sheet=2, startRow = 5, colNames=F, rowNames=FALSE);
+names(bill.02_b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# rbind
+bill.02_x <- rbind(bill.02, bill.02_b)
+bill.02_x$File <- "18.Jan"
+```
+
+**Feb.2018**
+
+```{r append.03, eval=F}
+files03 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.03 <- openxlsx::read.xlsx(files03, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.03 <- basename(files03)
+# update field names
+names(bill.03) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files03b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.03b <- openxlsx::read.xlsx(files03b, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.03b <- basename(files03b)
+# update field names
+names(bill.03b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 
+bill.03_x <- rbind(bill.03, bill.03b)
+bill.03_x$File <- "18.Feb"
+
+```
+
+**March.2018**
+
+```{r append.04, eval=F}
+files04 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.04 <- openxlsx::read.xlsx(files04, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.04 <- basename(files04)
+# update field names
+names(bill.04) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files04b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.04b <- openxlsx::read.xlsx(files04b, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.04b <- basename(files04b)
+# update field names
+names(bill.04b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 
+bill.04_x <- rbind(bill.04, bill.04b)
+bill.04_x$File <- "18.Mar"
+```
+
+**April.2018**
+
+```{r append.05, eval=F}
+files05 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.05 <- openxlsx::read.xlsx(files05, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.05 <- basename(files05)
+# update field names
+names(bill.05) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files05b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.05b <- openxlsx::read.xlsx(files05b, sheet="UDEQ", startRow = 9, colNames=F, rowNames=FALSE);  
+filenm.05b <- basename(files05b)
+# update field names
+names(bill.05b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 
+bill.05_x <- rbind(bill.05, bill.05b)
+bill.05_x$File <- "18.Apr"
+```
+
+**May.2018**  ## **Partial Upload !! 2nd half of May.18 format is fuct**
+
+```{r append.06, eval=F}
+files06 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.06 <- openxlsx::read.xlsx(files06, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.06 <- basename(files06)
+# update field names
+names(bill.06) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+# files06b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# bill.06b <- openxlsx::read.xlsx(files06b, sheet="UDEQ", startRow = 9, colNames=F, rowNames=FALSE);  
+# filenm.06b <- basename(files06b)
+# update field names
+# names(bill.06b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 
+bill.06_x <- rbind(bill.06)  # ", bill.06b"  to add after file fix
+bill.06_x$File <- "18.May"
+```
+
++ The above (May, 2018) files are not yet ready for import (180611), due to format changes in data-files
+
+
+**Combine 17.Dec to 18.Mar**
+
+```{r combine01, message=FALSE, warning=FALSE, eval=F}
+bills_append <- rbind(bill.01, bill.02_x, bill.03_x, bill.04_x)
+# record cols
+library(tidyr, quietly = TRUE, warn.conflicts = F); library(plyr, quietly = TRUE, warn.conflicts = F);library(dplyr, quietly = TRUE, warn.conflicts = F)
+bills_append <- select(bills_append, File, everything())
+## fix dates
+bills_append$Date.Colleted <- openxlsx::convertToDate(bills_append$Date.Colleted, origin="1900-01-01")
+bills_append$Date.Received <- openxlsx::convertToDate(bills_append$Date.Received, origin="1900-01-01")
+bills_append$Date.Reported <- openxlsx::convertToDate(bills_append$Date.Reported, origin="1900-01-01")
+```
+
+**Combine 18.Apr to 18.May**
+
+```{r combine02, message=FALSE, warning=FALSE, eval=F}
+bills_append2 <- rbind(bill.05_x, bill.06_x)
+# record cols
+library(tidyr, quietly = TRUE, warn.conflicts = F); library(plyr, quietly = TRUE, warn.conflicts = F);library(dplyr, quietly = TRUE, warn.conflicts = F)
+bills_append2 <- select(bills_append2, File, everything())
+## fix dates
+bills_append2$Date.Colleted <- openxlsx::convertToDate(bills_append2$Date.Colleted, origin="1900-01-01")
+bills_append2$Date.Received <- openxlsx::convertToDate(bills_append2$Date.Received, origin="1900-01-01")
+bills_append2$Date.Reported <- openxlsx::convertToDate(bills_append2$Date.Reported, origin="1900-01-01")
+```
+
+### 1.22 **Adding 2nd-half May-18 through Sept-18**
+
+**May.2018 [2/2]**
+
+```{r append.06_B, eval=F}
+# 2nd file
+files06b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.06b <- openxlsx::read.xlsx(files06b, sheet=1, startRow = 5, 
+                                colNames=F, rowNames=FALSE);
+filenm.06b <- basename(files06b)
+# update field names
+names(bill.06b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 
+bill.06b$File <- "18.May"
+```
+
+**June.2018**  [1 file]
+
+```{r append.07, eval=F}
+files07 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.07 <- openxlsx::read.xlsx(files07, sheet=1, startRow = 5, colNames=F, rowNames=FALSE);  
+filenm.07 <- basename(files07)
+# update field names
+names(bill.07) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+# files07b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# bill.07b <- openxlsx::read.xlsx(files07b, sheet="UDEQ", startRow = 9, colNames=F, rowNames=FALSE);  
+# filenm.07b <- basename(files07b)
+# # update field names
+# names(bill.07b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+#                    "Date.Reported", "Facility", "Sampling.Point",
+#                    "Site.Description", "Item.Description", "Category", "TOTAL")
+# # 
+bill.07_x <- rbind(bill.07)  #, bill.07b
+bill.07_x$File <- "18.Jun"
+```
+
+**July.2018**  [1 file]
+
+```{r append.08, eval=F}
+files08 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.08 <- openxlsx::read.xlsx(files08, sheet=1, startRow = 2, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.08 <- basename(files08)
+# update field names
+names(bill.08) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+# files08b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# bill.08b <- openxlsx::read.xlsx(files08b, sheet="UDEQ", startRow = 9, colNames=F, rowNames=FALSE);  
+# filenm.08b <- basename(files08b)
+# # update field names
+# names(bill.08b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+#                    "Date.Reported", "Facility", "Sampling.Point",
+#                    "Site.Description", "Item.Description", "Category", "TOTAL")
+# # 
+bill.08_x <- rbind(bill.08)  #, bill.08b
+bill.08_x$File <- "18.Jul"
+```
+
+**August.2018**  [2 files]
+
+```{r append.09, eval=F}
+files09 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.09 <- openxlsx::read.xlsx(files09, sheet=1, startRow = 3, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.09 <- basename(files09)
+# update field names
+names(bill.09) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files09b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.09b <- openxlsx::read.xlsx(files09b, sheet=1, startRow = 3, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.09b <- basename(files09b)
+# update field names
+names(bill.09b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# # 
+bill.09_x <- rbind(bill.09, bill.09b)  #
+bill.09_x$File <- "18.Aug"
+```
+
+**Sep.2018**  [1 of 2 files]
+
+```{r append.10, eval=F}
+files10 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.10 <- openxlsx::read.xlsx(files10, sheet=1, startRow = 6, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.10 <- basename(files10)
+# update field names
+names(bill.10) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files10b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.10b <- openxlsx::read.xlsx(files10b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.10b <- basename(files10b)
+# update field names
+names(bill.10b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.10_x <- rbind(bill.10, bill.10b)  #
+bill.10_x$File <- "18.Sep"
+```
+
+**Combine 18.May[2] to 18.Sept[full]**
+
+```{r combine03, message=FALSE, warning=FALSE, eval=F}
+bills_append3 <- rbind(bill.06b, bill.07_x, bill.08_x, bill.09_x, bill.10_x)
+# record cols
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills_append3 <- select(bills_append3, File, everything())
+## fix dates
+bills_append3$Date.Colleted <- openxlsx::convertToDate(bills_append3$Date.Colleted, origin="1900-01-01")
+bills_append3$Date.Received <- openxlsx::convertToDate(bills_append3$Date.Received, origin="1900-01-01")
+bills_append3$Date.Reported <- openxlsx::convertToDate(bills_append3$Date.Reported, origin="1900-01-01")
+```
+
+***
+
+### 1.23 **Add Oct to Dec.18**
+
+**Oct.2018**  [2 files]
+
+```{r append.11, eval=F}
+files11 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.11 <- openxlsx::read.xlsx(files11, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.11 <- basename(files11)
+# update field names
+names(bill.11) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files11b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.11b <- openxlsx::read.xlsx(files11b, sheet=1, startRow = 4, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.11b <- basename(files11b)
+# update field names
+names(bill.11b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.11_x <- rbind(bill.11, bill.11b)  #
+bill.11_x$File <- "18.Oct"
+```
+
+**Nov.2018**  [2 files]
+
+```{r append.12, eval=F}
+files12 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.12 <- openxlsx::read.xlsx(files12, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.12 <- basename(files12)
+# update field names
+names(bill.12) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files12b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.12b <- openxlsx::read.xlsx(files12b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.12b <- basename(files12b)
+# update field names
+names(bill.12b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.12_x <- rbind(bill.12, bill.12b)  #
+bill.12_x$File <- "18.Nov"
+```
+
+**Dec.2018**  [2 files]
+
+```{r append.13, eval=F}
+files13 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.13 <- openxlsx::read.xlsx(files13, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.13 <- basename(files13)
+# update field names
+names(bill.13) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files13b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.13b <- openxlsx::read.xlsx(files13b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.13b <- basename(files13b)
+# update field names
+names(bill.13b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.13_x <- rbind(bill.13, bill.13b)  #
+bill.13_x$File <- "18.Dec"
+```
+
+**Combine 18.OCT to 18.DEC**
+
+```{r combine04, message=FALSE, warning=FALSE, eval=F}
+bills_append4 <- rbind(bill.11_x, bill.12_x, bill.13_x)
+# record cols
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills_append4 <- select(bills_append4, File, everything())
+## fix dates
+bills_append4$Date.Colleted <- openxlsx::convertToDate(bills_append4$Date.Colleted, origin="1900-01-01")
+bills_append4$Date.Received <- openxlsx::convertToDate(bills_append4$Date.Received, origin="1900-01-01")
+bills_append4$Date.Reported <- openxlsx::convertToDate(bills_append4$Date.Reported, origin="1900-01-01")
+```
+
+***
+
+### 1.24 **Add Jan.2019 - Mar.2019[2]**
+
+**Jan.2019**  [2 files]
+
+```{r append.14, eval=F}
+files11 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.14 <- openxlsx::read.xlsx(files11, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.14 <- basename(files11)
+# update field names
+names(bill.14) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files11b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.14b <- openxlsx::read.xlsx(files11b, sheet=1, startRow = 4, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.14b <- basename(files11b)
+# update field names
+names(bill.14b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.14_x <- rbind(bill.14, bill.14b)  #
+bill.14_x$File <- "19.Jan"
+```
+
++ _Fixed invoice-file naming hereafter..._
+
+
+**Feb.2019**  [2 files]
+
+```{r append.15, eval=F}
+files.15 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.15 <- openxlsx::read.xlsx(files.15, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.15 <- basename(files.15)
+# update field names
+names(bill.15) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files.15b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.15b <- openxlsx::read.xlsx(files.15b, sheet=1, startRow = 4, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.15b <- basename(files11b)
+# update field names
+names(bill.15b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+#
+bill.15_x <- rbind(bill.15, bill.15b)  #
+bill.15_x$File <- "19.Feb"
+```
+
+
+**Mar.2019**  [1 files]
+
+```{r append.16, eval=F}
+# files.16 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.16 <- openxlsx::read.xlsx(files.16, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.16 <- basename(files.16)
+# update field names
+names(bill.16) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+# files.16b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.16b <- openxlsx::read.xlsx(files.16b, sheet=1, startRow = 4, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.16b <- basename(files11b)
+# update field names
+names(bill.16b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+
+bill.16_x <- rbind(bill.16, bill.16b)  #
+# bill.16_x <- bill.16
+bill.16_x$File <- "19.Mar"
+```
+
+**Combine 19.JAN to 19.MAR~~[1]~~ [2]**
+
+```{r combine05, message=FALSE, warning=FALSE, eval=F}
+bills_append5 <- rbind(bill.14_x, bill.15_x, bill.16_x)
+# record cols
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills_append5 <- select(bills_append5, File, everything())
+## fix dates
+bills_append5$Date.Colleted <- openxlsx::convertToDate(bills_append5$Date.Colleted, origin="1900-01-01")
+bills_append5$Date.Received <- openxlsx::convertToDate(bills_append5$Date.Received, origin="1900-01-01")
+bills_append5$Date.Reported <- openxlsx::convertToDate(bills_append5$Date.Reported, origin="1900-01-01")
+```
+
+***
+
+### 1.25 **Add 19.APR[1] to 19.AUG[1]**
+
+**Apr.2019**  [2 files]
+
+```{r eval=F}
+files.17 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.17 <- openxlsx::read.xlsx(files.17, sheet=1, startRow = 4, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.17 <- basename(files.17)
+# update field names
+names(bill.17) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files.17b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.17b <- openxlsx::read.xlsx(files.17b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.17b <- basename(files11b)
+# update field names
+names(bill.17b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+
+bill.17_x <- rbind(bill.17, bill.17b)  #
+# bill.17_x <- bill.17
+bill.17_x$File <- "19.Apr"
+```
+
+**May.2019**  [2 files]
+
+```{r eval=F}
+files.18 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.18 <- openxlsx::read.xlsx(files.18, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.18 <- basename(files.18)
+# update field names
+names(bill.18) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files.18b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.18b <- openxlsx::read.xlsx(files.18b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.18b <- basename(files11b)
+# update field names
+names(bill.18b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+
+bill.18_x <- rbind(bill.18, bill.18b)  #
+# bill.18_x <- bill.18
+bill.18_x$File <- "19.May"
+```
+
+**Jun.2019**  [2 files]
+
+```{r eval=F}
+files.19 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.19 <- openxlsx::read.xlsx(files.19, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.19 <- basename(files.19)
+# update field names
+names(bill.19) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+files.19b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.19b <- openxlsx::read.xlsx(files.19b, sheet=1, startRow = 5, cols=c(1:11),
+                                colNames=F, rowNames=FALSE);
+filenm.19b <- basename(files11b)
+# update field names
+names(bill.19b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+
+bill.19_x <- rbind(bill.19, bill.19b)  #
+# bill.19_x <- bill.19
+bill.19_x$File <- "19.Jun"
+```
+
+**Jul.2019**  [1 files]
+
+```{r eval=F}
+files.20 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.20 <- openxlsx::read.xlsx(files.20, sheet=1, startRow = 2, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.20 <- basename(files.20)
+# update field names
+names(bill.20) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# only 1 file for this month
+
+# bill.20_x <- rbind(bill.20, bill.20b)  #
+bill.20_x <- bill.20
+bill.20_x$File <- "19.Jul"
+```
+
+**Aug.2019**  [1 of 2 files]
+
+```{r eval=F}
+files.21 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+bill.21 <- openxlsx::read.xlsx(files.21, sheet=1, startRow = 5, cols=c(1:11),
+                               colNames=F, rowNames=FALSE);  
+filenm.21 <- basename(files.21)
+# update field names
+names(bill.21) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+                   "Date.Reported", "Facility", "Sampling.Point",
+                   "Site.Description", "Item.Description", "Category", "TOTAL")
+# 2nd file
+# files.21b <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+# bill.21b <- openxlsx::read.xlsx(files.21b, sheet=1, startRow = 5, cols=c(1:11),
+#                                 colNames=F, rowNames=FALSE);
+# filenm.21b <- basename(files11b)
+# # update field names
+# names(bill.21b) <- c("Project", "Sample.Number", "Date.Colleted", "Date.Received",
+#                    "Date.Reported", "Facility", "Sampling.Point",
+#                    "Site.Description", "Item.Description", "Category", "TOTAL")
+
+# bill.21_x <- rbind(bill.21, bill.21b)  #
+bill.21_x <- bill.21
+bill.21_x$File <- "19.Aug"
+```
+
+**Combine 19.APR to 19.AUG[1]**
+
+```{r combine06, message=FALSE, warning=FALSE, eval=F}
+bills_append6 <- rbind(bill.17_x, bill.18_x, bill.19_x, bill.20_x, bill.21_x)
+# record cols
+#
+bills_append6 <- select(bills_append6, File, everything())
+## fix dates
+bills_append6$Date.Colleted <- openxlsx::convertToDate(bills_append6$Date.Colleted, origin="1900-01-01")
+bills_append6$Date.Received <- openxlsx::convertToDate(bills_append6$Date.Received, origin="1900-01-01")
+bills_append6$Date.Reported <- openxlsx::convertToDate(bills_append6$Date.Reported, origin="1900-01-01")
+```
+
+
+***
+***
+
+### 1.3 Compile Base and New invoices
+
++ updated :: 
+    + ~~[181001]~~ 
+    + ~~[190110]~~
+    + ~~[190401]~~
+    + ~~[190417]~~
+    + [190823]
+
+```{r compile01, eval=F}
+bills2.df <- dplyr::bind_rows(bills1.df, bills_append, bills_append2, bills_append3,
+                              bills_append4, bills_append5, bills_append6)
+
+```
+
++ New, compiled file has:
+    + `r format(nrow(bills2.df), big.mark=",")` records
+    + `r ncol(bills2.df)` fields
+
+Note:  Some records are incorrect, due to sub-totals developed in the orgininal XLS worksheet, and the duplicated records from 17.Dec and 17.Dec2.  **These are fixed in the next step**
+
+### 1.4 Datafile Cleanup
+
+```{r count.missing.cols}
+bills2.df$miss_cols <- apply(bills2.df, MARGIN=1, function(x) sum(is.na(x)))
+#
+table(bills2.df$miss_cols, useNA = "ifany")
+```
+
+
+Review of the above table and the DF, sorted by `$miss_cols` [desc]:  
+
++ 12 (and greater) missing :: subtotals and totals -- **Can be Deleted**
++ New DF version
+
+
+```{r clean01}
+bills3.df <- bills2.df[bills2.df$miss_cols < 12,]
+bills3.df <- select(bills3.df, -miss_cols)
+# clean up pass-through fields (where Category == NA)
+bills3.df$Category[is.na(bills3.df$Category)] <- "Proc"
+```
+
+### 1.5 Duplicate Records
+
+```{r clean02}
+# first, just delete the records from 17.Dec [data], and keep the 17.Dec2
+bills3.df <- bills3.df[bills3.df$File != "17.Dec",]
+#
+bills3.df$Item_Key <- paste(bills3.df$Sample.Number, bills3.df$Project,
+                bills3.df$Item.Description,
+                trunc(as.numeric(bills3.df$Date.Received-as.Date("1899-12-30"))), sep=".")
+#
+bills3.ItemKey.uniq <- bills3.df$Item_Key[duplicated(bills3.df$Item_Key)]
+bills3.df$Dupe.Rec <- ifelse(bills3.df$Item_Key %in% bills3.ItemKey.uniq, "dupe", NA)
+# remove $File_x
+bills3.df <- select(bills3.df, -File_x)
+```
+
+```{r clean02.tab01}
+table(bills3.df$Dupe.Rec, useNA = "ifany")
+# table(bills3.df$File, bills3.df$Dupe.Rec, useNA = "ifany")
+```
+
+**Ordering Invoice Files**
+```{r order.invoices}
+inv.order <- c("16.Oct", "16.Nov", "16.Dec", "17.Jan", "17.Feb", "17.Mar",  "17.Apr", "17.May", "17.Jun", "17.Jul", "17.Aug","17.Sep", "17.Oct", "17.Nov", "17.Dec2", "18.Jan", "18.Feb", "18.Mar", "18.Apr", "18.May", "18.Jun", "18.Jul", "18.Aug", "18.Sep", "18.Oct", "18.Nov", "18.Dec", "19.Jan", "19.Feb", "19.Mar", "19.Apr", "19.May", "19.Jun", "19.Jul", "19.Aug")
+```
+
+**Duplicated records by Invoice.file**
+
+```{r clean02.tab02}
+tab0 <- addmargins(table(bills3.df$File, bills3.df$Dupe.Rec, useNA = "ifany", dnn=c())) %>% as.data.frame.matrix(.)
+tab0$File <- rownames(tab0); names(tab0)[2] <- c("< NA >"); rownames(tab0) <- NULL
+tab0 <- select(tab0, File, everything()); inv.order2 <- c(inv.order, "Sum")
+tab0 <- tab0[match(inv.order2, tab0$File),]
+#
+tab <- tab0
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.8em;", ncol=ncol(tab), nrow=nrow(tab))), rnames=FALSE, total=TRUE, 
+                     align=c("lcc|c"), 
+                     n.tspanner=c(9,12, 12, nrow(tab)-33), tspanner=c("FY 2017","FY 2018", "FY 2019", "FY 2020"), css.tspanner="font-size: 0.7em;font-weight: 900;",
+                     caption="Duplicated records by Fiscal Year and Invoice-file (year.Month)")
+```
+
+```{r clean02.tab03}
+dup.tab1 <- as.data.frame(table(bills3.df$Item_Key, useNA = "ifany"))
+# Number of records x Item_Key
+table(dup.tab1$Freq)
+dup.tab2 <- dup.tab1[dup.tab1$Freq > 1,]
+# Number of recrods w/ duplicates x Item-Category
+addmargins(table(bills3.df$File, bills3.df$Dupe.Rec, bills3.df$Category, exclude=c("EWM", "OR", "Proc")),1)
+```
+
+**Will leave the duplicated records in DF for now**
+
+***
+
+### 1.6 Cleanup Special Charges
+
+_Need to assign any invoice-records w/ "Special Charges" to info from billed item_
+
+```{r Special.charges, message=FALSE, warning=FALSE}
+# recode "Chemistry Rush" and "Chemistry Chain of Custody" w/ Category = "Processing"
+# bills3.df$Category[is.na(bills3.df$Category)] <- "Proc"
+## also translate missing fields for Processing items
+proc <- sort(unique(bills3.df$Project[bills3.df$Category == "Proc"]))
+#
+for (i in proc) {
+    if(is.na(bills3.df$Sample.Number[bills3.df$Project == i & bills3.df$Category == "Proc"])) {
+        bills3.df$Sample.Number[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Sample.Number[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse="/")
+    }
+    if(is.na(bills3.df$Date.Colleted[bills3.df$Project == i & bills3.df$Category == "Proc"])) {
+        bills3.df$Date.Colleted[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Date.Colleted[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse="/")
+    }
+    if(is.na(bills3.df$Date.Received[bills3.df$Project == i & bills3.df$Category == "Proc"])) {
+        bills3.df$Date.Received[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Date.Received[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse="/")
+    }
+    if(is.na(bills3.df$Facility[bills3.df$Project == i & bills3.df$Category == "Proc"])) {
+        bills3.df$Facility[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Facility[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse="/")
+    }
+    if(is.na(bills3.df$Site.Description[bills3.df$Project == i & 
+                                        bills3.df$Category == "Proc"])) {
+        bills3.df$Site.Description[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Site.Description[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse = " / ")
+    }
+    if(is.na(bills3.df$Date.Reported[bills3.df$Project == i & bills3.df$Category == "Proc"])) {
+        bills3.df$Date.Reported[bills3.df$Project == i & bills3.df$Category == "Proc"] <- paste(unique(bills3.df$Date.Reported[bills3.df$Project == i & bills3.df$Category != "Proc"]), collapse="/")
+    }
+        }
+
+# i <- "C2018-01589"; i <- "C2017-07295"
+# cleanup "NA" -> NA
+bills3.df$Site.Description <- ifelse(bills3.df$Site.Description == "NA", NA,
+                                     bills3.df$Site.Description)
+bills3.df$Site.Description <- ifelse(bills3.df$Site.Description == "", NA,
+                                     bills3.df$Site.Description)
+bills3.df$Facility <- ifelse(bills3.df$Facility == "NA", NA,
+                                     bills3.df$Facility)
+```
+
+***
+
+## 2.0 Save datafile
+
+```{r export01, eval=F}
+openxlsx::write.xlsx(bills3.df, file=paste("UPHL_invoiceTRACKING_05_", 
+                            format(Sys.Date(), "%y%m%d"),".xlsx", sep=""))
+#
+save(bills3.df, file=paste("UPHL_invoiceTRACKING_05_",format(Sys.Date(), "%y%m%d"),".RData",
+                           sep=""))
+```
+
+_A little workspace cleanup_
+
+```{r clean.workspace, eval=F}
+# as needed
+```
+
+## 3.0 Summarize Invoice records by Billing Item
+
+### 3.1 Methods x Item.Description
+
+```{r method01}
+Items_table <- data.frame(Item = sort(unique(bills3.df$Item.Description)))
+# populate methods
+Items_table$Method.name <- NA; 
+Items_table$Method.name[Items_table$Item %in% 
+                            c("Chemistry Chain of Custody","Chemistry Rush",
+                              "Pass Through EPA 1664")] <- "Special Charges"
+Items_table$Method.name[Items_table$Item == c("Chlorophyll A by HPLC")] <- "Chlorophyll";
+Items_table$Method.name[Items_table$Item == c("Colilert 97 Well by SM 9223B")] <- "E. coli";
+Items_table$Method.name[Items_table$Item %in% c("EPA 120.1",
+                                              "Specific Conductance - EPA 120.1")] <- "Conductance"
+Items_table$Method.name[Items_table$Item %in% c("EPA 150.1",
+                                              "EPA 150.1 pH (Test of acidity or alkalinity)")] <- "pH (lab)"; 
+Items_table$Method.name[Items_table$Item == c("EPA 180.1")] <- "Turbidity"
+Items_table$Method.name[Items_table$Item %in% 
+                            c("EPA 200.7 - Boron","EPA 200.7 - Calcium","EPA 200.7 - Iron",
+                              "EPA 200.7 - Magnesium","EPA 200.7 - Potassium",
+                              "EPA 200.7 - Sodium")] <- "Metals (common; ICP)"; 
+par1 <- c("EPA 200.8 - Aluminum","EPA 200.8 - Antimony","EPA 200.8 - Arsenic","EPA 200.8 - Barium","EPA 200.8 - Beryllium","EPA 200.8 - Boron","EPA 200.8 - Cadmium","EPA 200.8 - Calcium","EPA 200.8 - Chromium","EPA 200.8 - Cobalt","EPA 200.8 - Copper","EPA 200.8 - Iron","EPA 200.8 - Lead","EPA 200.8 - Magnesium","EPA 200.8 - Manganese","EPA 200.8 - Molybdenum","EPA 200.8 - Nickel","EPA 200.8 - Potassium","EPA 200.8 - Selenium","EPA 200.8 - Silver","EPA 200.8 - Sodium","EPA 200.8 - Strontium","EPA 200.8 - Thallium","EPA 200.8 - Vanadium","EPA 200.8 - Zinc", "EPA 200.8 - Lithium")
+Items_table$Method.name[Items_table$Item %in% par1] <- "Metals (trace; ICP/MS)"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA 200.8 Digest",
+                                              "EPA 200.8 Digest with Turbidity")] <- "Metals (digest charge)";
+Items_table$Method.name[Items_table$Item %in% c("EPA 245.1",
+                                              "Mercury - EPA 245.1")] <- "Mercury (cvaa)"; 
+par2 <- c("EPA 300.0 - component","EPA 300.0 - Fluoride by IC", 
+          "EPA 300.0 - Chloride by IC", "EPA 300.0 - Sulfate by IC")
+```
+
+```{r }
+Items_table$Method.name[Items_table$Item %in% par2] <- "Ion Chromatography"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA 325.2",
+                                                "Chloride - EPA 325.2")] <- "Chloride (colorimetry)"
+Items_table$Method.name[Items_table$Item == c("EPA 335.4")] <- "Cyanide (spectro)"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA 350.1",
+                                                "AMMONIA")] <- "Ammonia"
+Items_table$Method.name[Items_table$Item %in% 
+                            c("EPA 353.2", "EPA 353.2 (nitrate + nitrite)")] <- "Nitrates"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA 365.1",
+                                              "Total Phosphorus-EPA 365.1")] <- "Total Phosphorus"
+Items_table$Method.name[Items_table$Item == c("EPA 370.1")] <- "Silica"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA 375.2",
+                                              "Sulfate by EPA 375.2")] <- "Sulfate"
+Items_table$Method.name[Items_table$Item %in%
+                            c("EPA 546", "Anatoxin by ELISA",
+                              "Cylindrospermopsin by ELISA",
+                              "Total Microcystins by ELISA",
+                              "qPCR")] <- "Cyanotoxin"; 
+Items_table$Method.name[Items_table$Item == c("EPA 8015B TPH")] <- "Hydrocarbons (GC/FID)"; 
+Items_table$Method.name[Items_table$Item == c("EPA 8260B BTEXN")] <- "Volatile Organics (GC/MS)"
+Items_table$Method.name[Items_table$Item %in% 
+                            c("EPA160.1/SM2540C", "SM2540C",
+                              "Total Dissolved Solids (TDS) SM2540C")] <- "Dissolved Solutes"; 
+```
+
+```{r }
+Items_table$Method.name[Items_table$Item %in% c("EPA160.2", "SM2540D",
+                                                "Total Suspended Solids",
+                                                "Total Suspended Solids (TSS) SM2540D")] <- "Suspended Solids"; 
+Items_table$Method.name[Items_table$Item %in% c("EPA160.4", "EPA 160.4",
+                                                "Total Volatile Solids (TVS) EPA 160.4")] <- "Volatile Solids"
+Items_table$Method.name[Items_table$Item %in% c("Lachat Total Nitrogen",
+                                              "Total Nitrogen")] <- "Total Nitrogen"; 
+Items_table$Method.name[Items_table$Item %in% c("SM 10200H",
+                                                "Chlorophyll-A by SM 10200H")] <- "Chlorophyll"
+Items_table$Method.name[Items_table$Item %in% c("SM 2320B",
+                                                "Alkalinity (Total)- SM 2320B")] <- "Alkalinity"; 
+Items_table$Method.name[Items_table$Item == c("SM 5540C")] <- "Anionic Surfactants"
+Items_table$Method.name[Items_table$Item %in% c("SM3114C Se",
+                                              "Se Hydride Atomic Absorption Selenium -SM3114C")] <- "Selenium (hydride)"; 
+par3 <- c("Pass Through BOD","SM5210B","SM5210B CBOD","SM5210B SCBOD")
+Items_table$Method.name[Items_table$Item %in% par3 ] <- "Biochemical Oxygen Demand"; 
+Items_table$Method.name[Items_table$Item %in% c("Sulfide",
+                                              "Sulfide by EPA 376.2")] <- "Sulfide"
+Items_table$Method.name[Items_table$Item %in% c("Total Organic Carbon",
+                                              "Total Organic Carbon (TOC) by SM 5310B")] <- "Organic Carbon"; 
+Items_table$Method.name[Items_table$Item %in% c("Turbidity",
+                                              "TURBIDITY-EPA 180.1")] <- "Turbidity"
+par4 <- c("EPA 200.7 - Boron","EPA 200.7 - Calcium","EPA 200.7 - Iron",
+          "EPA 200.7 - Magnesium","EPA 200.7 - Potassium","EPA 200.7 - Sodium")
+Items_table$Method.name[Items_table$Item %in% par4 ] <- "Metals (ICP; older)";
+##
+## Lab system errors 
+Items_table$Method.name[Items_table$Item == c("Zirconium -EPA 200.8")] <- "Billing ERROR!"
+# newer methods
+# Items_table$Method.name[Items_table$Item == c("Anatoxin by ELISA")] <- "Cyanotoxins"
+# Items_table$Method.name[Items_table$Item == c("Cylindrospermopsin by ELISA")] <- "Cyanotoxins"
+```
+
+```{r method01.tab1}
+Items_table <- dplyr::arrange(Items_table, Method.name, Item)
+htmlTable::htmlTable(Items_table,
+        css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+            times=ncol(Items_table)), matrix("padding-left: 0.75em; 
+                                      padding-right: 0.75em; font-size: 0.8em;", 
+                                      ncol=ncol(Items_table), nrow=nrow(Items_table))), 
+        rnames=F, align=c("l"), total=F)
+```
+
++ [190826] Seems to have some new combinations...
+    + Make corrections to `Items_table` above...
+
+
+```{r}
+Items_table %>% filter(is.na(Method.name))
+```
+
+
+***
+
+### 3.2 Populate Table from Invoices
+
+```{r method02, message=FALSE, warning=FALSE}
+tab1 <- as.data.frame(addmargins(table(bills3.df$Item.Description, useNA = "ifany")))
+names(tab1) <- c("Billing.Item", "n.Obs"); 
+tab1$n.Obs <- format(tab1$n.Obs, big.mark=",")
+bill.items <- unique(as.character(tab1$Billing.Item))
+#k <- "EPA 120.1"
+for (k in bill.items) {
+    tab1$Total.charges[tab1$Billing.Item == k] <- (sum(as.numeric(bills3.df$TOTAL[bills3.df$Item.Description == k]), na.rm=T))
+    tab1$FY17.cost[tab1$Billing.Item == k] <- (sum(as.numeric(
+        bills3.df$TOTAL[bills3.df$Item.Description == k &
+                        (bills3.df$Date.Received < "2017-07-01" &
+                             bills3.df$Date.Received > "2016-06-30")]), na.rm=T))
+    tab1$FY18.cost[tab1$Billing.Item == k] <- (sum(as.numeric(
+        bills3.df$TOTAL[bills3.df$Item.Description == k &
+                        (bills3.df$Date.Received < "2018-07-01" &
+                             bills3.df$Date.Received > "2017-06-30")]), na.rm=T))
+    tab1$FY19.cost[tab1$Billing.Item == k] <- (sum(as.numeric(
+        bills3.df$TOTAL[bills3.df$Item.Description == k &
+                        (bills3.df$Date.Received < "2019-07-01" &
+                             bills3.df$Date.Received > "2018-06-30")]), na.rm=T))
+    tab1$FY20.cost[tab1$Billing.Item == k] <- (sum(as.numeric(
+        bills3.df$TOTAL[bills3.df$Item.Description == k &
+                        (bills3.df$Date.Received < "2020-07-01" &
+                             bills3.df$Date.Received > "2019-06-30")]), na.rm=T))
+    #    
+    tab1$Cost.unit[tab1$Billing.Item == k] <- 
+        paste("$ ", unique(format(bills3.df$TOTAL[bills3.df$Item.Description == k], 
+                                  digits=1, nsmall=2)), collapse=" // ")
+    }
+#
+tab1$Total.charges[tab1$Billing.Item == "Sum"] <- sum(as.numeric(tab1$Total.charges), na.rm=T)
+tab1$Total.charges <- format(tab1$Total.charges, nsmall=2, big.mark=",")
+#
+tab1$FY17.cost[tab1$Billing.Item == "Sum"] <- sum(as.numeric(tab1$FY17.cost), na.rm=T)
+tab1$FY17.cost <- format(tab1$FY17.cost, nsmall=2, big.mark=",")
+#
+tab1$FY18.cost[tab1$Billing.Item == "Sum"] <- sum(as.numeric(tab1$FY18.cost), na.rm=T)
+tab1$FY18.cost <- format(tab1$FY18.cost, nsmall=2, big.mark=",")
+#
+tab1$FY19.cost[tab1$Billing.Item == "Sum"] <- sum(as.numeric(tab1$FY19.cost), na.rm=T)
+tab1$FY19.cost <- format(tab1$FY19.cost, nsmall=2, big.mark=",")
+#
+tab1$FY20.cost[tab1$Billing.Item == "Sum"] <- sum(as.numeric(tab1$FY20.cost), na.rm=T)
+tab1$FY20.cost <- format(tab1$FY20.cost, nsmall=2, big.mark=",")
+#
+tab1$Cost.unit[tab1$Billing.Item == "Sum"] <- NA
+#
+tab1 <- left_join(tab1, Items_table, by = c("Billing.Item" = "Item"))
+tab1 <- arrange(tab1, Method.name, Billing.Item)
+#
+htmlTable::htmlTable(tab1,css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(tab1)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(tab1), nrow=nrow(tab1))), rnames=FALSE, align=c("lc|r|rrrr|c|l"), total=TRUE)
+```
+
+
+***
+***
+
+## 4.0 Clean up Site and Project-level info
+
++ Extract MLIDs from Site.Description
+
+```{r sites01, warning=FALSE}
+bills3.df$MLID <- ifelse(!is.na(bills3.df$Facility), bills3.df$Facility,
+                         substr(bills3.df$Site.Description, 1, 7))
+bills3.df$MLID <- ifelse(!is.na(bills3.df$Facility), bills3.df$Facility,
+                         ifelse(grepl("MERKL", bills3.df$Site.Description),
+                                NA, bills3.df$MLID))
+bills3.df$MLID <- ifelse(is.na(bills3.df$MLID) | nchar(bills3.df$MLID) < 7, NA,
+                         ifelse(is.na(as.integer(bills3.df$MLID)), NA,
+                                bills3.df$MLID))
+bills3.df$MLID <- ifelse(!is.na(bills3.df$Facility), bills3.df$MLID,
+                         ifelse(!is.na(bills3.df$MLID) & bills3.df$MLID < 4000000,
+                                NA,
+                                bills3.df$MLID))
+# bills3.df %<>% select(-MLID)
+```
+
+
++ Characteristics of records where No MLID could be Extracted
+
+```{r}
+bills3.df %>% filter(is.na(MLID)) %>%
+    {addmargins(table(paste(lubridate::year(.$Date.Colleted),
+                            sprintf("%.2d",
+                                    lubridate::month(.$Date.Colleted)),
+                            sep="_"),
+                      .$Category, useNA = "ifany", deparse.level = 2,
+                      dnn=c("YR_mnth", "Analysis Category")))}
+```
+
+
+### 4.1 Load Project Site lists
+
++ 190826 :: **Will start from EDDs and build-backward**
+    + **See Section 4.4**
+    + Keep an eye on `sites_wy19` from sect. 4.3
+
++ ~~190401 :: _Working from Prior Site lists_ [for now]~~
+
+```{r sites_import, eval=FALSE, include=FALSE}
+# if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+# # UBI.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# UBI_site <- get(load(UBI.file))
+# UBI_site$Name <- as.character(UBI_site$Name)
+# #
+# # JRULI.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# JRULI_site <- get(load(JRULI.file))
+# #
+# # UTLK.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# UTLK_site <- get(load(UTLK.file))
+# # manually append some tribs ...
+# UTLK_add <- data.frame(MLID = c(4994804, 4995465, 4994792, 4996275, 4995230,
+#                                 4995210,
+#                                 4917706, 4917500, 4917710, 4917715, 4917770,
+#                                 4917450, 4917388, 4917390, 4917370, 4917520,
+#                                 4917310, 4917320, 4917365, 4995465, 5919910,
+#                                 4995578, 4917702, 4996100, 4996275, 4996566,
+#                                 4996540, 4996677, 4917433, 4917335, 4995038,
+#                                 4995041, 4994960, 4917305, 4994950, 4994804,
+#                                 4994792, 4996040, 4995210, 4995230, 4917385))
+# UTLK_site2 <- rbind(UTLK_site, UTLK_add)
+# UTLK_site2 <- dplyr::distinct(UTLK_site2) %>% arrange(MLID)
+# UTLK_site2$MLID <-  as.character(UTLK_site2$MLID)
+# UTLK_site2$GRP <- "UTLK"
+# #
+# # COOP.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# COOP_site <- get(load(COOP.file))
+# #
+# # UBI.file <- choose.files(caption="Select _working_ DATA file [*.RData", multi = FALSE)
+# # UBI_sites <- load(UBI.file)
+# # #
+```
+
++ Combine site lists
+
+```{r sites02, eval=FALSE, include=FALSE}
+# if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# #
+# SITES01 <- data.frame(MLID = COOP_site$FINAL.MLID, WY17 = COOP_site$WY2017,
+#                       WY18 = COOP_site$WY2018, project = COOP_site$Project_Name, 
+#                       QC = COOP_site$`QA.QC.Site?`, GRP = "COOP", 
+#                       stringsAsFactors = F)
+# SITES01 <- bind_rows(SITES01,
+#                      UTLK_site2)
+# jruli_set <- JRULI_site %>% select(MLID) %>% mutate(GRP="JRULI")
+# SITES01 <- bind_rows(SITES01,
+#                      jruli_set)
+# ubi_set <- UBI_site %>% select("MLID" = "Name") %>% mutate(GRP="UBI")
+# SITES01 <- bind_rows(SITES01,
+#                      ubi_set)
+# rm(jruli_set, ubi_set)
+```
+
++ Clean up site lists
+    + [181001] :: _It's unnecessary to do much cleanup, only need MLID x GRP_
+
+```{r sites03, eval=FALSE, include=FALSE}
+# # dup_list <- data.frame(XX = SITES01$MLID[duplicated(SITES01$MLID)])
+# # # clean dupes
+# # SITES01$project[SITES01$MLID %in% "4908140"]
+# for (i in dup_list$XX) {
+#     if (length(unique(SITES01$GRP[SITES01$MLID == i])) > 1) {
+#         SITES01$GRP[SITES01$MLID == i] <- 
+#             ifelse(SITES01$GRP[SITES01$MLID == i] %in% c("COOP", "JRULI"),
+#                    "JRULI",
+#                    ifelse(SITES01$GRP[SITES01$MLID == i] %in% c("COOP", "UBI"),
+#                           "UBI",
+#                           SITES01$GRP[SITES01$MLID == i]))   }
+# }
+# #
+# SITES01 <- distinct(SITES01)
+# #
+# SITES02 <- distinct(SITES01, MLID, GRP, .keep_all = T)
+# # a few remaining duplicated MLIDs...
+# SITES02$dupe <- ifelse(SITES02$MLID %in% SITES02$MLID[duplicated(SITES02$MLID)],
+#                        "dupe", NA)
+```
+
++ Assign Project names
+
+```{r sites04, eval=FALSE, include=FALSE}
+# if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# #
+# # unique(SITES02$GRP[is.na(SITES02$project)])
+# SITES02$project <- ifelse(is.na(SITES02$project),
+#                           SITES02$GRP,
+#                           SITES02$project)
+```
+
+
+
++ If needed, can _export_ MASTER.MonLocs from AWQMS and re-code sites...
+
+
+### 4.2  There can be no duplicates in SITE list
+
++ Records in SITES02 where MLID is duplicated :: `r unique(SITES02$MLID[!is.na(SITES02$dupe)])`
+    + [4937750] ::  Sample Date from [`r min(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4937750"])`] to [`r max(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4937750"])`] 
+    + [4936610] ::  Sample Date from [`r min(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936610"])`] to [`r max(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936610"])`]
+    + [4936606] ::  Sample Date from [`r min(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936606"])`] to [`r max(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936606"])`]
+
++ _Just use JRULI JRULI for now_
+
+```{r sistes05, eval=FALSE, include=FALSE}
+# plot(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4937750"], bills3.df$Sample.Number[!is.na(bills3.df$MLID) & bills3.df$MLID == "4937750"])
+# 
+# plot(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936610"], bills3.df$Sample.Number[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936610"])
+# 
+# plot(bills3.df$Date.Colleted[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936606"], bills3.df$Sample.Number[!is.na(bills3.df$MLID) & bills3.df$MLID == "4936606"])
+
+# manual corrections
+# SITES02$GRP[SITES02$MLID == "4936606"] <- "JRULI"
+# SITES02$GRP[SITES02$MLID == "4936610"] <- "JRULI"
+# SITES02$GRP[SITES02$MLID == "4937750"] <- "JRULI"
+# #
+# SITES02 <- distinct(SITES02, MLID, GRP, .keep_all = T)
+# #
+# SITES02$project[SITES02$MLID == "4936606"] <- "JRULI"
+# SITES02$project[SITES02$MLID == "4936610"] <- "JRULI"
+# SITES02$project[SITES02$MLID == "4937750"] <- "JRULI"
+# ##
+# ##
+# # Omit non-JRULI sites from SITES02 [190401]
+# # SITES03 <- SITES02
+# SITES02 %<>% filter(is.na(.$dupe) |
+#                         (MLID %in% c("4936606", "4936610", "4937750") &
+#                              GRP != "JRULI"))
+```
+
+***
+
+### 4.3 Updated Site list (190401)
+
++ 190417 :: update wy19 sites list
+
+```{r eval=FALSE, include=FALSE}
+# bills4.df %>% filter(Proj_SET == "unknwn") %>% distinct(MLID) -> bill_siteList_190417
+# openxlsx::write.xlsx(bill_siteList_190417, file="billing4_siteList_190417.xlsx")
+# writeClipboard(as.character(bill_siteList_190417))
+# writeClipboard(str)
+```
+
++ This is a longer more involved sub-project, but many of the "Unknown" MLIDs are for UTLK, JRULI and CBI.
+
+
+```{r}
+# file_sites19 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+sites_wy19 <- openxlsx::read.xlsx(file_sites19, sheet="site_x_project_noDup", 
+                               colNames=T, rowNames=FALSE)
+wy19_sites <- basename(file_sites19)
+
+```
+
++ 190401
+
++ New set of project-sites has `r nrow(sites_wy19)` items
+
+```{r}
+sites_wy19 %>% {addmargins(table(.$Proj_GRP, .$Proj_SET,
+                                 useNA="ifany", deparse.level = 2))} %>% 
+    as.data.frame.matrix(.) %>%
+    htmlTable::htmlTable(.,
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=TRUE)
+```
+
++ _Can run a comparison of these site lists at a later time..._
+
+***
+
+### 4.4 Project-Site list from EDDs (WY2019) [_August 2019_]
+
++ Import EDD set for WY2019 (to Date)
+
+```{r}
+files_edd01 <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+edd01_l <- lapply(files_edd01, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename_c <- basename(files_edd01)
+names(edd01_l) <- filename_c
+path.filename_edd01 <- dirname(files_edd01)
+```
+
++ Import 2018 EDDs
+
+```{r}
+files_edd02 <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+edd02_l <- lapply(files_edd02, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename_02 <- basename(files_edd02)
+names(edd02_l) <- filename_02
+path.filename_edd02 <- dirname(files_edd02)
+```
+
++ Import older 2017 EDDs
+
+```{r}
+files_edd03 <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+edd03_l <- lapply(files_edd03, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename_03 <- basename(files_edd03)
+names(edd03_l) <- filename_03
+path.filename_edd03 <- dirname(files_edd03)
+```
+
++ Convert EDD-lists to DFs, then conbine those DFs
+
+```{r}
+EDD.0a <- plyr::ldply(edd01_l, .id="Lab.filename") %>% mutate_if(is.factor, as.character)
+EDD.0b <- plyr::ldply(edd02_l, .id="Lab.filename") %>% mutate_if(is.factor, as.character)
+EDD.0c <- plyr::ldply(edd03_l, .id="Lab.filename") %>% mutate_if(is.factor, as.character)
+#
+EDD_00 <- bind_rows(EDD.0a %>% select(-Sample.Detect.Limit, -Sample.Report.Limit),
+                    EDD.0b %>% select(-Sample.Detect.Limit, -Sample.Report.Limit), 
+                    EDD.0c %>% select(-Sample.Detect.Limit, -Sample.Report.Limit))
+```
+
++ Cleanup vars...
+
+```{r}
+date_vars <- select(EDD_00, contains("date", ignore.case = T)) %>% names(.)
+EDD_00 %<>% mutate_at(
+    .vars = date_vars,
+    .funs = list(~as.Date(lubridate::parse_date_time(., "mdy HMS", truncated = 3))))
+```
+
+```{r}
+# EDD_00 -> EDD_00_cp
+# EDD_00 <- EDD_00_cp
+```
+
+
+```{r}
+EDD_00 %<>% mutate(
+    MLID = as.character(.$Station.ID),
+    Method.ID = trimws(.$Method.ID),
+    Trip.ID = trimws(.$Trip.ID)
+) %>% mutate(
+    Trip.ID = case_when(
+        !is.na(Trip.ID) & Trip.ID == "" ~ as.character(NA),
+        !is.na(Trip.ID) ~ Trip.ID,
+        TRUE ~ as.character(NA)),
+    project = {stringr::str_to_upper(stringr::str_extract(.$Trip.ID,
+                                                          "[:alpha:]+"))}) %>%
+    select(Lab.filename:Station.ID, MLID, Sample.Date:Trip.ID, project, everything())
+```
+
++ Extract MLIDs and projects
+
+```{r}
+EDD_sites <- EDD_00 %>% distinct(MLID, project,
+                                 paste(lubridate::year(.$Sample.Date),
+                                       sprintf("%.2d",
+                                               lubridate::month(.$Sample.Date)),
+                                       sep="_")) %>%
+    setNames(., c("MLID", "project", "YR_mon"))
+```
+
++ cleanup workspace
+
+```{r}
+rm(EDD_00_cp, EDD.0a, EDD.0b, EDD.0c, edd01_l, edd02_l, edd03_l)
+```
+
++ Look for dupes...
+
+```{r}
+EDD_sites %>% 
+    .[duplicated(.$MLID),"MLID"] -> mlid_dupes
+## Label Dupes
+EDD_sites %<>% mutate(
+    dupe.site = case_when(
+        MLID %in% mlid_dupes ~ "dupe",
+        TRUE ~ as.character(NA)
+    ))
+```
+
+```{r}
+EDD_sites %>% filter(!is.na(dupe.site)) %>%
+    reshape2::dcast(MLID + project ~ YR_mon, length) -> EDD_sites02
+    
+```
+
++ cleanup dupes...export to XLS
+
+```{r}
+EDD_sites %>% openxlsx::write.xlsx(., file="EDD_dupes_190826.xlsx")
+EDD_sites02 %>% openxlsx::write.xlsx(., file="EDD_dupes_cross_190826.xlsx")
+```
+
++ **Re-import the 2nd file, then melt, then use for key...[190826]**
+
+#### Import cleanuped site-x-projects table
+
+```{r}
+# file_proj <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+EDD_sites02_x <- openxlsx::read.xlsx(file_proj, sheet=1, startRow = 1, colNames=T, rowNames=FALSE); 
+```
+
++ filename :: `r basename(file_proj)`
++ path :: `r dirname(file_proj)`
+
++ Melt / _gather_ (flatten) table by YR_month
+
+```{r}
+EDD_sites03 <- EDD_sites02_x %>%
+    select(-Count) %>%
+    gather(., key = "YR_mon", value = "Value", na.rm=T,
+           -MLID, -project, -PROJ_GRP, -proj_STATUS) %>%
+    arrange(MLID, PROJ_GRP, YR_mon)
+```
+
++ Summarize number of `PROJ_GRP`s by MLID
+
+```{r}
+EDD_sites03 %>% 
+    filter(!is.na(MLID)) %>%
+    group_by(MLID) %>% 
+    summarise(k_projects = n_distinct(project, na.rm=T),
+              k_PROJ.GRP = n_distinct(PROJ_GRP, na.rm=T)) %>%
+    arrange(desc(k_PROJ.GRP), k_projects)
+```
+
++ distribution of `k_projects` by MLID
+
+```{r}
+EDD_sites03 %>% 
+    filter(!is.na(MLID)) %>%
+    group_by(MLID) %>% 
+    summarise(k_projects = n_distinct(project, na.rm=T),
+              k_PROJ.GRP = n_distinct(PROJ_GRP, na.rm=T)) %>%
+    {table(.$k_projects, useNA="ifany", deparse.level = 2)}
+```
+
++ distribution of `k_PROJ.GRP` by MLID
+
+```{r}
+EDD_sites03 %>% 
+    filter(!is.na(MLID)) %>%
+    group_by(MLID) %>% 
+    summarise(k_projects = n_distinct(project, na.rm=T),
+              k_PROJ.GRP = n_distinct(PROJ_GRP, na.rm=T)) %>%
+    {table(.$k_PROJ.GRP, useNA="ifany", deparse.level = 2)}
+```
+
++ distribution of `MLIDs` by k_PROJ.GRP
+
+```{r}
+EDD_sites03 %>% 
+    group_by(PROJ_GRP) %>% 
+    summarise(k_MLID = n_distinct(MLID, na.rm=T)) %>%
+    htmlTable::htmlTable(.,
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=F, align="rlc")
+```
+
++ table of cleaned projects x project-groups 
+
+<div style=`width=900px;margin: 0 auto;`>
+```{r echo=FALSE}
+getOption("max.print", 2000)
+
+EDD_sites03 %>%
+    {addmargins(table(.$project,
+           .$PROJ_GRP, useNA="ifany", deparse.level = 2),1)} %>%
+     htmlTable::htmlTable(.,
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T)
+```
+</div>
+
+***
+
+### 4.5 Assign Project Groups to billing data
+
++ working DF :: `bills3.df`
++ How to set up the join ?
+    + Which combination of MLID of vars is best for assigning PROJ_GRP to billing data ?
+
+```{r}
+EDD_sites03_01 <- EDD_sites03 %>%
+    distinct(MLID, PROJ_GRP)
+
+EDD_sites03_01 %>% 
+    .[duplicated(.$MLID), "MLID"] %>%
+    {table(., useNA="ifany", deparse.level = 2)} %>%
+    as.data.frame() %>% arrange(desc(Freq)) %>% filter(Freq > 1)
+
+EDD_sites03_02 <- EDD_sites03 %>%
+    distinct(MLID, PROJ_GRP, YR_mon) %>%
+    mutate(pKEY = paste(.$MLID,
+                        .$YR_mon, sep="."))
+
+
+# anti_join(select(EDD_sites03, MLID, PROJ_GRP, YR_mon),
+#         select(EDD_sites03_02, MLID, PROJ_GRP, YR_mon))
+
+distinct(EDD_sites03, MLID, PROJ_GRP, YR_mon) %>% nrow()
+
+```
+
+
++ DF: `EDD_sites03_02` looks to be a good resource for the PROJ_GRP join
+
++ Adjust `EDD_sites03_02` so that sites w/ MLID = NA only get "unk_site", regardless of sample date
+
+
+```{r}
+
+EDD_sites03_02 %<>%
+    filter(!is.na(MLID)) %>%
+    add_row(., PROJ_GRP = "unk_site", pKEY=as.character(NA))
+
+```
+
+
+***
+
++ new versioned DF
++ add YR_mon of Sample.Date to billing DF
++ **Any Duplicated REcords have been removed**
+
+```{r}
+bills3.df_xx <- left_join(
+    bills3.df %>% mutate(pKEY = case_when(
+        !is.na(MLID) ~ paste(.$MLID,
+                             paste(lubridate::year(.$Date.Colleted),
+                                   sprintf("%.2d",
+                                           lubridate::month(.$Date.Colleted)),
+                                   sep="_"),
+                             sep="."),
+        TRUE ~ as.character(NA))),
+    EDD_sites03_02 %>% select(pKEY, PROJ_GRP),
+    by = c("pKEY" = "pKEY")) %>% 
+    distinct(File, Project, Sample.Number, Date.Colleted, Date.Received, Date.Reported,
+             Sampling.Point, Site.Description, Item.Description, 
+             TOTAL, Item_Key, MLID, pKEY,
+             .keep_all=T)
+
+
+
+nrow(bills3.df_xx) - nrow(bills3.df)
+```
+
++ Some record are too old for this data set and have PROJ_GRP = NA...
+    + `r sum(is.na(bills3.df_xx$PROJ_GRP))` records w/ missing PROJ_GRP
+    + Ignore the onces w/ NA in MLID... `r bills3.df_xx %>% filter(!is.na(MLID)) %>% {sum(is.na(.$PROJ_GRP))}`
+
+```{r}
+bills3.df_xx %>% filter(is.na(PROJ_GRP)) %>%
+    select(-File, -Date.Received, -Date.Reported, -Dupe.Rec, -Sample.Number,
+           -Item_Key, -Sampling.Point) %>%
+    arrange(Site.Description)
+```
+
++ Manual Corrections...
+    + Cat = EWM ::  "COOP"
+
+```{r}
+bills3.df_xx %<>% mutate(
+    PROJ_GRP = case_when(
+        is.na(PROJ_GRP) & Category == "EWM" ~ "COOP",
+        (is.na(PROJ_GRP) | PROJ_GRP == "unk_site") &
+            grepl("by ELISA", .$Item.Description, ignore.case = T) ~ "HAB",
+        (is.na(PROJ_GRP) | PROJ_GRP == "unk_site") & Item.Description == "qPCR" ~ "HAB",
+        is.na(PROJ_GRP) & Site.Description %in% c("(1)", "(2)", "1", "2") ~ "HAB",
+        is.na(PROJ_GRP) & grepl("UTAH LAKE", .$Site.Description, ignore.case = T) ~ "UTLK",
+        is.na(PROJ_GRP) & grepl("UL", .$Site.Description, ignore.case = T) ~ "UTLK",
+        is.na(PROJ_GRP) & grepl("JOR-", .$Site.Description, ignore.case = T) ~ "WETL",
+        is.na(PROJ_GRP) & grepl("JQR-", .$Site.Description, ignore.case = T) ~ "WETL",
+        is.na(PROJ_GRP) & grepl("JR-", .$Site.Description, ignore.case = T) ~ "WETL",
+        (is.na(PROJ_GRP) | PROJ_GRP == "unk_site") &
+            grepl("LINCOLN", .$Site.Description, ignore.case = T) ~ "HAB",
+        is.na(PROJ_GRP) & grepl("NET", .$Site.Description, ignore.case = T) ~ "unk_site",
+        is.na(PROJ_GRP) & grepl("ALGAE", .$Site.Description, ignore.case = T) ~ "UCASE",
+        is.na(PROJ_GRP) & grepl("WATER", .$Site.Description, ignore.case = T) ~ "UCASE",
+        !is.na(PROJ_GRP) ~ PROJ_GRP,
+        TRUE ~ "unk_site"
+    )
+)
+
+
+```
+
+
++ Number of records in `bills3.df_xx` missing a `PROJ_GRP` :: `r sum(is.na(bills3.df_xx$PROJ_GRP))`
+
+***
+
+### 4.6 Version DF
+
+```{r}
+bills3.df_00 <- bills3.df_xx
+```
+
+***
+
+## 5.0 Project Costs
+
++ Now, split costs by project by bottle type...
+
+**Working Datafile** :: `bills3.df_00`
+
+**Assign Project and Project-Group ids to invoice-data**
+
+[190827 :: have coded the Project Groups in 4.4 to 4.5 above]
+
+```{r projects00, eval=FALSE, include=FALSE}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+# [older]
+# bills3.df_00 <- left_join(bills3.df,select(SITES02,MLID, project, GRP),by = "MLID")
+##
+## [RECENT]
+# bills3.df_00 <- left_join(bills3.df,select(sites_wy19,MLID.x, Proj_SET, Proj_GRP),
+#                           by = c("MLID" = "MLID.x"))
+# rm(bills3.df_00)
+```
+
++ Records in `bills3.df_00` that have no assigned _Projects_ ::
+    + `PROJ_GRP` :: `r bills3.df_00 %>% filter(is.na(PROJ_GRP)) %>% nrow(.)`
+
+~~+ Of records with no assigned project, which invoice-sets are involved?~~
+
+``` {}
+~~bills3.df_00 %>% filter(is.na(Proj_SET)) %>% {addmargins(table(.$File, useNA="ifany", deparse.level=2))} %>% as.data.frame.table(.) %>% arrange(., match(..File, inv.order2)) %>% htmlTable::htmlTable(.,css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.), nrow=nrow(.))), total=TRUE, header=c("Invoice-file", "Count"), rnames=F, align=c("lc"))~~
+```
+
+~~+ Appears that some newer sites are not associated with a project-yet~~
+
+~~+ For any records missing an project but have an MLID < 3500000 (likely a CHL-repeat sample.number), then apply "CHL_recalc" as `Proj_SET`~~
+
++ See next section... (_as of 190401_)
+
+```{r eval=FALSE, include=FALSE}
+# bills3.df_00 %<>% mutate(
+#     Proj_SET = case_when(
+#         !is.na(.$Proj_SET) ~ Proj_SET,
+#         is.na(.$Proj_SET) & is.na(.$MLID) &
+#             grepl("Chlorophyll", .$Item.Description, ignore.case = T) &
+#             Site.Description < 3500000 ~ "CHL_recalc",
+#         is.na(.$Proj_SET) ~ as.character(NA)
+#     ))
+```
+
+
+### 5.1 Version DF
+
++ 190401 :: Using var = `PROJ_GRP` ~~instead of "GRP"~~
+
+```{r Version_04}
+bills4.df <- bills3.df_00
+##
+# bills4.df %<>% mutate(
+#     Proj_SET = case_when(
+#         !is.na(.$Proj_SET) ~ Proj_SET,
+#         is.na(.$Proj_SET) & is.na(.$MLID) &
+#             grepl("Chlorophyll", .$Item.Description, ignore.case = T) &
+#             Site.Description < 3500000 ~ "CHL_recalc",
+#         is.na(.$Proj_SET) ~ "unknwn"
+#     ))
+# bills4.df$GRP <- ifelse(is.na(bills4.df$GRP), "unknwn", bills4.df$GRP)
+#
+addmargins(table(bills4.df$PROJ_GRP, lubridate::year(bills4.df$Date.Colleted),
+      useNA = "ifany", deparse.level = 2))
+```
+
+
++ _Quite a few records received by UPHL in FY2019 where no project set is available..._
+
+
++ UPHL Invoices :: `r format(nrow(bills4.df), big.mark=",")` records
++ Dates Collected :: From `r min(bills4.df$Date.Colleted)` to `r max(bills4.df$Date.Colleted)`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received)` to `r max(bills4.df$Date.Received)`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported, na.rm=T)` to `r max(bills4.df$Date.Reported, na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r format(length(unique(bills4.df$Sample.Number)), big.mark=",")`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description))`
++ Number of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r format(length(unique(bills4.df$Item_Key)), big.mark=",")`
+    + Appears to be `r nrow(bills4.df) - length(unique(bills4.df$Item_Key))` duplicated records
+    + Duplicated Records flagged :: `r sum(!is.na(bills4.df$Dupe.Rec))`
+    + See _Section 1.5_
+      
++ Number of records with unknown Monitoring Location ID (MLID) :: `r sum(is.na(bills4.df$MLID))`
+    + Accounts for [`r length(unique(bills4.df$Item_Key[is.na(bills4.df$MLID)]))`]  Item_Keys
+
+### 5.2 Lab Costs
+
+Classify "Date.Received" by Fiscal Year & "Date.Colleted" [sic] by Water Year
+
+```{r years01}
+bills4.df$WY_Sample <- ifelse(is.na(bills4.df$Date.Colleted), NA,
+    ifelse(bills4.df$Date.Colleted < as.Date("2015-10-01"), 2015,
+    ifelse(bills4.df$Date.Colleted < as.Date("2016-10-01"), 2016,
+        ifelse(bills4.df$Date.Colleted < as.Date("2017-10-01"), 2017,
+            ifelse(bills4.df$Date.Colleted < as.Date("2018-10-01"), 2018,
+                ifelse(bills4.df$Date.Colleted < as.Date("2019-10-01"), 2019, 
+                       ifelse(bills4.df$Date.Colleted < as.Date("2020-10-01"), 2020, NA)))))))
+#
+bills4.df$FY_Recpt <- ifelse(is.na(bills4.df$Date.Received), NA,
+    ifelse(bills4.df$Date.Received < as.Date("2015-07-01"), NA,
+    ifelse(bills4.df$Date.Received < as.Date("2016-07-01"), 2016,
+        ifelse(bills4.df$Date.Received < as.Date("2017-07-01"), 2017,
+            ifelse(bills4.df$Date.Received < as.Date("2018-07-01"), 2018,
+                ifelse(bills4.df$Date.Received < as.Date("2019-07-01"),2019,
+                       ifelse(bills4.df$Date.Received < as.Date("2020-07-01"),2020,NA)))))))
+#
+bills4.df$month_Sample <- lubridate::month(bills4.df$Date.Colleted)
+bills4.df$month_Recpt <- lubridate::month(bills4.df$Date.Received)
+bills4.df$month_Recpt <- plyr::mapvalues(bills4.df$month_Recpt, 
+                                         c(7,8,9,10,11,12,1,2,3,4,5,6), 
+                                         c(1,2,3,4,5,6,7,8,9,10,11,12))
+bills4.df$FYFM_rcp <- paste(bills4.df$FY_Recpt,
+                            sprintf("%.2d",bills4.df$month_Recpt),
+                            sep=".")
+
+```
+
+
++ [190417] Add another PROJ_GRP summary table for FY of Date.Received
+
+```{r}
+bills4.df %>% {addmargins(table(.$PROJ_GRP, .$FY_Recpt, 
+                                useNA="ifany", deparse.level = 2))}
+```
+
+***
+
+### 5.3 Costs by FY & Month (Date.Received)
+
++ **Updated 190827**
+
+```{r costs01}
+## Costs table fy Fiscal Yr/Month by Lab Item-Group
+Costs1_recvd <- data.frame(FYFM = sort(unique(paste(bills4.df$FY_Recpt,
+                                                    sprintf("%.2d",bills4.df$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs1_recvd$Month <- substr(Costs1_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs1_recvd$FYFM)[[1]]+1,
+                           nchar(Costs1_recvd$FYFM))
+Costs1_recvd$Month <- as.integer(Costs1_recvd$Month)+6
+Costs1_recvd$Month <- ifelse(Costs1_recvd$Month > 12, Costs1_recvd$Month-12, Costs1_recvd$Month)
+Costs1_recvd$Month <- month.abb[Costs1_recvd$Month]
+#
+time1 <- sort(unique(bills4.df$FYFM_rcp))
+#
+for (j in time1) {
+    Costs1_recvd$EWM[Costs1_recvd$FYFM == j] <- (sum(bills4.df$TOTAL[bills4.df$FYFM_rcp == j & bills4.df$Category == "EWM"]))
+    Costs1_recvd$INO[Costs1_recvd$FYFM == j] <- (sum(bills4.df$TOTAL[bills4.df$FYFM_rcp == j & bills4.df$Category == "INO"]))
+    Costs1_recvd$MTL[Costs1_recvd$FYFM == j] <- (sum(bills4.df$TOTAL[bills4.df$FYFM_rcp == j & bills4.df$Category == "MTL"]))
+    Costs1_recvd$OR[Costs1_recvd$FYFM == j] <- (sum(bills4.df$TOTAL[bills4.df$FYFM_rcp == j & bills4.df$Category == "OR"]))
+    Costs1_recvd$Proc[Costs1_recvd$FYFM == j] <- (sum(bills4.df$TOTAL[bills4.df$FYFM_rcp == j & bills4.df$Category == "Proc"]))
+    Costs1_recvd$Month_Sum[Costs1_recvd$FYFM == j] <- (sum(as.numeric(Costs1_recvd[Costs1_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs1_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs1_recvd[,"INO"]))),
+            (sum(as.numeric(Costs1_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs1_recvd[,"OR"]))),
+            (sum(as.numeric(Costs1_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs1_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs1_recvd); Costs1_recvd <- rbind(Costs1_recvd, totals)
+#
+Costs1_recvd$FY_Summ <- NA
+Costs1_recvd$FY_Summ[5] <- format(sum(as.numeric(Costs1_recvd$Month_Sum[1:5])), nsmall=2)
+Costs1_recvd$FY_Summ[17] <- format(sum(as.numeric(Costs1_recvd$Month_Sum[6:17])), nsmall=2)
+Costs1_recvd$FY_Summ[29] <- format(sum(as.numeric(Costs1_recvd$Month_Sum[18:29])), nsmall=2)
+Costs1_recvd$FY_Summ[41] <- format(sum(as.numeric(Costs1_recvd$Month_Sum[30:41])), nsmall=2)
+Costs1_recvd$EWM <- format(as.numeric(Costs1_recvd$EWM), big.mark=",", nsmall=2)
+Costs1_recvd$INO <- format(as.numeric(Costs1_recvd$INO), big.mark=",", nsmall=2)
+Costs1_recvd$MTL <- format(as.numeric(Costs1_recvd$MTL), big.mark=",", nsmall=2)
+Costs1_recvd$OR <- format(as.numeric(Costs1_recvd$OR), big.mark=",", nsmall=2)
+Costs1_recvd$Proc <- format(as.numeric(Costs1_recvd$Proc), big.mark=",", nsmall=2)
+Costs1_recvd$Month_Sum <- format(as.numeric(Costs1_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs1_recvd$FY_Summ <- format(as.numeric(Costs1_recvd$FY_Summ), big.mark=",", nsmall=2)
+#
+Costs1_recvd$FY_Summ <- ifelse(grepl("NA", Costs1_recvd$FY_Summ), NA, Costs1_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs1_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "All-Project Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(5, 12, 12,12,3), tspanner=c("","","","",""))
+```
+
++ ~~190417 -- Stopped here~~
++ 190827 :: _Continuing on..._
+
+
+### 5.4 Project Costs :: COOPs
+
+**Add var `GRP` generalized from `PROJ_GRP`**
+
+```{r}
+# bills4.df$GRP <- bills4.df$Proj_SET
+bills4.df %<>% mutate(GRP = PROJ_GRP) %>% mutate(
+    GRP = case_when(
+        PROJ_GRP %in% c("BLM", "COOP", "TMDL", "USFS", "NPS") ~ "COOP",
+        PROJ_GRP %in% c("CBI", "JRULI", "UBI", "WRI") ~ "Intensive",
+        PROJ_GRP %in% c("QAQC", "unk_site", "WETL", "GKM", "UCASE") ~ "Other",
+        !is.na(PROJ_GRP) ~ PROJ_GRP,
+        TRUE ~ as.character(NA)))
+
+```
+
+
+```{r}
+bills4.df %>% {addmargins(table(.$GRP, .$FY_Recpt, 
+                                useNA="ifany", deparse.level = 2))}
+```
+
+
+***
+
+**Cooperative Projects**
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "COOP",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "COOP"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "COOP"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "COOP"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "COOP"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "COOP"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "COOP"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "COOP"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "COOP"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "COOP"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r length(unique(bills4.df$Item_Key[bills4.df$GRP == "COOP"]))`
+
+```{r costs02_COOP}
+## [COOP] Costs table fy Fiscal Yr/Month by Lab Item-Group
+coop_dat <- bills4.df[bills4.df$GRP == "COOP",]
+##
+Costs2_recvd <- data.frame(FYFM = sort(unique(paste(coop_dat$FY_Recpt,
+                                                    sprintf("%.2d",coop_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs2_recvd$Month <- substr(Costs2_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs2_recvd$FYFM)[[1]]+1,
+                           nchar(Costs2_recvd$FYFM))
+Costs2_recvd$Month <- as.integer(Costs2_recvd$Month)+6
+Costs2_recvd$Month <- ifelse(Costs2_recvd$Month > 12, Costs2_recvd$Month-12, Costs2_recvd$Month)
+Costs2_recvd$Month <- month.abb[Costs2_recvd$Month]
+#
+time2 <- sort(unique(coop_dat$FYFM_rcp))
+#
+for (j in time2) {
+    Costs2_recvd$EWM[Costs2_recvd$FYFM == j] <- (sum(coop_dat$TOTAL[coop_dat$FYFM_rcp == j & coop_dat$Category == "EWM"]))
+    Costs2_recvd$INO[Costs2_recvd$FYFM == j] <- (sum(coop_dat$TOTAL[coop_dat$FYFM_rcp == j & coop_dat$Category == "INO"]))
+    Costs2_recvd$MTL[Costs2_recvd$FYFM == j] <- (sum(coop_dat$TOTAL[coop_dat$FYFM_rcp == j & coop_dat$Category == "MTL"]))
+    Costs2_recvd$OR[Costs2_recvd$FYFM == j] <- (sum(coop_dat$TOTAL[coop_dat$FYFM_rcp == j & coop_dat$Category == "OR"]))
+    Costs2_recvd$Proc[Costs2_recvd$FYFM == j] <- (sum(coop_dat$TOTAL[coop_dat$FYFM_rcp == j & coop_dat$Category == "Proc"]))
+    Costs2_recvd$Month_Sum[Costs2_recvd$FYFM == j] <- (sum(as.numeric(Costs2_recvd[Costs2_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs2_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs2_recvd[,"INO"]))),
+            (sum(as.numeric(Costs2_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs2_recvd[,"OR"]))),
+            (sum(as.numeric(Costs2_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs2_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs2_recvd); Costs2_recvd <- rbind(Costs2_recvd, totals)
+#
+Costs2_recvd$FY_Summ <- NA
+Costs2_recvd$FY_Summ[5] <- format(sum(as.numeric(Costs2_recvd$Month_Sum[1:5])), nsmall=2)
+Costs2_recvd$FY_Summ[17] <- format(sum(as.numeric(Costs2_recvd$Month_Sum[6:17])), nsmall=2)
+Costs2_recvd$FY_Summ[29] <- format(sum(as.numeric(Costs2_recvd$Month_Sum[18:29])), nsmall=2)
+Costs2_recvd$FY_Summ[41] <- format(sum(as.numeric(Costs2_recvd$Month_Sum[30:41])), nsmall=2)
+Costs2_recvd$EWM <- format(as.numeric(Costs2_recvd$EWM), big.mark=",", nsmall=2)
+Costs2_recvd$INO <- format(as.numeric(Costs2_recvd$INO), big.mark=",", nsmall=2)
+Costs2_recvd$MTL <- format(as.numeric(Costs2_recvd$MTL), big.mark=",", nsmall=2)
+Costs2_recvd$OR <- format(as.numeric(Costs2_recvd$OR), big.mark=",", nsmall=2)
+Costs2_recvd$Proc <- format(as.numeric(Costs2_recvd$Proc), big.mark=",", nsmall=2)
+Costs2_recvd$Month_Sum <- format(as.numeric(Costs2_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs2_recvd$FY_Summ <- format(as.numeric(Costs2_recvd$FY_Summ), big.mark=",", nsmall=2)
+#
+Costs2_recvd$FY_Summ <- ifelse(grepl("NA", Costs2_recvd$FY_Summ), NA, Costs2_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs2_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "[COOPs] Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(5, 12, 12,12,1,1), tspanner=c("","","","","",""))
+```
+
+### 5.5 Project Costs :: Intensives (UBI / JRULI / CBI, etc.)
+
+**Basin-Intensive Monitoring Projects**
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "Intensive",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "Intensive"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "Intensive"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "Intensive"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "Intensive"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "Intensive"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "Intensive"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "Intensive"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "Intensive"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "Intensive"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r length(unique(bills4.df$Item_Key[bills4.df$GRP == "Intensive"]))`
+
+```{r costs03_ub_jrul}
+## [Intensives] Costs table fy Fiscal Yr/Month by Lab Item-Group
+inten_dat <- bills4.df[bills4.df$GRP == "Intensive",]
+##
+Costs3_recvd <- data.frame(FYFM = sort(unique(paste(inten_dat$FY_Recpt,
+                                                    sprintf("%.2d",inten_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs3_recvd$Month <- substr(Costs3_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs3_recvd$FYFM)[[1]]+1,
+                           nchar(Costs3_recvd$FYFM))
+Costs3_recvd$Month <- as.integer(Costs3_recvd$Month)+6
+Costs3_recvd$Month <- ifelse(Costs3_recvd$Month > 12, Costs3_recvd$Month-12, Costs3_recvd$Month)
+Costs3_recvd$Month <- month.abb[Costs3_recvd$Month]
+#
+time3 <- sort(unique(inten_dat$FYFM_rcp))
+#
+for (j in time3) {
+    Costs3_recvd$EWM[Costs3_recvd$FYFM == j] <- (sum(inten_dat$TOTAL[inten_dat$FYFM_rcp == j & inten_dat$Category == "EWM"]))
+    Costs3_recvd$INO[Costs3_recvd$FYFM == j] <- (sum(inten_dat$TOTAL[inten_dat$FYFM_rcp == j & inten_dat$Category == "INO"]))
+    Costs3_recvd$MTL[Costs3_recvd$FYFM == j] <- (sum(inten_dat$TOTAL[inten_dat$FYFM_rcp == j & inten_dat$Category == "MTL"]))
+    Costs3_recvd$OR[Costs3_recvd$FYFM == j] <- (sum(inten_dat$TOTAL[inten_dat$FYFM_rcp == j & inten_dat$Category == "OR"]))
+    Costs3_recvd$Proc[Costs3_recvd$FYFM == j] <- (sum(inten_dat$TOTAL[inten_dat$FYFM_rcp == j & inten_dat$Category == "Proc"]))
+    Costs3_recvd$Month_Sum[Costs3_recvd$FYFM == j] <- (sum(as.numeric(Costs3_recvd[Costs3_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs3_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs3_recvd[,"INO"]))),
+            (sum(as.numeric(Costs3_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs3_recvd[,"OR"]))),
+            (sum(as.numeric(Costs3_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs3_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs3_recvd); Costs3_recvd <- rbind(Costs3_recvd, totals)
+#
+Costs3_recvd$FY_Summ <- NA
+Costs3_recvd$FY_Summ[12] <- format(sum(as.numeric(Costs3_recvd$Month_Sum[1:12])), nsmall=2)
+Costs3_recvd$FY_Summ[23] <- format(sum(as.numeric(Costs3_recvd$Month_Sum[13:23])), nsmall=2)
+Costs3_recvd$FY_Summ[35] <- format(sum(as.numeric(Costs3_recvd$Month_Sum[24:35])), nsmall=2)
+# Costs3_recvd$FY_Summ[36] <- format(sum(as.numeric(Costs3_recvd$Month_Sum[36:36])), nsmall=2)
+Costs3_recvd$EWM <- format(as.numeric(Costs3_recvd$EWM), big.mark=",", nsmall=2)
+Costs3_recvd$INO <- format(as.numeric(Costs3_recvd$INO), big.mark=",", nsmall=2)
+Costs3_recvd$MTL <- format(as.numeric(Costs3_recvd$MTL), big.mark=",", nsmall=2)
+Costs3_recvd$OR <- format(as.numeric(Costs3_recvd$OR), big.mark=",", nsmall=2)
+Costs3_recvd$Proc <- format(as.numeric(Costs3_recvd$Proc), big.mark=",", nsmall=2)
+Costs3_recvd$Month_Sum <- format(as.numeric(Costs3_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs3_recvd$FY_Summ <- format(as.numeric(Costs3_recvd$FY_Summ), big.mark=",", nsmall=2)
+#
+Costs3_recvd$FY_Summ <- ifelse(grepl("NA", Costs3_recvd$FY_Summ), NA, Costs3_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs3_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "[Intensives] Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(12, 11,12,2), tspanner=c("","","",""))
+```
+
+### 5.6 Project Costs :: Utah Lake
+
+**Utah Lake TMDL Projects**
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "UTLK",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "UTLK"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "UTLK"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "UTLK"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "UTLK"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "UTLK"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "UTLK"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "UTLK"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "UTLK"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "UTLK"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r length(unique(bills4.df$Item_Key[bills4.df$GRP == "UTLK"]))`
+
+```{r costs04_utlk}
+## [UTLK] Costs table fy Fiscal Yr/Month by Lab Item-Group
+utlk_dat <- bills4.df[bills4.df$GRP == "UTLK",]
+##
+Costs4_recvd <- data.frame(FYFM = sort(unique(paste(utlk_dat$FY_Recpt,
+                                                    sprintf("%.2d",utlk_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs4_recvd$Month <- substr(Costs4_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs4_recvd$FYFM)[[1]]+1,
+                           nchar(Costs4_recvd$FYFM))
+Costs4_recvd$Month <- as.integer(Costs4_recvd$Month)+6
+Costs4_recvd$Month <- ifelse(Costs4_recvd$Month > 12, Costs4_recvd$Month-12, Costs4_recvd$Month)
+Costs4_recvd$Month <- month.abb[Costs4_recvd$Month]
+#
+time4 <- sort(unique(utlk_dat$FYFM_rcp))
+#
+for (j in time4) {
+    Costs4_recvd$EWM[Costs4_recvd$FYFM == j] <- (sum(utlk_dat$TOTAL[utlk_dat$FYFM_rcp == j & utlk_dat$Category == "EWM"]))
+    Costs4_recvd$INO[Costs4_recvd$FYFM == j] <- (sum(utlk_dat$TOTAL[utlk_dat$FYFM_rcp == j & utlk_dat$Category == "INO"]))
+    Costs4_recvd$MTL[Costs4_recvd$FYFM == j] <- (sum(utlk_dat$TOTAL[utlk_dat$FYFM_rcp == j & utlk_dat$Category == "MTL"]))
+    Costs4_recvd$OR[Costs4_recvd$FYFM == j] <- (sum(utlk_dat$TOTAL[utlk_dat$FYFM_rcp == j & utlk_dat$Category == "OR"]))
+    Costs4_recvd$Proc[Costs4_recvd$FYFM == j] <- (sum(utlk_dat$TOTAL[utlk_dat$FYFM_rcp == j & utlk_dat$Category == "Proc"]))
+    Costs4_recvd$Month_Sum[Costs4_recvd$FYFM == j] <- (sum(as.numeric(Costs4_recvd[Costs4_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs4_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs4_recvd[,"INO"]))),
+            (sum(as.numeric(Costs4_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs4_recvd[,"OR"]))),
+            (sum(as.numeric(Costs4_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs4_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs4_recvd); Costs4_recvd <- rbind(Costs4_recvd, totals)
+#
+Costs4_recvd$FY_Summ <- NA
+Costs4_recvd$FY_Summ[4] <- format(sum(as.numeric(Costs4_recvd$Month_Sum[1:4])), nsmall=2)
+Costs4_recvd$FY_Summ[16] <- format(sum(as.numeric(Costs4_recvd$Month_Sum[5:16])), nsmall=2)
+Costs4_recvd$FY_Summ[26] <- format(sum(as.numeric(Costs4_recvd$Month_Sum[17:26])), nsmall=2)
+# Costs4_recvd$FY_Summ[32] <- format(sum(as.numeric(Costs4_recvd$Month_Sum[30:32])), nsmall=2)
+Costs4_recvd$EWM <- format(as.numeric(Costs4_recvd$EWM), big.mark=",", nsmall=2)
+Costs4_recvd$INO <- format(as.numeric(Costs4_recvd$INO), big.mark=",", nsmall=2)
+Costs4_recvd$MTL <- format(as.numeric(Costs4_recvd$MTL), big.mark=",", nsmall=2)
+Costs4_recvd$OR <- format(as.numeric(Costs4_recvd$OR), big.mark=",", nsmall=2)
+Costs4_recvd$Proc <- format(as.numeric(Costs4_recvd$Proc), big.mark=",", nsmall=2)
+Costs4_recvd$Month_Sum <- format(as.numeric(Costs4_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs4_recvd$FY_Summ <- format(as.numeric(Costs4_recvd$FY_Summ), big.mark=",", nsmall=2)
+Costs4_recvd$FY_Summ <- ifelse(grepl("NA", Costs4_recvd$FY_Summ), NA, Costs4_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs4_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "[Utah Lake] Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(4, 12, 10,2), tspanner=c("","","",""))
+```
+
+### 5.7 Project Costs :: LAKES
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "LAKES",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "LAKES"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "LAKES"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "LAKES"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "LAKES"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "LAKES"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "LAKES"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "LAKES"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "LAKES"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "LAKES"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r format(length(unique(bills4.df$Item_Key[bills4.df$GRP == "LAKES"])), big.mar=",")`
+
+```{r costs05_LAKES}
+## [LAKES] Costs table fy Fiscal Yr/Month by Lab Item-Group
+LAKES_dat <- bills4.df[bills4.df$GRP == "LAKES",]
+##
+Costs5_recvd <- data.frame(FYFM = sort(unique(paste(LAKES_dat$FY_Recpt,
+                                                    sprintf("%.2d",LAKES_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs5_recvd$Month <- substr(Costs5_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs5_recvd$FYFM)[[1]]+1,
+                           nchar(Costs5_recvd$FYFM))
+Costs5_recvd$Month <- as.integer(Costs5_recvd$Month)+6
+Costs5_recvd$Month <- ifelse(Costs5_recvd$Month > 12, Costs5_recvd$Month-12, Costs5_recvd$Month)
+Costs5_recvd$Month <- month.abb[Costs5_recvd$Month]
+#
+time5 <- sort(unique(LAKES_dat$FYFM_rcp))
+#
+for (j in time5) {
+    Costs5_recvd$EWM[Costs5_recvd$FYFM == j] <- (sum(LAKES_dat$TOTAL[LAKES_dat$FYFM_rcp == j & LAKES_dat$Category == "EWM"]))
+    Costs5_recvd$INO[Costs5_recvd$FYFM == j] <- (sum(LAKES_dat$TOTAL[LAKES_dat$FYFM_rcp == j & LAKES_dat$Category == "INO"]))
+    Costs5_recvd$MTL[Costs5_recvd$FYFM == j] <- (sum(LAKES_dat$TOTAL[LAKES_dat$FYFM_rcp == j & LAKES_dat$Category == "MTL"]))
+    Costs5_recvd$OR[Costs5_recvd$FYFM == j] <- (sum(LAKES_dat$TOTAL[LAKES_dat$FYFM_rcp == j & LAKES_dat$Category == "OR"]))
+    Costs5_recvd$Proc[Costs5_recvd$FYFM == j] <- (sum(LAKES_dat$TOTAL[LAKES_dat$FYFM_rcp == j & LAKES_dat$Category == "Proc"]))
+    Costs5_recvd$Month_Sum[Costs5_recvd$FYFM == j] <- (sum(as.numeric(Costs5_recvd[Costs5_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs5_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs5_recvd[,"INO"]))),
+            (sum(as.numeric(Costs5_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs5_recvd[,"OR"]))),
+            (sum(as.numeric(Costs5_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs5_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs5_recvd); Costs5_recvd <- rbind(Costs5_recvd, totals)
+#
+Costs5_recvd$FY_Summ <- NA
+Costs5_recvd$FY_Summ[6] <- format(sum(as.numeric(Costs5_recvd$Month_Sum[1:6])), nsmall=2)
+Costs5_recvd$FY_Summ[12] <- format(sum(as.numeric(Costs5_recvd$Month_Sum[7:12])), nsmall=2)
+Costs5_recvd$FY_Summ[21] <- format(sum(as.numeric(Costs5_recvd$Month_Sum[13:21])), nsmall=2)
+Costs5_recvd$EWM <- format(as.numeric(Costs5_recvd$EWM), big.mark=",", nsmall=2)
+Costs5_recvd$INO <- format(as.numeric(Costs5_recvd$INO), big.mark=",", nsmall=2)
+Costs5_recvd$MTL <- format(as.numeric(Costs5_recvd$MTL), big.mark=",", nsmall=2)
+Costs5_recvd$OR <- format(as.numeric(Costs5_recvd$OR), big.mark=",", nsmall=2)
+Costs5_recvd$Proc <- format(as.numeric(Costs5_recvd$Proc), big.mark=",", nsmall=2)
+Costs5_recvd$Month_Sum <- format(as.numeric(Costs5_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs5_recvd$FY_Summ <- format(as.numeric(Costs5_recvd$FY_Summ), big.mark=",", nsmall=2)
+Costs5_recvd$FY_Summ <- ifelse(grepl("NA", Costs5_recvd$FY_Summ), NA, Costs5_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs5_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "LAKES Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(6, 6,9,2), tspanner=c("","","",""))
+```
+
+
+### 5.8 Project Costs :: HABs
+
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "HAB",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "HAB"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "HAB"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "HAB"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "HAB"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "HAB"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "HAB"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "HAB"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "HAB"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "HAB"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r format(length(unique(bills4.df$Item_Key[bills4.df$GRP == "HAB"])), big.mar=",")`
+
+```{r costs05_HAB}
+## [HAB] Costs table fy Fiscal Yr/Month by Lab Item-Group
+HAB_dat <- bills4.df[bills4.df$GRP == "HAB",]
+##
+Costs6_recvd <- data.frame(FYFM = sort(unique(paste(HAB_dat$FY_Recpt,
+                                                    sprintf("%.2d",HAB_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs6_recvd$Month <- substr(Costs6_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs6_recvd$FYFM)[[1]]+1,
+                           nchar(Costs6_recvd$FYFM))
+Costs6_recvd$Month <- as.integer(Costs6_recvd$Month)+6
+Costs6_recvd$Month <- ifelse(Costs6_recvd$Month > 12, Costs6_recvd$Month-12, Costs6_recvd$Month)
+Costs6_recvd$Month <- month.abb[Costs6_recvd$Month]
+#
+time5 <- sort(unique(HAB_dat$FYFM_rcp))
+#
+for (j in time5) {
+    Costs6_recvd$EWM[Costs6_recvd$FYFM == j] <- (sum(HAB_dat$TOTAL[HAB_dat$FYFM_rcp == j & HAB_dat$Category == "EWM"]))
+    Costs6_recvd$INO[Costs6_recvd$FYFM == j] <- (sum(HAB_dat$TOTAL[HAB_dat$FYFM_rcp == j & HAB_dat$Category == "INO"]))
+    Costs6_recvd$MTL[Costs6_recvd$FYFM == j] <- (sum(HAB_dat$TOTAL[HAB_dat$FYFM_rcp == j & HAB_dat$Category == "MTL"]))
+    Costs6_recvd$OR[Costs6_recvd$FYFM == j] <- (sum(HAB_dat$TOTAL[HAB_dat$FYFM_rcp == j & HAB_dat$Category == "OR"]))
+    Costs6_recvd$Proc[Costs6_recvd$FYFM == j] <- (sum(HAB_dat$TOTAL[HAB_dat$FYFM_rcp == j & HAB_dat$Category == "Proc"]))
+    Costs6_recvd$Month_Sum[Costs6_recvd$FYFM == j] <- (sum(as.numeric(Costs6_recvd[Costs6_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs6_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs6_recvd[,"INO"]))),
+            (sum(as.numeric(Costs6_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs6_recvd[,"OR"]))),
+            (sum(as.numeric(Costs6_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs6_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs6_recvd); Costs6_recvd <- rbind(Costs6_recvd, totals)
+#
+Costs6_recvd$FY_Summ <- NA
+Costs6_recvd$FY_Summ[5] <- format(sum(as.numeric(Costs6_recvd$Month_Sum[1:5])), nsmall=2)
+Costs6_recvd$FY_Summ[9] <- format(sum(as.numeric(Costs6_recvd$Month_Sum[6:9])), nsmall=2)
+Costs6_recvd$FY_Summ[17] <- format(sum(as.numeric(Costs6_recvd$Month_Sum[10:17])), nsmall=2)
+Costs6_recvd$FY_Summ[19] <- format(sum(as.numeric(Costs6_recvd$Month_Sum[18:19])), nsmall=2)
+Costs6_recvd$EWM <- format(as.numeric(Costs6_recvd$EWM), big.mark=",", nsmall=2)
+Costs6_recvd$INO <- format(as.numeric(Costs6_recvd$INO), big.mark=",", nsmall=2)
+Costs6_recvd$MTL <- format(as.numeric(Costs6_recvd$MTL), big.mark=",", nsmall=2)
+Costs6_recvd$OR <- format(as.numeric(Costs6_recvd$OR), big.mark=",", nsmall=2)
+Costs6_recvd$Proc <- format(as.numeric(Costs6_recvd$Proc), big.mark=",", nsmall=2)
+Costs6_recvd$Month_Sum <- format(as.numeric(Costs6_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs6_recvd$FY_Summ <- format(as.numeric(Costs6_recvd$FY_Summ), big.mark=",", nsmall=2)
+Costs6_recvd$FY_Summ <- ifelse(grepl("NA", Costs6_recvd$FY_Summ), NA, Costs6_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs6_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "HABs Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(5,4,8,3), tspanner=c("","","",""))
+```
+
+
+### 5.9 Project Costs :: "Other" / Unknown Projects
+
+**Unknown Projects**  [ _May include response or permit-compliance sampling, and unknown site-project records_ ]
+
++ `r format(nrow(bills4.df[bills4.df$GRP == "Other",]), big.mark=",")` records  
++ Dates Collected :: From `r min(bills4.df$Date.Colleted[bills4.df$GRP == "Other"])` to `r max(bills4.df$Date.Colleted[bills4.df$GRP == "Other"])`
++ Dates Received (by UPHL) :: From `r min(bills4.df$Date.Received[bills4.df$GRP == "Other"])` to `r max(bills4.df$Date.Received[bills4.df$GRP == "Other"])`
++ Dates Reported (to DWQ) :: From `r min(bills4.df$Date.Reported[bills4.df$GRP == "Other"], na.rm=T)` to `r max(bills4.df$Date.Reported[bills4.df$GRP == "Other"], na.rm=T)`
++ Number of Unique "Projects" (sample sets) :: `r length(unique(bills4.df$Project[bills4.df$GRP == "Other"]))`
++ Number of Unique "Sample.Numbers" (sample-bottle sets) :: `r length(unique(bills4.df$Sample.Number[bills4.df$GRP == "Other"]))`
++ Number of Unique "Item.Description" (analytes) :: `r length(unique(bills4.df$Item.Description[bills4.df$GRP == "Other"]))`
++ Numner of Unique "Item_Key" (Sample.Number + Project + Item.Description + Date.Receoved) :: `r format(length(unique(bills4.df$Item_Key[bills4.df$GRP == "Other"])), big.mar=",")`
+
+```{r costs05_Other}
+## [Other] Costs table fy Fiscal Yr/Month by Lab Item-Group
+Other_dat <- bills4.df[bills4.df$GRP == "Other",]
+##
+Costs7_recvd <- data.frame(FYFM = sort(unique(paste(Other_dat$FY_Recpt,
+                                                    sprintf("%.2d",Other_dat$month_Recpt),
+                                                    sep="."))),
+                           stringsAsFactors = FALSE)
+Costs7_recvd$Month <- substr(Costs7_recvd$FYFM, 
+                           gregexpr("[.]",
+                                    Costs7_recvd$FYFM)[[1]]+1,
+                           nchar(Costs7_recvd$FYFM))
+Costs7_recvd$Month <- as.integer(Costs7_recvd$Month)+6
+Costs7_recvd$Month <- ifelse(Costs7_recvd$Month > 12, Costs7_recvd$Month-12, Costs7_recvd$Month)
+Costs7_recvd$Month <- month.abb[Costs7_recvd$Month]
+#
+time5 <- sort(unique(Other_dat$FYFM_rcp))
+#
+for (j in time5) {
+    Costs7_recvd$EWM[Costs7_recvd$FYFM == j] <- (sum(Other_dat$TOTAL[Other_dat$FYFM_rcp == j & Other_dat$Category == "EWM"]))
+    Costs7_recvd$INO[Costs7_recvd$FYFM == j] <- (sum(Other_dat$TOTAL[Other_dat$FYFM_rcp == j & Other_dat$Category == "INO"]))
+    Costs7_recvd$MTL[Costs7_recvd$FYFM == j] <- (sum(Other_dat$TOTAL[Other_dat$FYFM_rcp == j & Other_dat$Category == "MTL"]))
+    Costs7_recvd$OR[Costs7_recvd$FYFM == j] <- (sum(Other_dat$TOTAL[Other_dat$FYFM_rcp == j & Other_dat$Category == "OR"]))
+    Costs7_recvd$Proc[Costs7_recvd$FYFM == j] <- (sum(Other_dat$TOTAL[Other_dat$FYFM_rcp == j & Other_dat$Category == "Proc"]))
+    Costs7_recvd$Month_Sum[Costs7_recvd$FYFM == j] <- (sum(as.numeric(Costs7_recvd[Costs7_recvd$FYFM == j, c(3:7)])))
+}
+#
+totals <- as.data.frame(cbind("Totals", NA, 
+            (sum(as.numeric(Costs7_recvd[,"EWM"]))),
+            (sum(as.numeric(Costs7_recvd[,"INO"]))),
+            (sum(as.numeric(Costs7_recvd[,"MTL"]))),
+            (sum(as.numeric(Costs7_recvd[,"OR"]))),
+            (sum(as.numeric(Costs7_recvd[,"Proc"]))),
+            (sum(as.numeric(Costs7_recvd[,"Month_Sum"])))))
+names(totals) <- names(Costs7_recvd); Costs7_recvd <- rbind(Costs7_recvd, totals)
+#
+Costs7_recvd$FY_Summ <- NA
+Costs7_recvd$FY_Summ[11] <- format(sum(as.numeric(Costs7_recvd$Month_Sum[1:11])), nsmall=2)
+Costs7_recvd$FY_Summ[23] <- format(sum(as.numeric(Costs7_recvd$Month_Sum[12:23])), nsmall=2)
+Costs7_recvd$FY_Summ[32] <- format(sum(as.numeric(Costs7_recvd$Month_Sum[24:32])), nsmall=2)
+Costs7_recvd$EWM <- format(as.numeric(Costs7_recvd$EWM), big.mark=",", nsmall=2)
+Costs7_recvd$INO <- format(as.numeric(Costs7_recvd$INO), big.mark=",", nsmall=2)
+Costs7_recvd$MTL <- format(as.numeric(Costs7_recvd$MTL), big.mark=",", nsmall=2)
+Costs7_recvd$OR <- format(as.numeric(Costs7_recvd$OR), big.mark=",", nsmall=2)
+Costs7_recvd$Proc <- format(as.numeric(Costs7_recvd$Proc), big.mark=",", nsmall=2)
+Costs7_recvd$Month_Sum <- format(as.numeric(Costs7_recvd$Month_Sum), big.mark=",", nsmall=2)
+Costs7_recvd$FY_Summ <- format(as.numeric(Costs7_recvd$FY_Summ), big.mark=",", nsmall=2)
+Costs7_recvd$FY_Summ <- ifelse(grepl("NA", Costs7_recvd$FY_Summ), NA, Costs7_recvd$FY_Summ) # better
+##
+##
+cost_tab <- Costs7_recvd
+htmlTable::htmlTable(cost_tab, css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.7em;", times=ncol(cost_tab)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(cost_tab), nrow=nrow(cost_tab))), rnames=FALSE, align=c("lc|rrrrr|rr"), total=TRUE, caption = "[Unknown projects] Cost summary by Fiscal-Yr/Fiscal-Month samples were *Received* by UPHL",
+                     n.tspanner=c(11, 12,9,2), tspanner=c("","","",""))
+```
+
+
+~~### 5.8b Duplicated Record Costs~~
+
+
+```{r dupecost_1}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+
+bills4.df %>% filter(!is.na(Dupe.Rec)) %>%
+    distinct(., Item_Key, .keep_all=TRUE) %>% 
+    group_by(FY_Recpt) %>% select(TOTAL) %>%
+    summarize(sum=sum(TOTAL), n=n()) %>% ungroup()
+
+# bills4.df %>% filter(!is.na(Dupe.Rec)) %>%
+#     distinct(., Item_Key, .keep_all=TRUE) %>% 
+#     {sum(.$TOTAL, na.rm=T)}
+
+bills4.df %>% filter(!is.na(Dupe.Rec)) %>%
+    group_by(FY_Recpt) %>% 
+    select(TOTAL) %>%
+    summarize(sum=sum(TOTAL), n=n()) %>% ungroup() ## full cost duplicated records
+
+# bills4.df %>% filter(!is.na(Dupe.Rec)) %>%
+#     {sum(.$TOTAL, na.rm=T)}
+
+# bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2017) %>%
+    # distinct(., Item_Key, .keep_all=TRUE)
+
+
+bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2017) %>%
+{table(.$Item_Key, useNA = "ifany")} %>% as.data.frame(.) %>% {table(.$Freq)}
+
+
+# sum(bills4.df$TOTAL[!is.na(bills4.df$Dupe.Rec) & bills4.df$FY_Recpt == 2017], na.rm=T)
+
+```
+
+```{r dupecost_2}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+# bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2018) %>%
+#     distinct(., Item_Key, .keep_all=TRUE) %>% select(TOTAL) %>%
+#     summarize(sum=sum(TOTAL), n=n()) ## since cost of duplicated records
+# 
+# bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2018) %>%
+#     select(TOTAL) %>%
+#     summarize(sum=sum(TOTAL), n=n()) ## full cost duplicated records
+
+bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2018) %>%
+{table(.$Item_Key, useNA = "ifany")} %>% as.data.frame(.) %>% {table(.$Freq)}
+
+
+```
+
+```{r dupecost_3, eval=FALSE, include=FALSE}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+# bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2019) %>%
+#     distinct(., Item_Key, .keep_all=TRUE) %>% select(TOTAL) %>%
+#     summarize(sum=sum(TOTAL), n=n()) ## since cost of duplicated records
+# 
+# bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2019) %>%
+#     select(TOTAL) %>%
+#     summarize(sum=sum(TOTAL), n=n()) ## full cost duplicated records
+
+bills4.df %>% filter(!is.na(Dupe.Rec) & FY_Recpt == 2019) %>%
+{table(.$Item_Key, useNA = "ifany")} %>% as.data.frame(.) %>% {table(.$Freq)}
+
+
+```
+
+### 5.10 Cost Summaries
+
+```{r sampling_intensity}
+
+bills4.df %>% filter(FY_Recpt > 2016) %>%
+    {addmargins(table(.$GRP, .$FY_Recpt,useNA = "ifany"))}
+```
+
+```{r projcost01}
+bills4.df$Yr_Rcvd <- as.integer(lubridate::year(bills4.df$Date.Received))
+
+bills4.df %>% filter(FY_Recpt > 2016) %>%
+    group_by(., GRP, Yr_Rcvd) %>%
+    select(., TOTAL) %>%
+    summarize(sum=format(sum(TOTAL),nsmall=2), n=n()) %>%
+    htmlTable::htmlTable(., 
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rccrr")
+
+bills4.df %>% filter(FY_Recpt > 2016) %>%
+    group_by(., GRP) %>%
+    select(., TOTAL) %>%
+    summarize(sum=format(sum(TOTAL),nsmall=2), n=n()) %>%
+    htmlTable::htmlTable(., 
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rccrr")
+
+bills4.df %>% filter(FY_Recpt > 2016) %>%
+    group_by(., GRP, FY_Recpt) %>%
+    select(., TOTAL) %>%
+    summarize(sum=format(sum(TOTAL),nsmall=2), n=n()) %>%
+    htmlTable::htmlTable(., 
+                         css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rccrr")
+
+sum(bills4.df$TOTAL[bills4.df$GRP == "UBI"], na.rm=T)
+sum(bills4.df$TOTAL[bills4.df$GRP == "UTLK" & bills4.df$FY_Recpt > 2016], na.rm=T)
+
+```
+
+***
+
+
+## 6.0 Turnaround Times
+
+**Would like to add figure  for TATs by chemistry group**
+
+### 6.1 TAT Calculations
+
+```{r tat01}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df$TAT <- ifelse(is.na(bills4.df$Date.Reported) | is.na(bills4.df$Date.Received),
+                        NA,
+                        bills4.df$Date.Reported - bills4.df$Date.Received)
+
+
+summary(bills4.df$TAT)
+#
+bills4.df %>% filter(WY_Sample == 2018) %>% select(TAT) %>%
+    ggplot(., aes(TAT)) + theme_bw() + stat_ecdf(pad=FALSE, na.rm=T) +
+    geom_hline(yintercept=c(0.25,0.5,0.75), lty=2, col="red") +
+    coord_cartesian(xlim=c(0, 80)) +
+    scale_y_continuous(labels = percent)
+```
+
+```{r}
+bills4.df %>% filter(FY_Recpt > 2016) %>%
+    ggplot(., aes(x=TAT, col=factor(FY_Recpt))) + theme_bw() + 
+    stat_ecdf(pad=FALSE, na.rm=T) +
+    geom_hline(yintercept=c(0.25,0.5,0.75), lty=2, col="red") +
+    coord_cartesian(xlim=c(0, 80)) +
+    scale_y_continuous(labels = percent) +
+    geom_vline(xintercept = c(14, 21), lty=2, col="gray20") +
+    labs(x="Turnaround Time (days)", y="Proportion of records less than",
+         title="TAT for all analyses, by Fiscal Year of Sample Receipt")
+```
+
+
+
+
+```{r tat02_wy19}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df %>% filter(WY_Sample == 2019) %>% select(TAT, GRP) %>%
+    ggplot(., aes(x=TAT, col=GRP)) + stat_ecdf(pad=FALSE, na.rm=T) + theme_bw() +
+    ggtitle("2019 WY, TAT for all analytes by Project-Group") +
+    geom_hline(yintercept=c(0.25, 0.5, 0.75), lty=2, color="black") +
+    scale_y_continuous(labels=percent, name="% of Records less than result value") +
+    scale_x_continuous(name="Turnaround Time for Reported Analyses (days)")
+```
+
+```{r tat02}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df %>% filter(WY_Sample == 2018) %>% select(TAT, GRP) %>%
+    ggplot(., aes(x=TAT, col=GRP)) + stat_ecdf(pad=FALSE, na.rm=T) + theme_bw() +
+    ggtitle("2018 WY, TAT for all analytes by Project-Group") +
+    geom_hline(yintercept=c(0.25, 0.5, 0.75), lty=2, color="black") +
+    scale_y_continuous(labels=percent, name="% of Records less than result value") +
+    scale_x_continuous(name="Turnaround Time for Reported Analyses (days)")
+```
+
+```{r tat03_19}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df %>% filter(Date.Received > as.Date("2018-09-30")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    select(TAT, Category) %>%
+    ggplot(., aes(x=TAT, col=Category)) + stat_ecdf(pad=FALSE, na.rm=T) + theme_bw() +
+    ggtitle("2019 WY, TAT for all analytes by Chemistry-Group") +
+    geom_hline(yintercept=c(0.25, 0.5, 0.75), lty=2, color="black") +
+    scale_y_continuous(labels=percent, name="% of Records less than result value") +
+    scale_x_continuous(name="Turnaround Time for Reported Analyses (days)")
+```
+
+```{r tat03}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df %>% filter(Date.Received > as.Date("2017-09-30") & 
+                         Date.Received < as.Date("2018-10-01")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    select(TAT, Category) %>%
+    ggplot(., aes(x=TAT, col=Category)) + stat_ecdf(pad=FALSE, na.rm=T) + theme_bw() +
+    ggtitle("2018 WY, TAT for all analytes by Chemistry-Group") +
+    geom_hline(yintercept=c(0.25, 0.5, 0.75), lty=2, color="black") +
+    scale_y_continuous(labels=percent, name="% of Records less than result value") +
+    scale_x_continuous(name="Turnaround Time for Reported Analyses (days)")
+```
+
+```{r tat04}
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+if(!"ggplot" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+#
+bills4.df$Recv_Q <- ifelse(bills4.df$month_Sample %in% c(1:3), "Q1",
+                           ifelse(bills4.df$month_Sample %in% c(4:6), "Q2",
+                                  ifelse(bills4.df$month_Sample %in% c(7:9), "Q3",
+                                         ifelse(bills4.df$month_Sample %in% c(10:12), "Q4",
+                                                NA))))
+bills4.df$Yr_Rcvd <- as.integer(lubridate::year(bills4.df$Date.Received))
+#
+bills4.df %>% filter(Date.Received > as.Date("2016-12-31")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    ggplot(., aes(y=TAT, x = Recv_Q, col=Category)) + theme_bw() +
+    scale_colour_brewer(palette = "Set1") +
+    geom_boxplot(na.rm=T, position = position_dodge2(preserve = "single")) + 
+    {facet_wrap(.~ Yr_Rcvd, 
+                strip.position="bottom", scales="free_x")} +
+    theme(panel.spacing = unit(0, "lines"),
+          strip.background = element_blank(),
+          strip.placement = "outside") +
+    ggtitle("2017-present, Quarterly TAT for all analytes by Chemistry-Group") +
+    scale_y_continuous(name="Turnaround Time for Reported Analyses (days)",
+                       limits = c(0, 100), oob=squish) +
+    scale_x_discrete(drop=FALSE) +
+    geom_hline(yintercept=21, lty=2, color="red")
+#
+bills4.df %>% filter(Date.Received > as.Date("2016-12-31")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    filter(., Category %in% c("INO", "MTL")) %>%
+    ggplot(., aes(y=TAT, x = (as.factor(month_Sample)), col=Category)) + theme_bw() +
+    scale_colour_brewer(palette = "Set1") +
+    geom_boxplot(na.rm=T, position = position_dodge2(preserve = "single")) + 
+    {facet_wrap( ~ Yr_Rcvd, 
+                strip.position="bottom", scales="free_x")} +
+    theme(panel.spacing = unit(0, "lines"),
+          strip.background = element_blank(),
+          strip.placement = "outside") +
+    ggtitle("2017-present, Monthly TAT for all analytes by Chemistry-Group") +
+    scale_y_continuous(name="Turnaround Time for Reported Analyses (days)",
+                       limits=c(0,150), oob=squish) +
+    scale_x_discrete(name="Calendar Month and Year",
+                     labels=month.abb) +
+    geom_hline(yintercept=21, lty=2, color="red")
+#
+bills4.df %>% filter(Date.Received > as.Date("2017-12-31")) %>%
+    filter(., Item.Description != "Chlorophyll A by HPLC") %>%
+    filter(., Category %in% c("INO", "MTL")) %>%
+    ggplot(., aes(y=TAT, x = (as.factor(month_Sample)), col=Category)) + theme_bw() +
+    scale_colour_brewer(palette = "Set1") +
+    geom_boxplot(na.rm=T, position = position_dodge2(preserve = "single")) + 
+    {facet_wrap( ~ Yr_Rcvd, 
+                strip.position="bottom", scales="fixed")} +
+    theme(panel.spacing = unit(0, "lines"),
+          strip.background = element_blank(),
+          strip.placement = "outside") +
+    ggtitle("2018 to present, Monthly TAT by Chemistry-Group") +
+    scale_y_continuous(name="Turnaround Time for Reported Analyses (days)",
+                       limits=c(NA,90), oob=squish) +
+    scale_x_discrete(name="Calendar Month and Year",
+                     labels=month.abb) +
+    geom_hline(yintercept=21, lty=2, color="red") +
+    geom_hline(yintercept=14, lty=2, color="darkgreen") +
+    geom_hline(yintercept=7, lty=2, color="orange")
+```
+
+
+***
+
+## 7.0 Export Invoices to Date
+
++ 190401
+
+```{r}
+openxlsx::write.xlsx(bills4.df, file=paste("UPHL_invoices_ToDate_", 
+                            format(Sys.Date(), "%y%m%d"),".xlsx", sep=""))
+#
+save(bills4.df, file=paste("UPHL_invoices_ToDate_",format(Sys.Date(), "%y%m%d"),".RData",
+                           sep=""))
+```
+
+***
+
+## 8.0 Further Examinations
+
+```{r}
+bills4.df %>% 
+    filter(FY_Recpt > 2016) %>%
+    group_by(FY_Recpt) %>%
+    summarise(Total.Cost = sum(TOTAL, na.rm=T),
+              n_recs = n(),
+              k_items = n_distinct(Item_Key))
+```
+
+
+```{r}
+bills4.df %>% 
+    filter(FY_Recpt > 2016) %>%
+    group_by(FY_Recpt, month_Sample) %>%
+    summarise(Total.Cost = sum(TOTAL, na.rm=T),
+              n_recs = n(),
+              k_items = n_distinct(Item_Key))
+```
+
+
+***
+
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof  
+
+***

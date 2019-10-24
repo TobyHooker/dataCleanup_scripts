@@ -1,0 +1,1095 @@
+---
+title: "UPHL Reporting Limits: 2017"
+author: "T.Hooker"
+date: "4 December, 2017"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 6
+    fig_width: 6.5
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    toc_float: no
+---
+***
+> ![](U:\PERMITS\MONITORS\2017_wy_Data\2017 Water Year_Lab Data\2017 UPHL LIMS\2017wy_uphl_R\Water Quality1 72 dpi.png)  
+
+***
+```{r STARTUP}
+#packge.set <- c("knitr", "rmarkdown", "plyr", "openxlsx", "lubridate", "htmlTable",
+#                "reshape2", "tidyr", "formatR", "xtable", "dplyr")
+#lapply(packge.set, library, character.only=T)
+#options(table_counter=FALSE)
+options(scipen = 999, digits = 4)
+#opts_chunk$set(tidy=TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+### Notes
+
+This project summarizes Blank and Reporting Limit information from UPHL-EDDs (more recent) and/or AWQMS recrods for data-users who work with temporal trends.  
+
+This project extracts the working Geofile from AWQMS, then pulls in data from UPHL-EDDs (current) and/or from AWQMS (older, imported data; not pursued at present time) for **Sample-Blanks** te be evaluated.
+
+### 1.0 Import Geofile
+
+#### 1.1  AWQMS Export
+
+1) Log in to AWQMS
+2) Select [Metadata]
+3) Select [Search] to obtain the entire list of `Monitoring Location` records
+4) Select [Export to Excel] to retrieve the xlsx file
+5) _Save_ to working space
+
+#### 1.1 Import MLID info
+
+```{r Geo.import1, eval=F}
+#geo.file <- choose.files(caption="Select xlsx File to Import", multi=FALSE)
+MLID.file <- openxlsx::read.xlsx(geo.file, sheet=1, startRow = 1, colNames=TRUE, rowNames=FALSE, detectDates=TRUE);
+path.geofile <- dirname(geo.file)
+Geofile.name <- basename(geo.file)
+```
+
+**Geofile-dataset Info**::  
+
++ **Data File Name:**  `r Geofile.name`  
++ **Data File Path:**  `r path.geofile`
++ Imported datafile has **`r ncol(MLID.file)`** Columns and **`r format(nrow(MLID.file), big.mark = ",") `** records
+
+
+#### 1.2 Cleanup
+
+**Clean up Date Records**
+```{r cleanup1, eval=F}
+MLID.file$Last.Change <- openxlsx::convertToDateTime(MLID.file$Last.Change, origin="1899-12-30")
+MLID.file$Created <- openxlsx::convertToDateTime(MLID.file$Created, origin="1899-12-30")
+```
+
++ `Date.Established` == OK
++ `Last.Change` == OK
++ `Created` == OK
+
+
+#### 1.3 Extract QC-Blank Sites
+
+Look in `Description` field for terms similar to "blank"
+
+```{r blanks1, eval=F}
+Blank.MLID <- MLID.file[(grep("BLANK", toupper(MLID.file$Description))),]
+
+```
+
++ Total if `r nrow(Blank.MLID)` records contain the term "Blank" (capitalization insensitive) in the `Description` field
+    + `r length(unique(Blank.MLID$Monitoring.Location.ID))` unique MLIDs in file
+
+
+***
+
+### 2.0 Import UPHL-EDDs
+
+#### 2.1 Import EDD file[s]
+
+```{r Import0, eval=FALSE}
+#files <- choose.files(caption="Select DATA files [*.txt]", multi = TRUE)
+#b <- lapply(files, FUN=read.delim, header=TRUE, as.is=TRUE)
+filename <- basename(files)
+names(b) <- filename
+path.filename <- dirname(files)
+```
+
+```{r Delist.0, eval=F}
+EDD.dat0 <- plyr::ldply(b, .id="Lab.filename")
+```
+
+
++ A total of `r length(b)` data files were selected from path:  
+    + **`r path.filename[1]`**  
+
++ Total number of data-records from imported EDDs :: `r format(nrow(EDD.dat0), big.mark=",")`
+    + Number of unique `Lab.filename` in data :: `r length(unique(EDD.dat0$Lab.filename))`
+    + Number of unique `MLID`s in data :: `r length(unique(EDD.dat0$Station.ID))`
+
+#### 2.2 Cleanup [edd.data]
+
+**Clean Dates**
+
+```{r EDD-Date.fix, eval=FALSE}
+EDD.dat0$Sample.Date <- as.Date(lubridate::parse_date_time(EDD.dat0$Sample.Date, "mdy HMS", truncated=3))
+EDD.dat0$Sample.Received.Date <- as.Date(lubridate::parse_date_time(EDD.dat0$Sample.Received.Date, "mdy HMS", truncated=3))
+EDD.dat0$Analysis.Date <- as.Date(lubridate::parse_date_time(EDD.dat0$Analysis.Date, "mdy HMS", truncated=3))
+```
+
+#### 2.3 Parameter-Table [edd.data]
+
+Obtain [_working_] **Master Parameter Table** (as .Rdata workspace element) from ::  
+
++ **PATH** :: "L:/DATA MANAGEMENT & QA/DATA.Projects/MASTER_PARAMETER_Tables_r"
++ **File** :: "EDD.param2_170906.RData"
++ **Data-Frame** :: `EDD.param2`
+
+```{r EDD-Param.fix, eval=F}
+#file.PARAM <- choose.files(caption="Select DATA files [*.RData]", multi = TRUE)
+#load(file.PARAM)
+# DataFrame is :: EDD.param2
+# Master PARAM cleanup
+EDD.param2$MethPar.key <- paste(trimws(EDD.param2$Method.ID), trimws(EDD.param2$Param.Description), sep=".")
+EDD.param2$ParamX <- ifelse(!is.na(EDD.param2$PARAM.0), trimws(EDD.param2$PARAM.0),
+                          ifelse(!is.na(EDD.param2$PARAM1), EDD.param2$PARAM1, "CHEK"))
+#
+EDD.param2 <- rbind(EDD.param2, EDD.param2[36,])
+EDD.param2$Method.ID[106] <- "300.0" # fix of Method.ID format...
+EDD.param2 <- EDD.param2[,c(1,ncol(EDD.param2), (ncol(EDD.param2)-1), 2:(ncol(EDD.param2)-2))]
+#3 some manual cleanup (weird digits in some Method.IDs...)
+#EDD.param2 <- EDD.param2[-c(EDD.param2$MethPar.key),]
+```
+
++ Parameter table (`EDD.param2`) contains `r nrow(EDD.param2)` records, with
+    + `r length(EDD.param2$MethPar.key[duplicated(EDD.param2$MethPar.key)])` duplicated levels of $MethPar.key
+    + Duplicated MethPar.keys ::
+
+```{r EDD-Param.tab1}
+tab <- as.data.frame(table(EDD.param2$MethPar.key, useNA = "ifany"))
+names(tab)[1] <- "MethPar.key"
+tab <- dplyr::arrange(tab, desc(Freq))
+tab <- tab[tab$Freq>1,]
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))))
+```
+
++ Some of the above _duplicated_ Method-x-parameter keys may need to be cleaned up...
+
+#### 2.4 Simplified Project Names
+
+Import a summary of Project-IDs (w/ simplified names) based on TripIDs
+
+```{r Projects.import, eval=F}
+PROJ.file <- choose.files(caption="Select xlsx File to Import", multi=FALSE)
+Projects <- openxlsx::read.xlsx(PROJ.file, sheet=1, startRow = 1, colNames=TRUE, rowNames=FALSE, detectDates=TRUE);
+path.projects <- dirname(PROJ.file)
+projects.name <- basename(PROJ.file)
+# cleanup
+Projects[is.na(Projects$TripID),3] <- "missing"
+```
+
+**Imported Project-ID file** ::  `r projects.name`  
+**Path to file** :: `r path.projects`  
+**Data-frame** :: `Projects`  
+
+Current Project-ID summary contains:  
+
++ `r nrow(Projects)` records 
++ `r length(unique(Projects$Proj.nm2))` simplified project names
+
+**_Script for simplifying TripIDs to Projects_**  [see hidden code below]
+
+```{r project.extact, eval=FALSE, include=FALSE}
+#wy17.Proj1 <- data.frame(TripID = sort(unique(trimws(toupper(WY2017.EDD1$Trip.ID)))))
+#wy17.Proj1$Proj.nm <- ifelse(is.na((stringr::str_locate(wy17.Proj1$TripID, "[0-9]")[,1])),
+#                    as.character(wy17.Proj1$TripID),
+#                    substr(wy17.Proj1$TripID, 1, (stringr::str_locate(wy17.Proj1$TripID,
+#                                            "[0-9]")[,1])-1))
+# remove interior -spaces-
+#wy17.Proj1$Proj.nm2 <- gsub(" ", "", wy17.Proj1$Proj.nm, fixed=TRUE)
+## need to trim out other weird 'elements' as well
+#wy17.Proj1$Proj.nm2 <- gsub("_", "", wy17.Proj1$Proj.nm2, fixed=TRUE)
+# Some manual editing may be needed for some _strange_ TripIDs
+```
+
+***
+
+#### 2.5 **AWQMS Import**
+
+```{r AWQMS.import, eval=F}
+#file.awqms1 <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+DATA.awqms1 <- openxlsx::read.xlsx(file.awqms1, sheet=1, startRow = 1, colNames=TRUE, rowNames=FALSE);  
+AWQMS.Blank <- DATA.awqms1
+```
+
++ Query performed 171212, statewide, _Field_ or _Equipment_ **Blanks**, 4-1-2011 to 12/12/17
+
+_Clean up Dates_
+
+```{r AWQMS-Date.fix, eval=FALSE}
+AWQMS.Blank$SDate <- openxlsx::convertToDate(AWQMS.Blank$SDate, origin="1899-12-30")
+AWQMS.Blank$Analysis.Start.Date <- openxlsx::convertToDate(AWQMS.Blank$Analysis.Start.Date, origin="1899-12-30")
+```
+
+#### 2.6 Examine AWQMS Blanks
+
+```{r AWQMS.dat1}
+addmargins(table(AWQMS.Blank$Characteristic.Name, AWQMS.Blank$Sample.Fraction, useNA="ifany", deparse.level = 2))
+addmargins(table(as.numeric(format(AWQMS.Blank$SDate, "%Y")), AWQMS.Blank$Sample.Fraction, AWQMS.Blank$Characteristic.Name,  useNA="ifany", deparse.level = 2), c(1,2))
+
+```
+
+
+***
+
+### 3.0 Extract Blank Sitedata
+
+#### 3.1 "Blank" records from EDDs
+
+```{r extract1, eval=F}
+EDD.Blank <- EDD.dat0[EDD.dat0$Station.ID %in% Blank.MLID$Monitoring.Location.ID,]
+```
+
+Current datafile of _"Blank"_ QC sites contains ::  
+
++ `r format(nrow(EDD.Blank), big.mark=",")` records
++ `r length(unique(EDD.Blank$Station.ID))` unique **MLIDs**
++ `r length(unique(EDD.Blank$Sample.Date))` unique **Sample.Dates**
++ `r length(unique(EDD.Blank$Sample.Number))` unique **"Sample.Numbers"** _[Bottles]_
+
+Sample.Dates range from `r min(as.Date(EDD.Blank$Sample.Date,format = "%m/%d/%Y"))`  **to** `r max(as.Date(EDD.Blank$Sample.Date,format = "%m/%d/%Y"))`
+
+### 4.0 Evaluate Blank Data
+
+#### 4.1 Simplify Parameters
+
+```{r data1, eval=F}
+# Generate Method-x-Parameter.KEY
+EDD.Blank$MethPar.key <- paste(trimws(EDD.Blank$Method.ID), trimws(EDD.Blank$Param.Description), sep=".")
+#
+EDD.Blank <- merge(EDD.Blank, EDD.param2[,c(2,3,6)], by = c("MethPar.key", "Method.Description"), 
+                    all.x = TRUE)
+```
+
++ `r length(unique(EDD.Blank$Param.Description))` unique **Param.Description** levels
++ `r length(unique(EDD.Blank$ParamX))` unique _modified-_Parameter names (as ParamX)
+    + Note:  UPHL had some trouble w/ erroneous result reporing for Turbidity associated with Total Recoverable Metals samples; these have been identified and re-coded as **ParamX** (`Turb.met`) so that these records will not affect any resulting analyses
+
+#### 4.2 Simplify Projects
+
+```{r data2, eval=F}
+# Standardize the Trip.ID
+EDD.Blank$Trip.ID <- trimws(toupper(EDD.Blank$Trip.ID))
+# merge
+EDD.Blank <- merge(EDD.Blank, Projects[,c(1,3)], all.x=TRUE, by.x=c("Trip.ID"), by.y=c("TripID"))
+# can try to refine Projects if _new_ ones have appeared...
+EDD.Blank$Proj.nm2 <- ifelse(is.na(EDD.Blank$Proj.nm2),
+                              substr(EDD.Blank$Trip.ID, 1, (stringr::str_locate(EDD.Blank$Trip.ID,
+                                        "[0-9]")[,1])-1),
+                              EDD.Blank$Proj.nm2)
+names(EDD.Blank)[ncol(EDD.Blank)] <- "Project"
+```
+
++ Current file has `r sum(is.na(EDD.Blank$Project))` missing (non-generalizable) Project-IDs
+
+***
+
+### 5.0 Examine Reporting Limits
+
+#### 5.1 Parameters
+
+```{r param1.tab1}
+tab <- as.data.frame(table(EDD.Blank$ParamX, useNA = "ifany"))
+names(tab)[c(1,2)] <- c("Parameter", "Record_n")
+for (j in tab$Parameter) {
+    tab$Site_n[tab$Parameter == j] <- length(unique(EDD.Blank$Station.ID[EDD.Blank$ParamX == j]))
+    tab$SDate_n[tab$Parameter == j] <- length(unique(EDD.Blank$Sample.Date[EDD.Blank$ParamX == j]))
+    tab$Collection_n[tab$Parameter == j] <- length(unique(EDD.Blank$Project.Name[EDD.Blank$ParamX == j]))
+    tab$Project_n[tab$Parameter == j] <- length(unique(EDD.Blank$Project[EDD.Blank$ParamX == j])) }
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))), caption="Frequency of observations (records) and unique Sites / Collections for parameters from Blank-samples", rnames=F)
+```
+
+#### 5.2 Sample Fraction x Parameter
+
+```{r param2.tab1}
+tab <- as.data.frame.matrix(addmargins(table(EDD.Blank$ParamX, EDD.Blank$Matrix.Description, useNA = "ifany")))
+tab$Parameter <- rownames(tab)
+tab <- tab[,c(ncol(tab), 1:(ncol(tab)-1))]
+rownames(tab) <- NULL
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))), total=T, rnames=F, align="l|cccc|c")
+
+```
+
+***
+
+### 6.0 R. Weissinger [NPS; nutrients]
+
+Data request for reporting levels for nutrients was made by R. Weissinger on 11/14/17
+
++ Parameters of interest are:
+    + Dissolved P
+    + Total P
+    + Dissolved NO32
+
+#### 6.1 **Total P**
+
+```{r TP1, eval=F}
+Blank.TP <- EDD.Blank[EDD.Blank$ParamX == "TP" & EDD.Blank$Matrix.Description == "Water, Non-filtered",]
+```
+    
++ Results for "Blank" MLIDs and Parameter = "Total P" includes `r nrow(Blank.TP)` records
++ Date Range:  `r min(as.Date(Blank.TP$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.TP$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)`
++ Number of unique Projects :: `r length(unique(Blank.TP$Project))`  
+
+
+**Result Flags x Project**
+```{r TP2.tab1}
+tab1 <- as.data.frame.matrix(addmargins(table(Blank.TP$Project, Blank.TP$Problem.Identifier, useNA = "ifany")))
+names(tab1)[c(1,2)] <- c("< NA >", "Not Detected")
+tab1$Project <- rownames(tab1)
+tab1 <- tab1[,c(ncol(tab1), 1:(ncol(tab1)-1))]
+rownames(tab1) <- NULL
+tab1$Percent_ND <- as.numeric(format(tab1$`Not Detected` / tab1$Sum, digits=2))*100
+htmlTable::htmlTable(tab1, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab1)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab1), nrow=nrow(tab1))), total=T, rnames=F, align="l|cc|c", caption="Problem Identifiers by Project, for Total P analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab1$"Not Detected")/sum(tab1$Sum))*100, digits=2, nsmall=1)`% of "Total" dissolved phosphorus (DP) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+
+**Data Evaluation**
+
+```{r TP3.fig1}
+library(ggplot2); library(scales)
+fig.datTP <- Blank.TP
+fig.datTP$Flag <- ifelse(!is.na(fig.datTP$Result.Code),
+                        ifelse(grepl("U",fig.datTP$Result.Code),
+                               "U",
+                               ifelse(grepl("J", fig.datTP$Result.Code),
+                                      "J", NA)))
+#
+qplot(fig.datTP$Result.Value, main="Total P Result.Values from sites w/ Blank MLIDs ", xlim=c(NA, 0.025))
+summary(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])
+summary(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"])
+summary(fig.datTP$Result.Value[is.na(fig.datTP$Flag)])
+
+ggplot(data=fig.datTP) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Flag), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, 0.05), 
+                           breaks=c(0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05)) + 
+    geom_vline(xintercept=0.0028, lty="99", color="red")
+#
+library(tidyr);
+fig.dat2 <- fig.datTP[,c("Result.Value", "Sample.Report.Limit", "Method.Detect.Limit", "Flag")] %>% 
+    gather(key, value=TP.conc, -Flag)
+names(fig.dat2)[2] <- "Result.Type"
+ggplot(data=fig.dat2) + theme_bw() + geom_boxplot(aes(x=Flag, y=TP.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, 0.02), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02))
+#
+summary(fig.datTP$Sample.Report.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"])
+summary(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"])
+summary(fig.datTP$Sample.Report.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])
+summary(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])
+length(unique(fig.datTP$Sample.Report.Limit))
+length(unique(fig.datTP$Method.Detect.Limit))
+(unique(fig.datTP$Method.Detect.Limit))
+length(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"]))
+(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"]))
+length(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))
+length(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag)]))
+(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag)]))
+
+
+qplot(fig.datTP$Sample.Date, fig.datTP$Method.Detect.Limit)
+qplot(fig.datTP$Sample.Date, fig.datTP$Sample.Report.Limit)
+qplot(fig.datTP$Sample.Date, fig.datTP$Result.Value, col=fig.datTP$Flag, ylim=c(NA, 0.006))
+
+
+```
+
+
+#### 6.2 TP-Summary
+
+**Bottom Line :: TP**  
+
++ All Result.Values (RVs) for TP from "Blank" MLIDs show high density arond 0.005 mg/L (roughly)
++ RVs for J-flagged records range from `r min(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])` to `r max(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])` mg P/L
+    + This shows that RV for J-flags represent _estimated_-Results $> MDL$ and $< MRL$
+    + **RV for J-flags is the _estimated_ concentration**
++ RVs for U-flagged records vary a bit, at `r sort(unique(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))` mg P/L
+    + **RV for U-flags is the MDL**
++ RVs for records that lack a U- or J-flag range from `r min(fig.datTP$Result.Value[is.na(fig.datTP$Flag)])` to `r max(fig.datTP$Result.Value[is.na(fig.datTP$Flag)])` mg P/L
+    + [_in the current data_] RVs for "Unflagged" records are greater than the listed MRL [`r unique(fig.datTP$Sample.Report.Limit[is.na(fig.datTP$Flag)])`] mg P/L
+    + **These records likely represent analyte-_hits_ from equipment blanks**
++ The band b/w the MDL and the MRL are pretty narrow  
+
++ For **J-flagged** records ::
+    + **RV** ::  MDL < RV <= SRL (Sample-reporting-Limit)
+    + SRL is constant
+    + MDL has `r length(unique(fig.datTP$Method.Detect.Limit))` distinct values
+        + `r min(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])` mgP/L for records analyzed prior to `r min(as.Date(fig.datTP$Analysis.Date[!is.na(fig.datTP$Analysis.Date) & (!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J") & (fig.datTP$Method.Detect.Limit == max(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"]))]), na.rm=T)`
+        + `r max(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])` mg P/L for samples analyzed on or after that date  
+  
++ For **U-flagged** records ::
+    + **RV** :: `r (unique(fig.datTP$Result.Value[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))`
+    + SRL is constant (`r (unique(fig.datTP$Sample.Report.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))`) [_very simlar to MDL, but rounded to 1 sig-dig_]
+    + MDL has `r length(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))` distinct value(s)
+        + `r sort(unique(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "U"]))` mgP/L  
+
++ For **Non-Flagged** records ::
+    + **RV**s $>=$ Sample Reporting Limit (SRL or MRL)
+    + SRL is constant (`r (unique(fig.datTP$Sample.Report.Limit[is.na(fig.datTP$Flag)]))`)
+    + MDL has `r length(unique(fig.datTP$Method.Detect.Limit[is.na(fig.datTP$Flag)]))` distinct value(s)
+        + `r min(fig.datTP$Method.Detect.Limit[is.na(fig.datTP$Flag)])` mgP/L for records analyzed prior to `r min(as.Date(fig.datTP$Analysis.Date[!is.na(fig.datTP$Analysis.Date) & (is.na(fig.datTP$Flag)) & (fig.datTP$Method.Detect.Limit == max(fig.datTP$Method.Detect.Limit[is.na(fig.datTP$Flag)]))]), na.rm=T)`
+        + `r max(fig.datTP$Method.Detect.Limit[!is.na(fig.datTP$Flag) & fig.datTP$Flag == "J"])` mg P/L for samples analyzed after that date  
+  
+    
+
++ Dot plots of MDL or SRL over time show the change in MDL near early March, 2017 
+    + and consistent RLs reported during this interval  
++ RVs for Non-flagged records range from the SRL to `r max(fig.datTP$Result.Value[is.na(fig.datTP$Flag)], na.rm=T)`
+    + It is currently not clear whether those samples w/ large RVs are:
+        + Contaminated Blanks, or
+        + Records w/ incorrectly labeled MLIDs 
+
+
+#### 6.3 **Dissolved P**
+
+```{r DP1, eval=F}
+Blank.DP <- EDD.Blank[EDD.Blank$ParamX == "TP" & EDD.Blank$Matrix.Description == "Water, Filtered",]
+```
+
++ Results for "Blank" MLIDs and Parameter = "dissolved P" includes `r nrow(Blank.DP)` records
++ Date Range:  `r min(as.Date(Blank.DP$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.DP$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)`
++ Number of unique Projects :: `r length(unique(Blank.DP$Project))`
+
+**Result Flags x Project**
+```{r DP2.tab1}
+tab2 <- as.data.frame.matrix(addmargins(table(Blank.DP$Project, Blank.DP$Problem.Identifier, useNA = "ifany")))
+names(tab2)[c(1,2)] <- c("< NA >", "Not Detected")
+tab2$Project <- rownames(tab2)
+tab2 <- tab2[,c(ncol(tab2), 1:(ncol(tab2)-1))]
+rownames(tab2) <- NULL
+tab2$Percent_ND <- as.numeric(format(tab2$`Not Detected` / tab2$Sum, digits=2))*100
+htmlTable::htmlTable(tab2, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab2)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab2), nrow=nrow(tab2))), total=T, rnames=F, align="l|cc|c", caption="Problem Identifiers by Project, for Dissolved P analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab2$"Not Detected")/sum(tab2$Sum))*100, digits=2, nsmall=1)`% of "Blank" dissolved phosphorus (DP) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+**Data Evaluation**
+
+```{r DP3.fig1}
+library(ggplot2); library(scales)
+fig.datDP <- Blank.DP
+fig.datDP$Flag <- ifelse(!is.na(fig.datDP$Result.Code),
+                        ifelse(grepl("U",fig.datDP$Result.Code),
+                               "U",
+                               ifelse(grepl("J", fig.datDP$Result.Code),
+                                      "J", NA)))
+#
+qplot(fig.datDP$Result.Value, main="Dissolved P x Blank Sample sites")
+summary(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])
+summary(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"])
+summary(fig.datDP$Result.Value[is.na(fig.datDP$Flag)])
+
+ggplot(data=fig.datDP) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Flag), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, 0.05), 
+                           breaks=c(0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05)) + 
+    geom_vline(xintercept=0.0028, lty="99", color="red")
+#
+library(tidyr);
+fig.dat2 <- fig.datDP[,c("Result.Value", "Sample.Report.Limit", "Method.Detect.Limit", "Flag")] %>% 
+    gather(key, value=DP.conc, -Flag)
+names(fig.dat2)[2] <- "Result.Type"
+ggplot(data=fig.dat2) + theme_bw() + geom_boxplot(aes(x=Flag, y=DP.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, 0.02), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02))
+#
+summary(fig.datDP$Sample.Report.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"])
+summary(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"])
+summary(fig.datDP$Sample.Report.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])
+summary(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])
+length(unique(fig.datDP$Sample.Report.Limit))
+length(unique(fig.datDP$Method.Detect.Limit))
+(unique(fig.datDP$Method.Detect.Limit))
+length(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"]))
+(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"]))
+length(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"]))
+length(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag)]))
+(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag)]))
+
+
+qplot(fig.datDP$Sample.Date, fig.datDP$Method.Detect.Limit)
+qplot(fig.datDP$Sample.Date, fig.datDP$Sample.Report.Limit)
+qplot(fig.datDP$Sample.Date, fig.datDP$Result.Value, col=fig.datDP$Flag, ylim=c(NA, 0.006))
+
+
+```
+
+#### 6.4 DP-Summary
+
+**Bottom Line :: DP**  
+
++ All Result.Values (RVs) for DP from "Blank" MLIDs show high density arond 0.005 mg/L (roughly)
++ RVs for J-flagged records range from `r min(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])` to `r max(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])` mg P/L
+    + This shows that RV for J-flags represent _estimated_-Results $> MDL$ and $< MRL$
+    + **RV for J-flags is the _estimated_ concentration**
++ RVs for U-flagged records are constant, at `r unique(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"])` mg P/L
+    + **RV for U-flags is the MDL**
++ RVs for records that lack a U- or J-flag range from `r min(fig.datDP$Result.Value[is.na(fig.datDP$Flag)])` to `r max(fig.datDP$Result.Value[is.na(fig.datDP$Flag)])` mg P/L
+    + [_in the current data_] RVs for "Unflagged" records are greater than the listed MRL [`r unique(fig.datDP$Sample.Report.Limit[is.na(fig.datDP$Flag)])`] mg P/L
+    + **These records likely represent analyte-_hits_ from equipment blanks**
++ The band b/w the MDL and the MRL are pretty narrow  
+
++ For **J-flagged** records ::
+    + **RV** ::  MDL < RV <= SRL (Sample-reporting-Limit)
+    + SRL is constant
+    + MDL has `r length(unique(fig.datDP$Method.Detect.Limit))` distinct values
+        + `r min(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])` mgP/L for records analyzed prior to `r min(as.Date(fig.datDP$Analysis.Date[!is.na(fig.datDP$Analysis.Date) & (!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J") & (fig.datDP$Method.Detect.Limit == max(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"]))]), na.rm=T)`
+        + `r max(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])` mg P/L for samples analyzed on or after that date  
+  
+
++ For **U-flagged** records ::
+    + **RV** :: `r (unique(fig.datDP$Result.Value[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"]))`
+    + SRL is constant (`r (unique(fig.datDP$Sample.Report.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"]))`) [_very simlar to MDL, but rounded to 1 sig-dig_]
+    + MDL has `r length(unique(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"]))` distinct value(s)
+        + `r min(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "U"])` mgP/L  
+  
+ 
++ For **Non-Flagged** records ::
+    + **RV**s $>=$ Sample Reporting Limit (SRL or MRL)
+    + SRL is constant (`r (unique(fig.datDP$Sample.Report.Limit[is.na(fig.datDP$Flag)]))`)
+    + MDL has `r length(unique(fig.datDP$Method.Detect.Limit[is.na(fig.datDP$Flag)]))` distinct value(s)
+        + `r min(fig.datDP$Method.Detect.Limit[is.na(fig.datDP$Flag)])` mgP/L for records analyzed prior to `r min(as.Date(fig.datDP$Analysis.Date[!is.na(fig.datDP$Analysis.Date) & (is.na(fig.datDP$Flag)) & (fig.datDP$Method.Detect.Limit == max(fig.datDP$Method.Detect.Limit[is.na(fig.datDP$Flag)]))]), na.rm=T)`
+        + `r max(fig.datDP$Method.Detect.Limit[!is.na(fig.datDP$Flag) & fig.datDP$Flag == "J"])` mg P/L for samples analyzed after that date  
+  
+
++ Dot plots of MDL or SRL over time show the change in MDL near early March, 2017 
+    + and consistent RLs reported during this interval  
++ RVs for Non-flagged records range from the SRL to `r max(fig.datDP$Result.Value[is.na(fig.datDP$Flag)], na.rm=T)`
+    + It is currently not clear whether those samples w/ large RVs are:
+        + Contaminated Blanks, or
+        + Records w/ incorrectly labeled MLIDs 
+
+***
+
+
+***
+
+#### 6.5 **Dissolved NO3+NO2**
+
+```{r dNO31, eval=F}
+Blank.dNO3 <- EDD.Blank[EDD.Blank$ParamX == "NO3" & EDD.Blank$Matrix.Description == "Water, Filtered",]
+```
+    
++ Results for "Blank" MLIDs and Parameter = "Dissolved NO3 (+NO2)" includes `r nrow(Blank.dNO3)` records
++ Date Range:  `r min(as.Date(Blank.dNO3$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.dNO3$Sample.Date,format = "%m/%d/%Y"), na.rm=TRUE)`
++ Number of unique Projects :: `r length(unique(Blank.dNO3$Project))`  
+
+
+**Result Flags x Project**
+```{r dNO32.tab1}
+tab3 <- as.data.frame.matrix(addmargins(table(Blank.dNO3$Project, Blank.dNO3$Problem.Identifier, useNA = "ifany")))
+names(tab3)[c(1,2)] <- c("< NA >", "Not Detected")
+tab3$Project <- rownames(tab3)
+tab3 <- tab3[,c(ncol(tab3), 1:(ncol(tab3)-1))]
+rownames(tab3) <- NULL
+tab3$Percent_ND <- as.numeric(format(tab3$`Not Detected` / tab3$Sum, digits=2))*100
+htmlTable::htmlTable(tab3, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab3)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab3), nrow=nrow(tab3))), total=T, rnames=F, align="l|cc|c", caption="Problem Identifiers by Project, for Dissolved NO3 analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab3$"Not Detected")/sum(tab3$Sum))*100, digits=2, nsmall=1)`% of "Total" dissolved phosphorus (DP) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+
+**Data Evaluation**
+
+```{r dNO3_3.fig1}
+library(ggplot2); library(scales)
+fig.datNO3 <- Blank.dNO3
+fig.datNO3$Flag <- ifelse(!is.na(fig.datNO3$Result.Code),
+                        ifelse(grepl("U",fig.datNO3$Result.Code),
+                               "U",
+                               ifelse(grepl("J", fig.datNO3$Result.Code),
+                                      "J", NA)))
+#
+qplot(fig.datNO3$Result.Value, main="Dissolved NO3+2 Result.Values from sites w/ Blank MLIDs (truncated x-range)", xlim=c(NA, 0.1))
+summary(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])
+summary(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"])
+summary(fig.datNO3$Result.Value[is.na(fig.datNO3$Flag)])
+
+ggplot(data=fig.datNO3) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Flag), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, NA), 
+                           breaks=c(0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05, 0.07, 0.1, 0.3))
+#
+library(tidyr);
+fig.dat2 <- fig.datNO3[,c("Result.Value", "Sample.Report.Limit", "Method.Detect.Limit", "Flag")] %>% 
+    gather(key, value=dNO3.conc, -Flag)
+names(fig.dat2)[2] <- "Result.Type"
+ggplot(data=fig.dat2) + theme_bw() + geom_boxplot(aes(x=Flag, y=dNO3.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, NA), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02, 0.035, 0.05, 0.07, 0.1, 0.2, 0.3))
+#
+summary(fig.datNO3$Sample.Report.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"])
+summary(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"])
+summary(fig.datNO3$Sample.Report.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])
+summary(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])
+length(unique(fig.datNO3$Sample.Report.Limit))
+length(unique(fig.datNO3$Method.Detect.Limit))
+sort(unique(fig.datNO3$Method.Detect.Limit))
+length(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"]))
+sort(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"]))
+length(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))
+length(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag)]))
+sort(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag)]))
+
+
+qplot(fig.datNO3$Sample.Date, fig.datNO3$Method.Detect.Limit)
+qplot(fig.datNO3$Sample.Date, fig.datNO3$Sample.Report.Limit)
+qplot(fig.datNO3$Sample.Date, fig.datNO3$Result.Value, col=fig.datNO3$Flag, ylim=c(NA, 0.05))
+
+
+```
+
+#### 6.6 dNO3-Summary
+
+**Bottom Line :: dNO3**  
+
++ All Result.Values (RVs) for dNO3 from "Blank" MLIDs show high density arond 0.015 mg/L (roughly)
++ RVs for J-flagged records range from `r min(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])` to `r max(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])` mg N/L
+    + This shows that RV for J-flags represent _estimated_-Results $> MDL$ and $< MRL$
+    + **RV for J-flags is the _estimated_ concentration**
++ RVs for U-flagged records vary a bit, at `r sort(unique(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))` mg N/L
+    + **RV for U-flags is the MDL**
++ RVs for records that lack a U- or J-flag range from `r min(fig.datNO3$Result.Value[is.na(fig.datNO3$Flag)])` to `r max(fig.datNO3$Result.Value[is.na(fig.datNO3$Flag)])` mg N/L
+    + [_in the current data_] RVs for "Unflagged" records are greater than the listed MRL [`r unique(fig.datNO3$Sample.Report.Limit[is.na(fig.datNO3$Flag)])`] mg N/L
+    + **These records likely represent analyte-_hits_ from equipment blanks**
++ The band b/w the MDL and the MRL are pretty narrow  
+
++ For **J-flagged** records ::
+    + **RV** ::  MDL < RV <= SRL (Sample-reporting-Limit)
+    + SRL is constant
+    + MDL has `r length(unique(fig.datNO3$Method.Detect.Limit))` distinct values
+        + `r min(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])` mg N/L for records analyzed prior to `r min(as.Date(fig.datNO3$Analysis.Date[!is.na(fig.datNO3$Analysis.Date) & (!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J") & (fig.datNO3$Method.Detect.Limit == max(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"]))]), na.rm=T)`
+        + `r max(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])` mg N/L for samples analyzed on or after that date  
+  
++ For **U-flagged** records ::
+    + **RV** :: `r sort(unique(fig.datNO3$Result.Value[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))`
+    + SRL is constant (`r (unique(fig.datNO3$Sample.Report.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))`) [_very simlar to MDL, but rounded to 1 sig-dig_]
+    + MDL has `r length(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))` distinct value(s)
+        + `r sort(unique(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "U"]))` mg N/L  
+
++ For **Non-Flagged** records ::
+    + **RV**s $>=$ Sample Reporting Limit (SRL or MRL)
+    + SRL is constant (`r (unique(fig.datNO3$Sample.Report.Limit[is.na(fig.datNO3$Flag)]))`)
+    + MDL has `r length(unique(fig.datNO3$Method.Detect.Limit[is.na(fig.datNO3$Flag)]))` distinct value(s)
+        + `r min(fig.datNO3$Method.Detect.Limit[is.na(fig.datNO3$Flag)])` mgP/L for records analyzed prior to `r min(as.Date(fig.datNO3$Analysis.Date[!is.na(fig.datNO3$Analysis.Date) & (is.na(fig.datNO3$Flag)) & (fig.datNO3$Method.Detect.Limit == max(fig.datNO3$Method.Detect.Limit[is.na(fig.datNO3$Flag)]))]), na.rm=T)`
+        + `r max(fig.datNO3$Method.Detect.Limit[!is.na(fig.datNO3$Flag) & fig.datNO3$Flag == "J"])` mg N/L for samples analyzed after that date  
+  
+    
+
++ Dot plots of MDL or SRL over time show the change in MDL near early March, 2017 
+    + and consistent RLs reported during this interval  
++ RVs for Non-flagged records range from the SRL to `r max(fig.datNO3$Result.Value[is.na(fig.datNO3$Flag)], na.rm=T)`
+    + It is currently not clear whether those samples w/ large RVs are:
+        + Contaminated Blanks, or
+        + Records w/ incorrectly labeled MLIDs 
+
+***
+
+### 7.0 RLs from AWQMS data (2011 - Oct.2016)
+
+`DATA == ` :: **AWQMS.Blank**
+
+#### 7.1 **Total P**
+
+```{r xTP1, eval=F}
+Blank.TPaq <- AWQMS.Blank[(AWQMS.Blank$Characteristic.Name == "Phosphate-phosphorus" & AWQMS.Blank$Sample.Fraction == "Total"),]
+```
+
++ Results for "Blank" MLIDs and Parameter = "Total P" includes `r nrow(Blank.TPaq)` records
++ Date Range:  `r min(as.Date(Blank.TPaq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.TPaq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)`
+
+_Correspondence b/w Detection Condition and Result Qualifiers for AWQMS data_
+```{r xTP2.dataflags_tab0}
+addmargins(table(Blank.TPaq$Detection.Condition, Blank.TPaq$Result.Qualifier, useNA = "ifany", deparse.level = 2))
+```
+
+
+**Detection Condition x Site.Type**
+```{r xTP2.tab1}
+tab4 <- as.data.frame.matrix(addmargins(table(Blank.TPaq$Site.Type, Blank.TPaq$Detection.Condition, useNA = "ifany")))
+names(tab4)[c(1,2)] <- c("Not Detected", "< NA >")
+tab4$Project <- rownames(tab4)
+tab4 <- tab4[,c(ncol(tab4), 1:(ncol(tab4)-1))]
+rownames(tab4) <- NULL
+tab4$Percent_ND <- as.numeric(format(tab4$`Not Detected` / tab4$Sum, digits=2))*100
+htmlTable::htmlTable(tab4, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab4)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab4), nrow=nrow(tab4))), total=T, rnames=F, align="l|cc|c", caption="analyte Detections by Site Type, for Total P analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab4$"Not Detected")/sum(tab4$Sum))*100, digits=2, nsmall=1)`% of "Total" dissolved phosphorus (DP) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+**Result Flags x Site.Type**
+```{r xTP2.tab2}
+tab5 <- as.data.frame.matrix(addmargins(table(Blank.TPaq$Site.Type, Blank.TPaq$Result.Qualifier, useNA = "ifany")))
+names(tab5)[c(1:3)] <- c("J", "U", "< NA >")
+tab5$Project <- rownames(tab5)
+tab5 <- tab5[,c(ncol(tab5), 1:(ncol(tab5)-1))]
+rownames(tab5) <- NULL
+tab5$Percent_ND <- as.numeric(format(tab5$`U` / tab5$Sum, digits=2))*100
+htmlTable::htmlTable(tab5, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab5)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab5), nrow=nrow(tab5))), total=T, rnames=F, align="l|ccc|c", caption="Problem Identifiers by Site Type, for Total P analyses")
+```
+
+**Data Evaluation**
+
+```{r xTP3.fig1}
+library(ggplot2); library(scales)
+fig.datTP.aq <- Blank.TPaq
+# use Result.qualifier as "Flag"
+fig.datTP.aq$Result.Value <- as.numeric(fig.datTP.aq$Result.Value)
+#
+qplot(fig.datTP.aq$Result.Value, main="Total P Result.Values from sites w/ Blank MLIDs ")
+summary(fig.datTP.aq$Result.Value[!is.na(fig.datTP.aq$Result.Qualifier) & fig.datTP.aq$Result.Qualifier == "J"])
+summary(fig.datTP.aq$Result.Value[!is.na(fig.datTP.aq$Result.Qualifier) & fig.datTP.aq$Result.Qualifier == "U"])
+summary(fig.datTP.aq$Result.Value[is.na(fig.datTP.aq$Result.Qualifier)])
+
+ggplot(data=fig.datTP.aq) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Result.Qualifier), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, 0.05), 
+                           breaks=c(0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05)) + 
+    geom_vline(xintercept=0.0028, lty="99", color="red")
+#
+library(tidyr);
+fig.dat2 <- fig.datTP.aq[,c("Result.Value", "Detection.Limit.Value1", "Result.Qualifier")] %>% 
+    gather(key, value=TP.conc, -Result.Qualifier)
+names(fig.dat2)[2] <- "Result.Type"
+ggplot(data=fig.dat2) + theme_bw() + geom_boxplot(aes(x=Result.Qualifier, y=TP.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, NA), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02))
+#
+summary(fig.datTP.aq$Detection.Limit.Value1[!is.na(fig.datTP.aq$Result.Qualifier) & fig.datTP.aq$Result.Qualifier == "U"])
+summary(fig.datTP.aq$Detection.Limit.Value1[!is.na(fig.datTP.aq$Result.Qualifier) & fig.datTP.aq$Result.Qualifier == "J"])
+length(unique(fig.datTP.aq$Detection.Limit.Value1))
+
+
+qplot(fig.datTP.aq$SDate, fig.datTP.aq$Detection.Limit.Value1, ylim=c(0,NA))
+qplot(fig.datTP.aq$SDate, fig.datTP.aq$Result.Value, col=fig.datTP.aq$Result.Qualifier, ylim=c(0, 0.01))
+
+
+```
+
+
+#### 7.2 **Dissolved P**
+
+
+```{r xDP1, eval=F}
+Blank.DPaq <- AWQMS.Blank[(AWQMS.Blank$Characteristic.Name == "Phosphate-phosphorus" & AWQMS.Blank$Sample.Fraction == "Dissolved"),]
+```
+
++ Results for "Blank" MLIDs and Parameter = "Dissolved P" includes `r nrow(Blank.DPaq)` records
++ Date Range:  `r min(as.Date(Blank.DPaq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.DPaq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)`
+
+_Correspondence b/w Detection Condition and Result Qualifiers for AWQMS data_
+```{r xDP2.dataflags_tab0}
+addmargins(table(Blank.DPaq$Detection.Condition, Blank.DPaq$Result.Qualifier, useNA = "ifany", deparse.level = 2))
+```
+
+**Detection Condition x Site.Type**
+```{r xDP2.tab1}
+tab4X <- as.data.frame.matrix(addmargins(table(Blank.DPaq$Site.Type, Blank.DPaq$Detection.Condition, useNA = "ifany")))
+names(tab4X)[c(1,2)] <- c("Not Detected", "< NA >")
+tab4X$Project <- rownames(tab4X)
+tab4X <- tab4X[,c(ncol(tab4X), 1:(ncol(tab4X)-1))]
+rownames(tab4X) <- NULL
+tab4X$Percent_ND <- as.numeric(format(tab4X$`Not Detected` / tab4X$Sum, digits=2))*100
+htmlTable::htmlTable(tab4X, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab4X)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab4X), nrow=nrow(tab4X))), total=T, rnames=F, align="l|cc|c", caption="Analyte Detections by Site Type, for Dissolved P analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab4X$"Not Detected")/sum(tab4X$Sum))*100, digits=2, nsmall=1)`% of dissolved phosphorus (DP) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+**Result Flags x Site.Type**
+```{r xDP2.tab2}
+tab5X <- as.data.frame.matrix(addmargins(table(Blank.DPaq$Site.Type, Blank.DPaq$Result.Qualifier, useNA = "ifany")))
+names(tab5X)[c(1:3)] <- c("J", "U", "< NA >")
+tab5X$Project <- rownames(tab5X)
+tab5X <- tab5X[,c(ncol(tab5X), 1:(ncol(tab5X)-1))]
+rownames(tab5X) <- NULL
+tab5X$Percent_ND <- as.numeric(format(tab5X$`U` / tab5X$Sum, digits=2))*100
+htmlTable::htmlTable(tab5X, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab5X)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab5X), nrow=nrow(tab5X))), total=T, rnames=F, align="l|ccc|c", caption="Problem Identifiers by Site Type, for Dissolved P analyses")
+```
+
+**Data Evaluation**
+
+```{r xDP3.fig1}
+library(ggplot2); library(scales)
+fig.datDP.aq <- Blank.DPaq
+# use Result.qualifier as "Flag"
+fig.datDP.aq$Result.Value <- as.numeric(fig.datDP.aq$Result.Value)
+#
+qplot(fig.datDP.aq$Result.Value, main="Dissolved P Result.Values from sites w/ Blank MLIDs ", xlim=c(0, 0.1))
+summary(fig.datDP.aq$Result.Value[!is.na(fig.datDP.aq$Result.Qualifier) & fig.datDP.aq$Result.Qualifier == "J"])
+summary(fig.datDP.aq$Result.Value[!is.na(fig.datDP.aq$Result.Qualifier) & fig.datDP.aq$Result.Qualifier == "U"])
+summary(fig.datDP.aq$Result.Value[is.na(fig.datDP.aq$Result.Qualifier)])
+
+ggplot(data=fig.datDP.aq) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Result.Qualifier), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, 0.05), 
+                           breaks=c(0.001, 0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05)) + 
+    geom_vline(xintercept=0.0028, lty="99", color="red")
+#
+library(tidyr);
+fig.dat2X <- fig.datDP.aq[,c("Result.Value", "Detection.Limit.Value1", "Result.Qualifier")] %>% 
+    gather(key, value=TP.conc, -Result.Qualifier)
+names(fig.dat2X)[2] <- "Result.Type"
+ggplot(data=fig.dat2X) + theme_bw() + geom_boxplot(aes(x=Result.Qualifier, y=TP.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, 0.1), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02))
+#
+summary(fig.datDP.aq$Detection.Limit.Value1[!is.na(fig.datDP.aq$Result.Qualifier) & fig.datDP.aq$Result.Qualifier == "U"])
+summary(fig.datDP.aq$Detection.Limit.Value1[!is.na(fig.datDP.aq$Result.Qualifier) & fig.datDP.aq$Result.Qualifier == "J"])
+length(unique(fig.datDP.aq$Detection.Limit.Value1))
+
+
+qplot(fig.datDP.aq$SDate, fig.datDP.aq$Detection.Limit.Value1, ylim=c(0,NA))
+qplot(fig.datDP.aq$SDate, fig.datDP.aq$Result.Value, col=fig.datDP.aq$Result.Qualifier, ylim=c(0, 0.044))
+
+
+```
+
+***
+
+#### 7.3 **Dissolved NO3+NO2**
+
+```{r xdNO31, eval=F}
+Blank.dNO3aq <- AWQMS.Blank[(AWQMS.Blank$Characteristic.Name == "Inorganic nitrogen (nitrate and nitrite)" & AWQMS.Blank$Sample.Fraction == "Dissolved"),]
+```
+
++ Results for "Blank" MLIDs and Parameter = "Dissolved NO3" includes `r nrow(Blank.dNO3aq)` records
++ Date Range:  `r min(as.Date(Blank.dNO3aq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)` :: to :: `r max(as.Date(Blank.dNO3aq$SDate,format = "%m/%d/%Y"), na.rm=TRUE)`
+
+_Correspondence b/w Detection Condition and Result Qualifiers for AWQMS data_
+```{r xdNO32.dataflags_tab0}
+addmargins(table(Blank.dNO3aq$Detection.Condition, Blank.dNO3aq$Result.Qualifier, useNA = "ifany", deparse.level = 2))
+```
+
+**Detection Condition x Site.Type**
+```{r xdNO32.tab1}
+tab4Z <- as.data.frame.matrix(addmargins(table(Blank.dNO3aq$Site.Type, Blank.dNO3aq$Detection.Condition, useNA = "ifany")))
+names(tab4Z)[c(1,2)] <- c("Not Detected", "< NA >")
+tab4Z$Project <- rownames(tab4Z)
+tab4Z <- tab4Z[,c(ncol(tab4Z), 1:(ncol(tab4Z)-1))]
+rownames(tab4Z) <- NULL
+tab4Z$Percent_ND <- as.numeric(format(tab4Z$`Not Detected` / tab4Z$Sum, digits=2))*100
+htmlTable::htmlTable(tab4Z, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab4Z)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab4Z), nrow=nrow(tab4Z))), total=T, rnames=F, align="l|cc|c", caption="analyte Detections by Site Type, for Dissolved NO3 analyses")
+```
+
++ In aggregate, `r format(as.numeric(sum(tab4Z$"Not Detected")/sum(tab4Z$Sum))*100, digits=2, nsmall=1)`% of "Total" dissolved phosphorus (dNO3) records were below analytical detection limits
+    + Many projects define DQOs for "Blanks" to be below detection
+
+**Result Flags x Site.Type**
+```{r xdNO32.tab2}
+tab5Z <- as.data.frame.matrix(addmargins(table(Blank.dNO3aq$Site.Type, Blank.dNO3aq$Result.Qualifier, useNA = "ifany")))
+names(tab5Z)[c(1:3)] <- c("J", "U", "< NA >")
+tab5Z$Project <- rownames(tab5Z)
+tab5Z <- tab5Z[,c(ncol(tab5Z), 1:(ncol(tab5Z)-1))]
+rownames(tab5Z) <- NULL
+tab5Z$Percent_ND <- as.numeric(format(tab5Z$`U` / tab5Z$Sum, digits=2))*100
+htmlTable::htmlTable(tab5Z, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab5Z)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab5Z), nrow=nrow(tab5Z))), total=T, rnames=F, align="l|ccc|c", caption="Problem Identifiers by Site Type, for Dissolved NO3 analyses")
+```
+
+**Data Evaluation**
+
+```{r xdNO32.fig1}
+library(ggplot2); library(scales)
+fig.datNO3.aq <- Blank.dNO3aq
+# use Result.qualifier as "Flag"
+fig.datNO3.aq$Result.Value <- as.numeric(fig.datNO3.aq$Result.Value)
+#
+qplot(fig.datNO3.aq$Result.Value, main="Dissolved NO3 Result.Values from sites w/ Blank MLIDs ", xlim=c(0, 0.5))
+summary(fig.datNO3.aq$Result.Value[!is.na(fig.datNO3.aq$Result.Qualifier) & fig.datNO3.aq$Result.Qualifier == "J"])
+summary(fig.datNO3.aq$Result.Value[!is.na(fig.datNO3.aq$Result.Qualifier) & fig.datNO3.aq$Result.Qualifier == "U"])
+summary(fig.datNO3.aq$Result.Value[is.na(fig.datNO3.aq$Result.Qualifier)])
+
+ggplot(data=fig.datNO3.aq) + theme_bw() + 
+        stat_ecdf(aes(x=Result.Value, color=Result.Qualifier), na.rm=T) +
+        scale_x_continuous(trans="log10", oob=squish, limits=c(NA, 0.5), 
+                           breaks=c(0.001, 0.002,0.004, 0.006, 0.01, 0.02, 0.035, 0.05, 0.1, 0.2, 0.5))
+#
+library(tidyr);
+fig.dat2Z <- fig.datNO3.aq[,c("Result.Value", "Detection.Limit.Value1", "Result.Qualifier")] %>% 
+    gather(key, value=NO3.conc, -Result.Qualifier)
+names(fig.dat2Z)[2] <- "Result.Type"
+ggplot(data=fig.dat2Z) + theme_bw() + geom_boxplot(aes(x=Result.Qualifier, y=NO3.conc, col=Result.Type), na.rm=T) +
+    scale_y_continuous(limits=c(NA, 0.5), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02, 0.1, 0.2, 0.5))
+#
+summary(fig.datNO3.aq$Detection.Limit.Value1[!is.na(fig.datNO3.aq$Result.Qualifier) & fig.datNO3.aq$Result.Qualifier == "U"])
+summary(fig.datNO3.aq$Detection.Limit.Value1[!is.na(fig.datNO3.aq$Result.Qualifier) & fig.datNO3.aq$Result.Qualifier == "J"])
+length(unique(fig.datNO3.aq$Detection.Limit.Value1))
+
+
+qplot(fig.datNO3.aq$SDate, fig.datNO3.aq$Detection.Limit.Value1, ylim=c(0,NA))
+qplot(fig.datNO3.aq$SDate, fig.datNO3.aq$Result.Value, col=fig.datNO3.aq$Result.Qualifier, ylim=c(0, 0.2))
+
+
+```
+
+### 8.0 Combined Blank Data
+
+#### 8.1 **Total P**
+
+**Combine Data for TP**
+
+```{r TP_combo.1, eval=F}
+Blank_TPcombo <- Blank.TP[,c("Sample.Date", "Matrix.Description", "Result.Code", "Result.Value",
+                             "Lower.Report.Limit", "Method.Detect.Limit", "Analysis.Date", 
+                             "ParamX")]
+Blank_tp2 <- Blank.TPaq[,c("SDate", "Sample.Fraction", "Result.Qualifier", "Result.Value",
+                           "Detection.Limit.Value1", "Analysis.Start.Date")]
+Blank_tp2$Method.Detect.Limit <- NA
+Blank_tp2$ParamX <- "TP"
+Blank_tp2 <- Blank_tp2[,c(1,2,3,4,5,7,6,8)]
+names(Blank_TPcombo) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+names(Blank_tp2) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+Blank.TP.all <- rbind(Blank_TPcombo, Blank_tp2)
+# fix empty.vals
+Blank.TP.all$RCode[Blank.TP.all$RCode == ""] <- NA
+Blank.TP.all$Result.Value <- as.numeric(Blank.TP.all$Result.Value)
+```
+
+```{r TP_combo1.fig1}
+ggplot(data=Blank.TP.all, aes(x=SDate, y=Result.Value), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T)
+ggplot(data=Blank.TP.all, aes(x=SDate, y=LRL), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T) + scale_y_continuous(limits=c(NA, 0.02), trans="log10", oob=squish, breaks=c(0.001, 0.0015, 0.003, 0.005, 0.01, 0.02)) +
+    ggtitle("TP reporting limits (4/2011 to present)")
+```
+
+
+#### 8.2 **Dissolved P**
+
+**Combine Data for DP**
+
+```{r DP_combo.1, eval=F}
+Blank_DPcombo <- Blank.DP[,c("Sample.Date", "Matrix.Description", "Result.Code", "Result.Value",
+                             "Lower.Report.Limit", "Method.Detect.Limit", "Analysis.Date", 
+                             "ParamX")]
+Blank_DP2 <- Blank.DPaq[,c("SDate", "Sample.Fraction", "Result.Qualifier", "Result.Value",
+                           "Detection.Limit.Value1", "Analysis.Start.Date")]
+Blank_DP2$Method.Detect.Limit <- NA
+Blank_DP2$ParamX <- "DP"
+Blank_DP2 <- Blank_DP2[,c(1,2,3,4,5,7,6,8)]
+names(Blank_DPcombo) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+names(Blank_DP2) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+Blank.DP.all <- rbind(Blank_DPcombo, Blank_DP2)
+Blank.DP.all$ParamX <- "DP"
+Blank.DP.all$RCode[Blank.DP.all$RCode == ""] <- NA
+Blank.DP.all$Result.Value <- as.numeric(Blank.DP.all$Result.Value)
+```
+
+```{r DP_combo1.fig1}
+ggplot(data=Blank.DP.all, aes(x=SDate, y=Result.Value), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T)
+ggplot(data=Blank.DP.all, aes(x=SDate, y=LRL), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T) + scale_y_continuous(limits=c(0.002, 0.02), trans="log10", oob=squish, breaks=c(0.0015, 0.003, 0.005, 0.01, 0.02)) +
+    ggtitle("DP reporting limits (4/2011 to present)")
+```
+
+#### 8.3 **Dissolved NO3**
+
+**Combine Data for dNO3**
+
+```{r dNO3_combo.1, eval=F}
+Blank_dNO3combo <- Blank.dNO3[,c("Sample.Date", "Matrix.Description", "Result.Code", "Result.Value",
+                             "Lower.Report.Limit", "Method.Detect.Limit", "Analysis.Date", 
+                             "ParamX")]
+Blank_dNO32 <- Blank.dNO3aq[,c("SDate", "Sample.Fraction", "Result.Qualifier", "Result.Value",
+                           "Detection.Limit.Value1", "Analysis.Start.Date")]
+Blank_dNO32$Method.Detect.Limit <- NA
+Blank_dNO32$ParamX <- "dNO3"
+Blank_dNO32 <- Blank_dNO32[,c(1,2,3,4,5,7,6,8)]
+names(Blank_dNO3combo) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+names(Blank_dNO32) <- c("SDate", "Fraction", "RCode", "Result.Value", "LRL", "MDL", "ADate", "ParamX")
+Blank.dNO3.all <- rbind(Blank_dNO3combo, Blank_dNO32)
+Blank.dNO3.all$ParamX <- "dNO3"
+Blank.dNO3.all$RCode[Blank.dNO3.all$RCode == ""] <- NA
+Blank.dNO3.all$Result.Value <- as.numeric(Blank.dNO3.all$Result.Value)
+```
+
+```{r dNO3_combo1.fig1}
+ggplot(data=Blank.dNO3.all, aes(x=SDate, y=Result.Value), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T)
+ggplot(data=Blank.dNO3.all, aes(x=ADate, y=LRL), na.rm=T) + theme_bw() +
+    geom_point(aes(col=RCode), na.rm=T) + scale_y_continuous(limits=c(0.002, NA), trans="log10", oob=squish, breaks=c(0.004, 0.005, 0.01, 0.015, 0.02, 0.035, 0.05, 0.1, 0.2)) +
+    ggtitle("dNO3 reporting limits (4/2011 to present)")
+```
+
+### Summary
+
+```{r summ1}
+Blank.TP.all <- dplyr::arrange(Blank.TP.all, ADate)
+TP.tab1 <- dplyr::distinct(Blank.TP.all[!is.na(Blank.TP.all$LRL),], LRL, .keep_all = TRUE)
+for (j in TP.tab1$LRL) {
+    TP.tab1$n_Obs[TP.tab1$LRL == j] <- nrow(Blank.TP.all[!is.na(Blank.TP.all$LRL) & Blank.TP.all$LRL == j,])    }
+# 
+Blank.DP.all <- dplyr::arrange(Blank.DP.all, ADate)
+DP.tab1 <- dplyr::distinct(Blank.DP.all[!is.na(Blank.DP.all$LRL),], LRL, .keep_all = TRUE)
+for (j in DP.tab1$LRL) {
+    DP.tab1$n_Obs[DP.tab1$LRL == j] <- nrow(Blank.DP.all[!is.na(Blank.DP.all$LRL) & Blank.DP.all$LRL == j,])    }
+#
+Blank.dNO3.all <- dplyr::arrange(Blank.dNO3.all, ADate)
+dNO3.tab1 <- dplyr::distinct(Blank.dNO3.all[!is.na(Blank.dNO3.all$LRL),], LRL, .keep_all = TRUE)
+for (j in dNO3.tab1$LRL) {
+    dNO3.tab1$n_Obs[dNO3.tab1$LRL == j] <- nrow(Blank.dNO3.all[!is.na(Blank.dNO3.all$LRL) & Blank.dNO3.all$LRL == j,])    }
+```
+
+```{r TP.tab1}
+t1 <- TP.tab1[,c(-1,-4,-6)]
+htmlTable::htmlTable(t1, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(t1)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(t1), nrow=nrow(t1))), rnames=F, align="l|ccc|c", caption="Changes in LRL over time :: Total P")
+```
+
+```{r DP.tab1}
+t1 <- DP.tab1[,c(-1,-4,-6)]
+htmlTable::htmlTable(t1, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(t1)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(t1), nrow=nrow(t1))), rnames=F, align="l|ccc|c", caption="Changes in LRL over time :: Dissolved P")
+```
+
+```{r dNO3.tab1}
+t1 <- dNO3.tab1[,c(-1,-4,-6)]
+htmlTable::htmlTable(t1, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(t1)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(t1), nrow=nrow(t1))), rnames=F, align="l|ccc|c", caption="Changes in LRL over time :: Dissolved NO3+NO2")
+```
+
+
+
+```{r DQOs.no3}
+tab <- as.data.frame.matrix(addmargins(table(as.numeric(format(Blank.dNO3.all$SDate, "%Y")), Blank.dNO3.all$RCode, useNA = "ifany", deparse.level = 2)))
+names(tab)[c(3)] <- c("< NA >")
+tab$Year <- rownames(tab)
+tab <- tab[,c(ncol(tab), 1:(ncol(tab)-1))]
+rownames(tab) <- NULL
+tab$Percent_ND <- as.numeric(format(tab$U / tab$Sum, digits=2))*100
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))), total=T, rnames=F, align="l|cc|c", caption="analyte Detections by Site Type, for dNO3")
+
+```
+
+```{r DQOs.tp}
+tab <- as.data.frame.matrix(addmargins(table(as.numeric(format(Blank.TP.all$SDate, "%Y")), Blank.TP.all$RCode, useNA = "ifany", deparse.level = 2)))
+names(tab)[c(4)] <- c("< NA >")
+tab$Year <- rownames(tab)
+tab <- tab[,c(ncol(tab), 1:(ncol(tab)-1))]
+rownames(tab) <- NULL
+tab$Percent_ND <- as.numeric(format(tab$U / tab$Sum, digits=2))*100
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))), total=T, rnames=F, align="l|cc|c", caption="analyte Detections by Site Type, for TP")
+
+```
+
+```{r DQOs.dp}
+tab <- as.data.frame.matrix(addmargins(table(as.numeric(format(Blank.DP.all$SDate, "%Y")), Blank.DP.all$RCode, useNA = "ifany", deparse.level = 2)))
+names(tab)[c(6)] <- c("< NA >")
+tab$Year <- rownames(tab)
+tab <- tab[,c(ncol(tab), 1:(ncol(tab)-1))]
+rownames(tab) <- NULL
+tab$Percent_ND <- as.numeric(format(tab$U / tab$Sum, digits=2))*100
+htmlTable::htmlTable(tab, css.cell = rbind(rep("padding-left: 0.7em; padding-right: 0.9em;font-size: 0.8em;", times=ncol(tab)), matrix("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",ncol=ncol(tab), nrow=nrow(tab))), total=T, rnames=F, align="l|cc|c", caption="analyte Detections by Site Type, for DP")
+
+```
+
+***
+### Wrap-Up
+
+**Project Complete (171212); emailed to R. Weissiner at NPS**
+
+```{r WORKDATA, eval=FALSE, echo=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current work / review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+***
+eof
+
+***
