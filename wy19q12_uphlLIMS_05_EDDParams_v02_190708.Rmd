@@ -1,0 +1,929 @@
+---
+title: "UPHL.LIMS Cleanup [03]"
+author: "T.Hooker"
+date: "30 June, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+
+***
+
+**Project Root Path** :: 
+`"U:\INFODATA\Sampling\Data_Cleanup_Scripts\190610_UPHL_LIMS_wy19q1q2_CLEANUP"`
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidy"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+# graph_package <- c("ggplot2", "scales")
+# if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+**[190610]**  
+
+1) This notebook begins cleanup for UPHL-LIMS data from water-year (WY) 2019, quarters 1 and 2 (October 2018 through March 30, 2019).  
+2) This notebook _may_ also include UPHL-lab records that were not previously imported from the prior water year.
+3) Utah Lake project data were imported through December 2018 (previously)
+
+**[190618]**
+
+4) Notebook continues previous cleanup tasks, starting with project-level (as Project_GRP) review and modify (metadata) elements
+5) Goal here is to ID record that _may match_ to RP's field_data, but have errors in one or more of the Sample-Key-Elements (Trip & MLID & SDate & SampType)
+6) Once this is set (or complete), records can be re-compared against AWQMS data for the time-block and a decision made regard updating the chem-import
+7) Chem - Parameter x Method cleanup can also occur once a reasonable set of projects are sufficiently commplete to allow import to awqms.
+
+_Prior DFs and working sets_
+
++ EDD_0 :: master EDD file :: "EDD_0_190610.rds" :: "U:/INFODATA/Sampling/UPHL_raw_EDDs/uphl_EDD_rawProcessing_r"
++ EDD1_0 :: 2019 wy q1q2 file :: "edd1_wy19q1q2_RAW_190612.RDS" in Project-Folder
++ MonLoc :: Monitoring Locations from AWQMS ::  "MonitoringLocationsIDs_051719.xlsx"
+  + "U:/INFODATA/Sampling/DWQ Monitoring Locations/Monitoring Location IDs"
+  + Last Accessed ::  "2019-06-12 09:01:26 MDT"
++ EDD1_1 :: 2019.q1q2 w/ MLID-info joined :: "edd1_1_wy19q1q2_01_190613.RDS"
++ After awqms_ACTID join :: "edd1_1_wy19q1q2_02_190613.RDS"
++ awqms_ACTID_19q1q2 :: Activity.IDs from AWQMS for 19.q1q2 :: "awqms_ACTID_19q1q2_xx_190618.rds"
++ proj_MLID :: BBs file of MLID & Project sets for this coming year ::
+  + See::  "MonitoringSection2019_MLIDlist.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Data Management/List of MLIDs"
+  + Last Accessed :: "2019-06-14 14:47:43 MDT"
++ field_0 :: RPs _raw field/hydrodata file_ :: "3. 2019_WY_Q1_Q2_ALL_Field_Flow_prep_Combined.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Hydrodata/2019_wy_4. Data and Information Services/WY_2019 Import prep/Q1 and Q2 (10-1-2018 through 3-31-2019)/Hydrodata"
+  + "2019-06-14 08:35:48 MDT"
+
++ field_1 :: RPs cleaned(tdh) hydrofile ::  "field_1_xx_190618.rds"
++ EDD1_3 :: Working datafile at end of 1st notebook :: "EDD1_3_xx_190618.rds"
++ project_table2 :: sumamry table of `projects` (trimmed TripIDs) and `Project_GRP` for streamlined data-cleanup tasks :: "ProjectTable2_wy19q1q2_190618.rds"
+
+**[190621]**
+
++ Fixing some process errors in EDD data-cleanup and matchups
+
+**[190624]**
+
++ New notebook to continue on w/ Utah Lake (UTLK) and other projects [after CBI was completed]
++ Working dataframes::  `EDD1_5` and `field_2`
+
+**[190627]**
+
++ New notebook, continuing project-level cleanup, w/ TMDL-NonPoint projects
++ Working dataframes:: `EDD1_6` and `field_4`
+
+**[190630]**
+
++ New notebook, working through Method / Parameter cleanup
++ Working dataframs:: `EDD1_7` and `field_5`
+
+> _Some workspace cleanup_
+
+**[190703]**
+
++ Found some disagreement b/w project and sample-record status for "unknown" project groups, where GW compliance and HAB samples are misclassified...
+
+
+***
+***
+
+## Dataframe Corrections
+
+[190703]
+
+```{r}
+# EDD1_7_copy -> EDD1_7
+EDD1_7 %>% filter(Proj_GRP == "Unknown") %>%
+  {table(.$Method.ID, .$project,
+         useNA="ifany", deparse.level = 2)}
+```
+
++ a lot of these are incorrect...
+
+```{r}
+EDD1_7 %<>% mutate(
+  project = case_when(
+    Proj_GRP == "Unknown" &
+      Method.ID %in% (c("ANATOXIN", "MICROCYSTINS", "qPCR")) ~ "HAB",
+    Proj_GRP == "Unknown" &
+      is.na(Trip.ID) & grepl("^SP{1,2}", .$Sample.Description) ~ "GWater",
+    !is.na(project) ~ project)) %>%
+  mutate(
+    RECORD_STATUS=case_when(
+      is.na(RECORD_STATUS) & 
+        Proj_GRP == "Unknown" &
+        project=="HAB" ~ "Ignore_HAB",
+      !is.na(RECORD_STATUS) ~ RECORD_STATUS))
+```
+
+```{r}
+EDD1_7 %>% filter(Proj_GRP == "Unknown") %>%
+  {addmargins(table(.$Method.ID, .$project,
+         useNA="ifany", deparse.level = 2),1)}
+```
+
+## Project Grp Summary Tables
+
++ Add `import_STATUS` to `RECORD_STATUS`
+
+```{r}
+# EDD1_7 -> EDD1_7_copy
+EDD1_7 %<>% mutate(
+  RECORD_STATUS = case_when(
+    !is.na(import_STATUS) & 
+      is.na(RECORD_STATUS) ~ "IMPORTED",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+
+```{r}
+EDD1_7 %>%
+  {addmargins(table(.$Proj_GRP,
+                    .$RECORD_STATUS, useNA = "ifany", deparse.level = 2,
+                    dnn=c("Project_GRP", "RECORD_STATUS")))} %>%
+  as.data.frame() %>% spread(., RECORD_STATUS, Freq) %>% 
+  setNames(c("Project_GRP", "CBI_2_import", "COOP_2_import", "Ignore_GKM", "Ignore_HAB",
+             "IMPORTED", "LAKES_2_import", "TMDL_2_import",
+             "UTLK_2_import", "Sum", "_NA_")) %>%
+  select(Project_GRP,
+         CBI_2_import,
+         COOP_2_import,
+         LAKES_2_import, 
+         TMDL_2_import,
+         UTLK_2_import,
+         contains("Ignore_", ignore.case = T),
+         IMPORTED,
+         "_NA_", Sum) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.5em; padding-right: 0.5em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="RECORD_STATUS by project group", align="rl|ccccc|cc|c|c|c", total=T, n.tspanner=c(nrow(.)-1, 1), tspanner=c("",""), css.tspanner.sep="border-top: 1px solid;")
+```
+
+***
+
+\
+
+[1] COOPs
+
+```{r}
+EDD1_7 %>% filter(Proj_GRP == "COOP") %>%
+  {addmargins(table(.$project, .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Projects w/ Missing `RECORD_STATUS`
+  + BLMVERNAL :: 
+  `r EDD1_7 %>% filter(project=="BLMVERNAL" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + BORLP ::
+  `r EDD1_7 %>% filter(project=="BORLP" & is.na(RECORD_STATUS)) %>% {table(.$match_STATUS, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + NPSETALTIMP ::
+  `r EDD1_7 %>% filter(project=="NPSETALTIMP" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + SLCO ::
+  `r EDD1_7 %>% filter(project=="SLCO" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+\
+
+[2] TMDL/NPS projects
+
+```{r}
+EDD1_7 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$project, .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Projects w/ Missing `RECORD_STATUS`
+  + LOGANRV
+  `r EDD1_7 %>% filter(project=="LOGANRV" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + SNAKECKTMDL
+  `r EDD1_7 %>% filter(project=="SNAKECKTMDL" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + UPRSEVIERNPS
+  `r EDD1_7 %>% filter(project=="UPRSEVIERNPS" & is.na(RECORD_STATUS)) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+\
+
+[3] DWQ Intensive
+
+```{r}
+EDD1_7 %>% filter(grepl("Intensive", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$project, .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ **Project Complete**
+
+\
+
+
+[4] Small projects; Lakes, UCASE, UTLK
+
+```{r}
+EDD1_7 %>% filter(Proj_GRP %in% c("Lakes", "UCASE", "Utah Lake")) %>%
+  {addmargins(table(.$project, .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
+  + LAKES
+  `r if(EDD1_7 %>% filter(project=="LAKES" & is.na(RECORD_STATUS)) %>% nrow() > 0) {EDD1_7 %>% filter(project=="LAKES" & is.na(RECORD_STATUS)) %>% select(RECORD_STATUS, import_STATUS, Sample.Comment) %>% mutate(Sample.Comment = case_when(is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & is.na(Sample.Comment) ~ "Already imported to AWQMS", is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & !is.na(Sample.Comment) ~ paste(.$Sample.Comment, "Already imported to AWQMS", sep="; "))) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))}`
+  + UCASE
+  `r if(EDD1_7 %>% filter(project=="UCASE" & is.na(RECORD_STATUS)) %>% nrow() > 0) {EDD1_7 %>% filter(project=="UCASE" & is.na(RECORD_STATUS)) %>% select(RECORD_STATUS, import_STATUS, Sample.Comment) %>% mutate(Sample.Comment = case_when(is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & is.na(Sample.Comment) ~ "Already imported to AWQMS", is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & !is.na(Sample.Comment) ~ paste(.$Sample.Comment, "Already imported to AWQMS", sep="; "))) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))}`
+  + UTLK
+  `r if(EDD1_7 %>% filter(project=="UTLK" & is.na(RECORD_STATUS)) %>% nrow() > 0) {EDD1_7 %>% filter(project=="UTLK" & is.na(RECORD_STATUS)) %>% select(RECORD_STATUS, import_STATUS, Sample.Comment) %>% mutate(Sample.Comment = case_when(is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & is.na(Sample.Comment) ~ "Already imported to AWQMS", is.na(RECORD_STATUS) & grepl("yes_", .$import_STATUS, ignore.case = T) & !is.na(Sample.Comment) ~ paste(.$Sample.Comment, "Already imported to AWQMS", sep="; "))) %>% {table(.$Sample.Comment, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))}`
+
+\
+
+[5] Unknown / compliance projects :: Do not Import
+
+```{r}
+EDD1_7 %>% filter(grepl("Unknown", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$project, .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
+  + GWater
+  `r EDD1_7 %>% filter(project=="GWater" & is.na(RECORD_STATUS)) %>% {table(.$match_STATUS, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+  + HAB
+  `r if(EDD1_7 %>% filter(project=="HAB" & is.na(RECORD_STATUS)) %>% nrow() > 0) {EDD1_7 %>% filter(project=="HAB" & is.na(RECORD_STATUS)) %>% {table(.$match_STATUS, useNA="ifany", deparse.level=2)} %>% as.data.frame.table(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))}`
+  + USGSGKM ::   Contact Watershed staff
+
+***
+***
+
+## 8.0 Method/Parameter Cleanup & Matchups
+
++ Parameter and Method lists
+
+**Working Tables**
+
+1) "Parameter_Table_uphlEDDs_v02_190409.xlsx"
+    + "L:\DATA MANAGEMENT & QA\DATA.Projects\MASTER_PARAMETER_Tables_r"
+
+    _This table works from `Meth_Par.key` to obtain `ParamX`, and `Method.GRP`_
+
+2) "CharTrans_awqms_ImpConf3211_dl190409_v01.xlsx"
+    + "L:\DATA MANAGEMENT & QA\DATA.Projects\MASTER_PARAMETER_Tables_r"
+
+    _This table describes the `AWQMS.key` as part of the Characteristic Translations portion of the import.config_
+
+3) "Param_Trans_Tables_2019_190409.xlsx"
+    + "L:\DATA MANAGEMENT & QA\DATA.Review\MissingChem_190322_wy2017\Chem_lookup_r"
+
+    _This file has two [tabs]: 1) `Param_table` from MPK to ParamX, and 2) `MPK_2_awqms` from MPK to AWQMS.Key_TRIM_
+
+**Updates** :: 
+
+[190703] : Built on earlier work in Master.Param.Tables folder (see above) to more readily compile EDDs and check for additional characteristic translations that may be needed.  Using this as the working Param-file...\
+
++ Also, updated Master Parameter table and re-imported (here, below)
+
+### 8.1 Import Method-Param Table
+
+```{r}
+# file.mptable  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+MethParam_01 <- openxlsx::read.xlsx(file.mptable, sheet=1, startRow = 1,
+                                    rowNames=FALSE, check.names = T)
+```
+
++ Filename ::  `r basename(file.mptable)`
++ Path ::  `r dirname(file.mptable)`
++ Last Accessed :: [`r file.mtime(file.mptable)`]
++ DF [`MethParam_01`] :: `r nrow(MethParam_01)` records and `r ncol(MethParam_01)` fields
+
+**Data-Keys**
+
+1) MethPar.key : `Method.ID` _ `Param.Description`
+2) MethParFxn.key : `Method.ID` _ `Param.Description` _ `Matrix.Description`
+
+**Derived Keys**
+
+1) AWQMS.Key_TRIM : `Method.Agency`[-]`Method.ID`[-]`ParamX`
+2) AWQMS.Key : `Method.Agency`[-]`Method.ID`[-]`ParamX`[-]`Result.Sample.Fraction`
+    + Both **ParamX** and **Result.Sample.Fraction** are translated data-elements
+
+***
+
+### 8.2 EDD-file Record selection
+
+```{r}
+EDD1_7 %>% {addmargins(table(.$RECORD_STATUS, useNA="ifany", is.na(.$ACT_trunc)),1)}
+EDD1_7 %>% filter(is.na(RECORD_STATUS)) %>% {addmargins(table(.$match_STATUS, .$RECORD_STATUS, useNA="ifany", deparse.level = 2),1)}
+```
+
++ When examining parameters and results, using `RECORD_STATUS`, can ignore records where status is:
+  + `IMPORTED` :: _These records are already in AWQMS, no further cleanup or evaluation is necessary_
+  + `NA` & `match_STATUS` is `no_SiteID` :: _These records are missing key data-elements_
+
+***
+
+### VERSION DATAFRAME (EDD1_8)
+
+```{r}
+EDD1_8 <- EDD1_7
+```
+
+
+### 8.3 Build Method-Parameter key(s)
+
+```{r}
+EDD1_8 %<>% mutate(
+  MethPar.key = paste(.$Method.ID,
+                      .$Param.Description, sep="_")) %>%
+  select(-Sample.Description, -field_sk4, -import_STATUS, -Trip.ID, 
+         -Test.Number, -Method.Agency, -Sample.Detect.Limit, -Sample.Report.Limit,
+         -Project.Comment, -file_date, -Lab.filename,
+         -Station.ID, -Cost.Code, -Agency.Bill.Code, -Collector,
+         -Chain.of.Custody, -CAS.Number,everything()) %>%
+  select(project:RECORD_STATUS, 
+         SKey4:Sample.Comment, MethPar.key, everything())
+```
+
+```{r}
+EDD1_8 %>% mutate(
+  MPK_match = case_when(
+    MethPar.key %in% MethParam_01$MethPar.key ~ "Yes",
+    TRUE ~ "No")) %>% {addmargins(table(.$Proj_GRP,
+                                        .$MPK_match, useNA="ifany",
+                                        deparse.level = 2))}
+```
+
++ All Method-Param keys match w/ MASTER Table [!!]
+
+### 8.4 Join Master Param Table to data-table
+
+```{r}
+EDD1_9 <- EDD1_8 %>% 
+  left_join(.,
+            filter(MethParam_01, 
+                   AWQMS.Key_TRIM != "NA-LACHAT-TN") %>%
+              select(MethPar.key, AWQMS.Key_TRIM,
+                     ParamX, PARAM_status) %>% distinct(),
+            by = c("MethPar.key" = "MethPar.key")
+  ) %>%
+  select(project:SKey4, AWQMS.Key_TRIM, Sample.Number:Method.ID,
+         ParamX, Param.Description, everything()) %>%
+  select(project:RECORD_STATUS, PARAM_status, everything())
+#sum(is.na(EDD1_9$ParamX))
+```
+
+```{r message=FALSE}
+EDD1_9 %>% {addmargins(table(.$RECORD_STATUS, 
+                             .$PARAM_status, 
+                             useNA="ifany", deparse.level = 2))}
+```
+
+
+
++ Check `PARAM_status` by Method-Parameter
+
+```{r}
+EDD1_9 %>% {addmargins(table(.$MethPar.key, 
+                             .$PARAM_status, 
+                             useNA="ifany", deparse.level = 2),1)}
+```
+
++ Meth-Params for _importable_ records and non-rejected Params
+
+```{r}
+EDD1_9 %>% 
+  filter(is.na(PARAM_status)) %>%
+  filter(RECORD_STATUS !="IMPORTED") %>%
+  filter(!grepl("^Ignore_", .$RECORD_STATUS, ignore.case = T)) %>%
+  filter(!Method.ID %in% c("8015B", "8260")) %>%
+  {addmargins(table(.$Method.ID,
+                    .$RECORD_STATUS, useNA="ifany", deparse.level = 2))}
+```
+\  
+
++ **Code the above records as PARAM_status == "REVIEW"**   
+\  
+
++ **Re-code RECORD_STATUS (XX_2_import) as "OK"**
+
+```{r}
+# EDD1_9 -> EDD1_9_copy
+EDD1_9 %<>% mutate(
+  PARAM_status = case_when(
+    is.na(PARAM_status) &
+      !is.na(RECORD_STATUS) &
+      !RECORD_STATUS %in% c("IMPORTED", "Ignore_GKM", "IGNORE_HAB") &
+      !Method.ID %in% c("8015B", "8260") ~ "REVIEW",
+    !is.na(PARAM_status) ~ PARAM_status)) %>%
+  # code RECORD_STATUS
+  mutate(
+    RECORD_STATUS = case_when(
+      grepl("_import$", .$RECORD_STATUS) ~ "OK",
+      !is.na(RECORD_STATUS) ~ RECORD_STATUS))
+```
+
+
+
+**Useful Records**  
+(1) `PARAM_status` == "REVIEW"  _AND_
+(2) `RECORD_STATUS` == "OK"
+
+
+```{r}
+EDD1_9 %>% {addmargins(table(.$Method.ID, .$PARAM_status,
+                             useNA="ifany", deparse.level = 2))}
+
+EDD1_9 %>% {addmargins(table(.$Method.ID, .$RECORD_STATUS,
+                             useNA="ifany", deparse.level = 2))}
+EDD1_9 %>% {addmargins(table(.$RECORD_STATUS, .$PARAM_status, 
+                             useNA="ifany", deparse.level = 2))}
+```
+
+***
+
+**RECORD KEY** :: `PARAM_status == "REVIEW"` & `RECORD_STATUS == "OK"`
+
+#### 8.41 "Non-import" parameter review
+
++ Q:  What are the parameter elements there PARAM_status = NA ?
+
+```{r}
+EDD1_9 %>% filter(is.na(PARAM_status)) %>%
+  {addmargins(table(.$MethPar.key,
+                    .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Method-Params where PARAM_status is NULL, by RECORD_STATUS")
+```
+
+**Parameter-sets that are not slated for further review...**
+
+_Where `PARAM_status` is NULL AND_
+
+  _`RECORD_STATUS` equals:_
+
+1) "Ignore_GKM" :: `r EDD1_9 %>% filter(is.na(PARAM_status), RECORD_STATUS=="Ignore_GKM") %>% nrow(.)` records
+  + Primarily metals and salts, and N + P
+
+2) "IMPORTED" :: `r EDD1_9 %>% filter(is.na(PARAM_status), RECORD_STATUS=="IMPORTED") %>% nrow(.)` records  
+    Records that are _Already in AWQMS_
+  + Methods::  `r EDD1_9 %>% filter(is.na(PARAM_status), RECORD_STATUS=="IMPORTED") %>% {unique(.$Method.ID)}`
+  + Projects:: `r EDD1_9 %>% filter(is.na(PARAM_status), RECORD_STATUS=="IMPORTED") %>% {unique(.$project)}`
+
+3) "_NULL_" :: `r EDD1_9 %>% filter(is.na(PARAM_status), is.na(RECORD_STATUS)) %>% nrow(.)` records  
+    _No `RECORD_STATUS` and No `PARAM_status`_  
+  + Methods::  `r EDD1_9 %>% filter(is.na(PARAM_status), is.na(RECORD_STATUS)) %>% {unique(.$Method.ID)}`
+  + Projects:: `r EDD1_9 %>% filter(is.na(PARAM_status), is.na(RECORD_STATUS)) %>% {unique(.$project)}`
+
+4) "_NULL_" **BUT** `PARAM_status` = "REVIEW" :: `r EDD1_9 %>% filter(PARAM_status == "REVIEW", is.na(RECORD_STATUS)) %>% nrow(.)` records  
+  + Methods:: `r EDD1_9 %>% filter(PARAM_status == "REVIEW", is.na(RECORD_STATUS)) %>% {unique(.$Method.ID)}`
+  + Projects:: `r EDD1_9 %>% filter(PARAM_status == "REVIEW", is.na(RECORD_STATUS)) %>% {unique(.$project)}`
+  + Sample.Comments:: 
+
+  **This last group are records where there was no match to field data available**
+
+_Re-code these last records as RECORD_Status == "no_match"_
+
+```{r}
+EDD1_9 %>% filter(is.na(PARAM_status), is.na(RECORD_STATUS),
+                  !Method.ID %in% c("8015B", "8260", "1664")) %>% 
+  {addmargins(table(.$MethPar.key, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+
+EDD1_9 %>% filter(is.na(PARAM_status), is.na(RECORD_STATUS),
+                  !Method.ID %in% c("8015B", "8260", "1664")) %>% 
+  {addmargins(table(.$project, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+#
+EDD1_9 %<>% mutate(
+  RECORD_STATUS = case_when(
+    is.na(PARAM_status) &
+      is.na(RECORD_STATUS) &
+      !Method.ID %in% c("8015B", "8260", "1664") ~ "no_match",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
++ One last PARAM x RECORD table
+
+```{r}
+EDD1_9 %>% {addmargins(table(.$RECORD_STATUS, .$PARAM_status, 
+                             useNA="ifany", deparse.level = 2))}
+```
+
++ Should incorporate RESULT_STATUS = "no_match" into PARAM_status = "REVIEW"
+
+```{r}
+EDD1_9 %<>% mutate(
+  PARAM_status = case_when(
+    RECORD_STATUS == "no_match" &
+      is.na(PARAM_status) ~ "REVIEW",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA)))
+# EDD1_9 %>% filter(RECORD_STATUS == "no_match", is.na(PARAM_status))
+```
+
+
+
++ **Bottom line** :: `r EDD1_9 %>% filter(PARAM_status=="REVIEW" & (RECORD_STATUS=="OK" | RECORD_STATUS=="no_match")) %>% nrow(.)` records to be reviewed for Parameter and Result data-elements
+
+***
+***
+
+### 8.5 Review Results
+
++ column cleanup...
+
+```{r}
+# EDD1_9 -> EDD1_9_copy2
+EDD1_9 %<>% select(-ACT_trunc, 
+                  -MLID_chek, -Param.Description, everything()) %>%
+  arrange(project, SKey4, MethPar.key)
+# -match_STATUS
+```
+
+**Result Values**
+
+1) Numeric \
+    Result.Value [class] :: `r class(EDD1_9$Result.Value)`
+
+2) Problem.Identifiers and Result.Codes \
+    `r EDD1_9 %>% filter(PARAM_status=="REVIEW" & (RECORD_STATUS=="OK" | RECORD_STATUS=="no_match")) %>% {addmargins(table(.$Result.Code, .$Problem.Identifier, useNA="ifany", deparse.level = 2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+
+**Need UPHL Result.Code Lookup Table...**  
+\  
+
+
+#### 8.51 Import UPHL Result.Code table
+
+```{r}
+# file.resultcode  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+uphl_resultCode <- openxlsx::read.xlsx(file.resultcode, sheet=1, startRow = 1,
+                                    rowNames=FALSE, check.names = T)
+```
+
++ Filename ::  `r basename(file.resultcode)`
++ Path ::  `r dirname(file.resultcode)`
++ Last Accessed :: [`r file.mtime(file.resultcode)`]
++ DF [`uphl_resultCode`] :: `r nrow(uphl_resultCode)` records and `r ncol(uphl_resultCode)` fields
+
+```{r}
+uphl_resultCode %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="UPHL-LIMS Result.Codes, code-definitions, and impact on DWQ-QC",
+    n.tspanner=rep(1,nrow(.)), tspanner=rep("", nrow(.)), align="rclc")
+```
+
+#### 8.52 Review Result.Codes in EDDs
+
++ Added filter for Importable records (PARAM_status == REVIEW" & RECORD_STATUS == "OK")
+
+```{r}
+EDD1_9 %>% filter(PARAM_status == "REVIEW" &
+                    (RECORD_STATUS == "OK" | RECORD_STATUS=="no_match")) %>%
+  mutate(
+    Result.Code = gsub(" ", "", .$Result.Code) %>% trimws()) %>%
+  {addmargins(table(.$Result.Code, 
+                    .$Problem.Identifier,
+                    useNA = "ifany", deparse.level = 2))} %>%
+  as.data.frame(.) %>% setNames(c("Result.Code", "var1", "Freq")) %>%
+  spread(., var1, Freq) %>%
+  mutate_if(is.factor, as.character) %>%
+  mutate(Result.Code = case_when(
+    is.na(Result.Code) ~ "<NA>",
+    !is.na(Result.Code) ~ Result.Code)) -> ResultCode.tab
+  
+#
+ResultCode.tab$Comment <- NA
+for (j in ResultCode.tab$Result.Code[c(1:(nrow(ResultCode.tab)-2))]) {
+    for (i in 1:length(trimws(unlist(strsplit(
+        ResultCode.tab$Result.Code[ResultCode.tab$Result.Code == j], ","))))) {
+      ResultCode.tab$Comment[ResultCode.tab$Result.Code == j] <- 
+            ifelse(is.na(ResultCode.tab$Comment[ResultCode.tab$Result.Code == j]),
+                   uphl_resultCode$Comment[uphl_resultCode$Result.Code == (trimws(
+                       unlist(
+                           strsplit(ResultCode.tab$Result.Code[
+                               ResultCode.tab$Result.Code == j], ",")))[i])],
+                   paste(ResultCode.tab$Comment[ResultCode.tab$Result.Code == j],
+                         uphl_resultCode$Comment[uphl_resultCode$Result.Code == (trimws(
+                       unlist(
+                           strsplit(ResultCode.tab$Result.Code[
+                               ResultCode.tab$Result.Code == j], ",")))[i])],
+                       sep = " | "))
+        }   }
+# j <- "F,H"
+ResultCode.tab %>% 
+  select(-Sum, -Comment, everything()) %>% 
+  arrange(., desc(Sum), Result.Code) %>% 
+  slice(3:24, 2, 1) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em; font-size: 0.8em;",times=ncol(.)+1), matrix("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.8em;",ncol=ncol(.)+1,nrow=nrow(.))), total=T, n.tspanner=rep(1,nrow(.)), 
+    tspanner=rep("", nrow(.)), caption = "Unique Result.Codes observed in EDDs, by 'Problem.Identifier' code, with result-code definitions", align=c("rc|ccc|l"))
+```
+
+
+
+**Review of Previous Issues**
+
+1) Result.Code == "U", but Problem.Identifier != "<"
+
+```{r}
+# cases
+EDD1_9 %>% filter(is.na(Problem.Identifier),
+                  !grepl("SU", .$Result.Code),
+                  grepl("U", .$Result.Code)) %>% nrow()
+```
+
+```{r}
+EDD1_9 %>% filter(is.na(Problem.Identifier),
+                  !grepl("SU", .$Result.Code),
+                  grepl("U", .$Result.Code)) %>% 
+  {addmargins(table(.$PARAM_status,
+                    .$Result.Code, useNA="ifany", deparse.level = 2))}
+```
+
++ Ignore this issue ("U/na"), all records have **Rejected Parameters**  ::  **No Action Needed**
+
+```{r}
+# EDD1_9 %>% filter(is.na(Problem.Identifier),
+#                   !grepl("SU", .$Result.Code),
+#                   grepl("U", .$Result.Code))
+```
+
+2) Result.Code = NA, but Problem.Identifier = "<"
+
+```{r}
+EDD1_9 %>% filter(is.na(Result.Code) & Problem.Identifier == "<") %>% nrow()
+```
+ 
+? Status of records here?
+
+```{r}
+EDD1_9 %>% filter(is.na(Result.Code) & Problem.Identifier == "<") %>%
+  {addmargins(table(.$PARAM_status,
+                    .$Problem.Identifier, useNA="ifany", deparse.level = 2))}
+
+EDD1_9 %>% filter(is.na(Result.Code) & Problem.Identifier == "<") %>%
+  {addmargins(table(.$PARAM_status,
+                    .$RECORD_STATUS, useNA="ifany", deparse.level = 2))}
+
+# EDD1_9 %>% filter(is.na(Result.Code) &
+#                     Problem.Identifier == "<" &
+#                     RECORD_STATUS == "OK") %>%
+#   {addmargins(table(.$MethPar.key,
+#                     paste(.$Result.Code,
+#                           .$Problem.Identifier,
+#                           .$RECORD_STATUS, sep="_"),
+#                     useNA="ifany", deparse.level = 2))}
+```
+
++ For the above-identified records, add "U" flag to Result.Code
+
+```{r}
+EDD1_9 %<>% mutate(
+  Result.Code = case_when(
+    is.na(Result.Code) &
+      Problem.Identifier == "<" &
+      RECORD_STATUS == "OK" &
+      PARAM_status == "REVIEW" ~ "U",
+    !is.na(Result.Code) ~ Result.Code)
+)
+EDD1_9 %>% filter(is.na(Result.Code) &
+      Problem.Identifier == "<" &
+      RECORD_STATUS == "OK" &
+      PARAM_status == "REVIEW")
+```
+
+***
+
+**Problematic / Actionable Result.Code combinations**  
+
+A ~ REJECT  
+C ~ REJECT  
+SU ~ Examine; [organics]matrix interference-REJECT?  
+P ~ Examine; REJECT?  
+E ~ Examine; result above Cal?  
+G ~ REJECT  
+HI ~ REJECT; failed QC, unsuff. time for re-analysis
+K ~ Bias-high?  
+L ~ Bias-Low?  
+M ~ REJECT; matrix interference  
+N ~ REJECT  
+Q ~ REJECT; poor RPD  
+R ~ REJECT; no confidence in result  
+S ~ REJECT; poor spike recovery  
+SI ~ REJECT  
+V ~ REJECT; high background  
+W ~ Examine; holding time exceeded  
+
+```{r}
+RCode_actions <- c("A", "C", "SU", "P", "E", "G", "K", "L", "HI",
+                   "M", "N", "Q", "R", "S", "SI", "V", "W")
+rc_REJECT <- c("A", "C", "G", "HI", "M", "N", "Q", "R", "S", "SI", "SU", "V")
+rc_EXAMINE <- c("P", "T", "B", "E", "K", "L", "W")
+#
+# EDD1_9 %>% filter((RECORD_STATUS == "OK" | RECORD_STATUS == "no_match") &
+#                     PARAM_status == "REVIEW" &
+#                     any(
+#                       trimws(
+#                         unlist(
+#                           strsplit(Result.Code, ","))) %in% RCode_actions, na.rm=T)) %>%
+#   {addmargins(table(.$MethPar.key, .$Result.Code,# %in% RCode_actions,
+#                     useNA="ifany", deparse.level = 2))}
+# EDD1_9 %>% filter(!is.na(Result.Code) &
+#                     {any(trimws(unlist(strsplit(
+#                       .$Result.Code, ","))) %in% RCode_actions)})
+#
+## does not behave as expected...move on
+```
+
++ **HI** :: Failed QC< insufficient holding time for reanalysis
++ **P** :: Sample pH outside acceptance criteria
++ **Q** :: RPD/precision outside control limits
++ **S** :: Spike recovery outside control limits
++ **W** :: Sample received past holding time limit
+
+**All Result.code / Result.Flag issues corrected**   [190703]
+
+***
+
+#### 8.53 Annotate Datafile to Result.Comment
+
++ Incorporate Result.Code comments into Result.Comment, and
++ Building on [above] table, annotate Result.Comments for results/records that require QC-review
+
+```{r}
+rc_REJECT <- c("A", "C", "G", "HI", "M", "N", "Q", "R", "S", "SI", "SU", "V")
+rc_EXAMINE <- c("P", "T", "B", "E", "K", "L", "W")##
+##
+# EDD1_9$Result.Comment <- NA
+EDD1_9x <- left_join(EDD1_9 %>% mutate(Result.Code2 = trimws(gsub(" ", "", .$Result.Code))),
+                     select(ResultCode.tab,
+                            Result.Code, Comment) %>% filter(
+                              !is.na(Result.Code) & Result.Code != "Sum") %>%
+                       mutate(Result.Code = trimws(gsub(" ", "", .$Result.Code))),
+                     by = c("Result.Code2" = "Result.Code")) %>%
+  select(-Proj_GRP, -MLID_name, -Test.Comment, everything()) %>%
+  select(project:Result.Code, Result.Code2, 
+         Result.Value:Dilution.Factor, Result.Comment, Comment, everything())
+#
+# EDD1_9x -> EDD1_9x_copy3
+```
+
+```{r}
+##
+for (i in 1:nrow(EDD1_9x)) {
+  EDD1_9x$Result.Comment[i] <- 
+    ifelse(
+      is.na(EDD1_9x$Result.Code[i]),
+      NA,
+      ifelse(
+        any(trimws(unlist(strsplit(EDD1_9x$Result.Code[i], ","))) %in% rc_REJECT, na.rm=T),
+        paste(EDD1_9x$Comment[i],"Reject result (dataflag)", collapse="; "),
+        ifelse(
+          any(trimws(unlist(
+            strsplit(EDD1_9x$Result.Code[i], ","))) %in% rc_EXAMINE, na.rm=T),
+          ifelse(
+            !is.na(EDD1_9x$Result.Comment[i]),
+            paste(EDD1_9x$Result.Comment[i], EDD1_9x$Comment[i],
+                  "Examine result (dataflag)", sep="; "),
+            paste(EDD1_9x$Comment[i],
+                  "Examine result (dataflag)", collapse="; ")),
+          NA)))}
+
+```
+
+```{r}
+#
+EDD1_9x %>% distinct(Result.Code, Result.Comment, Comment) %>%
+  arrange(Result.Code, Result.Comment, Comment) %>%
+  filter(!is.na(Result.Code)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.5em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rccl", 
+                       n.tspanner=rep(1,nrow(.)),
+                       tspanner=rep("", nrow(.)),
+                       css.tspanner.sep="border-top: 1px solid;")
+```
+
+***
+***
+
+### VERSION DF [EDD2_1]
+
+```{r}
+EDD2_1 <- EDD1_9x
+```
+
+***
+
+
+### 8.6 Reporting Limits
+
++ Check that all Reporting Limits are appropriate and accurate
+
+```{r}
+EDD2_1 %>% filter(PARAM_status=="REVIEW" & RECORD_STATUS=="OK") %>%
+  filter(is.na(Lower.Report.Limit)) %>% distinct(MethPar.key, Units)
+```
+
++ Only records where LRL is missing are for the _calculated_ CHL records.  **These will be adjusted in the Parameter-specific-Corrections section**
+  + Add Result.Comment for these records; RLs calculated manually...
+
+```{r}
+EDD2_1 %<>% mutate(
+  Result.Comment = case_when(
+    PARAM_status == "REVIEW" &
+      RECORD_STATUS == "OK" &
+      (is.na(Lower.Report.Limit) | is.na(Method.Detect.Limit)) &
+      Units != "ML" &
+      is.na(Result.Comment) ~ "Manual RL calc",
+    PARAM_status == "REVIEW" &
+      RECORD_STATUS == "OK" &
+      (is.na(Lower.Report.Limit) | is.na(Method.Detect.Limit)) &
+      Units != "ML" &
+      !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                     "Manual RL calc", sep="; "),
+    !is.na(Result.Comment) ~ Result.Comment,
+    TRUE ~ as.character(NA))
+)
+```
+
++ What are the ranges of RLs by MethPar.key ??
+
+```{r message=FALSE, warning=FALSE}
+EDD2_1 %>% filter(PARAM_status=="REVIEW" & RECORD_STATUS=="OK") %>%
+  group_by(MethPar.key) %>%
+  summarise(min_LRL = min(Lower.Report.Limit, na.rm=T),
+            max_LRL = max(Lower.Report.Limit, na.rm=T),
+            Range_LRL = max(Lower.Report.Limit, na.rm=T) - min(Lower.Report.Limit, na.rm=T),
+            min_MDL = min(Method.Detect.Limit, na.rm=T),
+            max_MDL = max(Method.Detect.Limit, na.rm=T),
+            Range_MDL = format(max(Method.Detect.Limit, na.rm=T) - min(Method.Detect.Limit, na.rm=T),2),
+            n_NA = sum(is.na(.data[["Lower.Report.Limit"]]), na.rm=T)
+            ) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.5em; padding-right: 0.5em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Importable records, RLs by MethPar_key", 
+                       align="rl|ccc|ccc|c")
+  
+```
+
+
+
+### 8.7 Result.Units
+
++ Check Units against MethPar_key
+
+```{r}
+# EDD2_1 %>% filter(PARAM_status=="REVIEW" & RECORD_STATUS=="OK") %>%
+#   group_by(MethPar.key) %>%
+#   summarise(n_Units = n_distinct(Units)) %>% 
+#   filter(n_Units > 1)
+EDD2_1 %>% filter(PARAM_status=="REVIEW" & RECORD_STATUS=="OK") %>%
+  distinct(MethPar.key, Units) %>%
+  {addmargins(table(.$MethPar.key,
+                    .$Units, useNA="ifany", deparse.level = 2))}
+```
+
++ Number of MPKey sets with more than 1 unique set of Units :: `r EDD2_1 %>% filter(PARAM_status=="REVIEW" & RECORD_STATUS=="OK") %>% distinct(MethPar.key, Units) %>% {table(.$MethPar.key, .$Units, useNA="ifany")} %>% as.data.frame() %>% filter(Freq > 1) %>% nrow()` sets of MethPar.key x Units
+
+***
+
+**Exrpot DF**
+
+```{r}
+openxlsx::write.xlsx(EDD1_9x, file="EDD1_9x_xx_190708.xlsx")
+```
+
++ Use this file to review intermediate work-steps...
+
+***
+
+## _Start New Workbook_
+
+***
+***
+
+## 9.0 Check for Duplicate Records
+
+***
+
+## 10.0 Record status REVIEW
+
+## 11.0 Annotate RESULT_STATUS
+
+***
+***
+
+## END
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

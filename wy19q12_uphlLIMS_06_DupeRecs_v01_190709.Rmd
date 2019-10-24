@@ -1,0 +1,1597 @@
+---
+title: "UPHL.LIMS Cleanup DUPE-records [04]"
+author: "T.Hooker"
+date: "9 July, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+
+***
+
+**Project Root Path** :: 
+`"U:\INFODATA\Sampling\Data_Cleanup_Scripts\190610_UPHL_LIMS_wy19q1q2_CLEANUP"`
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidy"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+# graph_package <- c("ggplot2", "scales")
+# if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+**[190610]**  
+
+1) This notebook begins cleanup for UPHL-LIMS data from water-year (WY) 2019, quarters 1 and 2 (October 2018 through March 30, 2019).  
+2) This notebook _may_ also include UPHL-lab records that were not previously imported from the prior water year.
+3) Utah Lake project data were imported through December 2018 (previously)
+
+**[190618]**
+
+4) Notebook continues previous cleanup tasks, starting with project-level (as Project_GRP) review and modify (metadata) elements
+5) Goal here is to ID record that _may match_ to RP's field_data, but have errors in one or more of the Sample-Key-Elements (Trip & MLID & SDate & SampType)
+6) Once this is set (or complete), records can be re-compared against AWQMS data for the time-block and a decision made regard updating the chem-import
+7) Chem - Parameter x Method cleanup can also occur once a reasonable set of projects are sufficiently commplete to allow import to awqms.
+
+_Prior DFs and working sets_
+
++ EDD_0 :: master EDD file :: "EDD_0_190610.rds" :: "U:/INFODATA/Sampling/UPHL_raw_EDDs/uphl_EDD_rawProcessing_r"
++ EDD1_0 :: 2019 wy q1q2 file :: "edd1_wy19q1q2_RAW_190612.RDS" in Project-Folder
++ MonLoc :: Monitoring Locations from AWQMS ::  "MonitoringLocationsIDs_051719.xlsx"
+  + "U:/INFODATA/Sampling/DWQ Monitoring Locations/Monitoring Location IDs"
+  + Last Accessed ::  "2019-06-12 09:01:26 MDT"
++ EDD1_1 :: 2019.q1q2 w/ MLID-info joined :: "edd1_1_wy19q1q2_01_190613.RDS"
++ After awqms_ACTID join :: "edd1_1_wy19q1q2_02_190613.RDS"
++ awqms_ACTID_19q1q2 :: Activity.IDs from AWQMS for 19.q1q2 :: "awqms_ACTID_19q1q2_xx_190618.rds"
++ proj_MLID :: BBs file of MLID & Project sets for this coming year ::
+  + See::  "MonitoringSection2019_MLIDlist.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Data Management/List of MLIDs"
+  + Last Accessed :: "2019-06-14 14:47:43 MDT"
++ field_0 :: RPs _raw field/hydrodata file_ :: "3. 2019_WY_Q1_Q2_ALL_Field_Flow_prep_Combined.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Hydrodata/2019_wy_4. Data and Information Services/WY_2019 Import prep/Q1 and Q2 (10-1-2018 through 3-31-2019)/Hydrodata"
+  + "2019-06-14 08:35:48 MDT"
+
++ field_1 :: RPs cleaned(tdh) hydrofile ::  "field_1_xx_190618.rds"
++ EDD1_3 :: Working datafile at end of 1st notebook :: "EDD1_3_xx_190618.rds"
++ project_table2 :: sumamry table of `projects` (trimmed TripIDs) and `Project_GRP` for streamlined data-cleanup tasks :: "ProjectTable2_wy19q1q2_190618.rds"
+
+**[190621]**
+
++ Fixing some process errors in EDD data-cleanup and matchups
+
+**[190624]**
+
++ New notebook to continue on w/ Utah Lake (UTLK) and other projects [after CBI was completed]
++ Working dataframes::  `EDD1_5` and `field_2`
+
+**[190627]**
+
++ New notebook, continuing project-level cleanup, w/ TMDL-NonPoint projects
++ Working dataframes:: `EDD1_6` and `field_4`
+
+**[190630]**
+
++ New notebook, working through Method / Parameter cleanup
++ Working dataframs:: `EDD1_7` and `field_5`
+
+> _Some workspace cleanup_
+
+**[190703]**
+
++ Found some disagreement b/w project and sample-record status for "unknown" project groups, where GW compliance and HAB samples are misclassified...
+
+**[190709]**
+
++ Worked through Result.Codes and Parameter cleanup, now working through identifying and resolving duplicate records in the dataset [EDDs]
+  + Working DF :: `EDD2_1`
+
+***
+***
+
+
+## Data Status summary
+
+```{r}
+EDD2_1 %>%
+  {addmargins(table(.$PARAM_status,
+                    .$RECORD_STATUS, useNA = "ifany", deparse.level = 2,
+                    dnn=c("PARAM_status", "RECORD_STATUS")))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.5em; padding-right: 0.5em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="RECORD_STATUS by PARAM_status", align="r|cccccc|c", total=T)
+```
+
++ Note that records where RECORD_STATUS & PARAM_status are `NA` are for groundwater and potentially other compliance-related samples...
+
+
+***
+_some workspace cleanup_
+
+***
+
+## 9.0 Check for Duplicate Records
+
++ Tidy up df `EDD2_1` column order
+  + **Version DF**
+
+```{r}
+EDD2_2 <- EDD2_1 %>% select(-Sample.Comment,-Comment,-Result.Comment,
+                            -MLID_name,
+                            -Replicate.Number,-field_actrunc,-field_act00,
+                            -field_sk1,-field_sk4,-import_STATUS,-Method.Agency,
+                            -Method.Description, -ACT_11,-Collector, -Chain.of.Custody,
+                            -Agency.Bill.Code, -Cost.Code, -MLID_chek, -Test.Comment,
+                            everything())
+#
+EDD2_2 %<>% select(-SKey4, everything()) %>%
+  select(project:PARAM_status, SKey3, 
+                   everything())
+```
+
+
+
+### 9.1 Build Sample Keys
+
+Needed Elements for key:  
+
+1) MLID
+2) Sample.Date
+3) Sample.Type
+4) Lab.Sample.Number  --> `SKey3`
+5) Method.ID
+6) Parameter
+7) Fraction  --> `build new`
+
++ ParamX by Parameter.Description
+
+```{r}
+EDD2_2 %>% distinct(ParamX, Param.Description, PARAM_status) %>% arrange(ParamX) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rllc")
+
+# sum(is.na(EDD2_2$Param.Description))
+# sum(is.na(EDD2_2$ParamX))
+```
+
++ Can generally ignore Organic parameters (8260 / 8015 / 1664)
+
+**Truncated Method-Parameter Key** (_w/ sample.matrix_)
+
+```{r}
+EDD2_2 %>% {addmargins(table(.$Matrix.Description, .$PARAM_status, 
+                             useNA="ifany", deparse.level = 2))}
+```
+
+
+```{r}
+EDD2_2 %<>% mutate(
+  MPFx.key = paste(trimws(.$Method.ID),
+                   trimws(.$ParamX),
+                   recode(.$Matrix.Description,
+                          "Filter" = "X",
+                          "Water, Non-filtered" = "TOT",
+                          "Water, Filtered" = "DIS",
+                          "Water" = "TOT"),
+                   sep="_")) %>%
+  select(project:Sample.Received.Date, MPFx.key, everything())
+
+```
+
+```{r}
+EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {table(.$MPFx.key,
+                  .$Proj_GRP, useNA="ifany")}
+```
+
++ Looks okay
+
+**Build Full Sample.Key**
+
++ SKey3 + MPFx.key ==> `SKey5`
+
+```{r}
+EDD2_2 %<>% mutate(
+  SKey5 = paste(.$SKey3,
+                .$MPFx.key,
+                sep=".")) %>%
+  select(-ACT_00, -SKey1, -SKey2, -Trip.ID, -Sample.Description, 
+         -Sample.Detect.Limit, -Sample.Report.Limit, -Project.Comment,
+         -Station.ID, -file_WYqtr, -CAS.Number, -file_date, -ACT_trunc,
+         -Param.Description, -Result.Code2, -Method.Description, -Chain.of.Custody,
+         -MLID_chek, -Test.Comment,
+         -field_actrunc, -field_act00, -field_sk1, -ACT_11,
+         -field_sk4, -import_STATUS, -Method.Agency, -Cost.Code, -Agency.Bill.Code, -Collector,
+         everything()) %>%
+  select(project:PARAM_status, SKey5, everything())
+```
+
+
+### 9.2 Review Sample key uniqueness and "workable" data
+
+Looking at the top table of `RECORD_STATUS` x `PARAM_status`, "_workable"_ records are where `RECORD_STATUS` is "OK" or "no_match" (since some records may have field matches after further review and data-sleuthing), OR, where `PARAM_status` is "REVIEW".  In this case, simplying using the latter `PARAM_status == "REVIEW"` is sufficient to include a likely importable records.
+
++ Use PARAM_status == "REVIEW" as main filter
+
+**Unique sets from sample keys**
+
+**Total dataset** [`EDD2_2`] :: `r EDD2_2 %>% nrow()` records  
+
++ **Importable dataset** :: `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% nrow()` records  
+  + Unique MLIDs ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$MLID))}`
+  + Unique Sample.Dates ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$Sample.Date))}`
+  + Unique Project.Name ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$Project.Name))}`
+  + Unique ParamX ::    `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$ParamX))}`
+  + Unique Param.Description ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$Param.Description))}`
+  + Unique Method.ID ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$Method.ID))}`
+  + Unique Method.Description ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$Method.Description))}`
+  + Unique SKey1 ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$SKey1))}`
+  + Unique SKey2 ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$SKey2))}`
+  + Unique SKey3 ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$SKey3))}`
+  + Unique SKey4 ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$SKey4))}`
+  + Unique MethPar.key ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$MethPar.key))}`
+  + Unique MpFx.key ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$MPFx.key))}`
+  + Unique **SKey5** ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$SKey5))}`
+  + Unique ACT_trunc ::  `r EDD2_2 %>% filter(PARAM_status=="REVIEW") %>% {length(unique(.$ACT_trunc))}`
+
+***
+
+Best working sample key is `SKey5` :: 
+
+> MLID + SDate + Sampnum + SampType + Method.ID + ParamX + Fraction
+
+### 9.3 Identify Duplicated Records
+
+```{r}
+EDD2_2 %>% filter(PARAM_status=="REVIEW") %>%
+  {table(.$SKey5, useNA = "ifany")} %>%
+  as.data.frame(.) %>%
+  {table(.$Freq)} %>% as.data.frame.table(.) %>% setNames(c("n_Copies(SK5)", "Freq")) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc")
+#
+EDD2_2 %>% filter(PARAM_status=="REVIEW") %>%
+  {table(.$SKey5, useNA = "ifany")} %>%
+  as.data.frame(.) %>%
+  filter(.$Freq > 1) %>% setNames(c("SKey5", "Freq")) %>% arrange(SKey5, Freq) %>% 
+  {. ->> dupe_sk5} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rlc", caption="Levels of SKey5 with > 1 record")
+
+```
+
+**Annotate dupe-records in DF**
+
+```{r}
+EDD2_2 %<>% mutate(
+  dupe_status = case_when(
+    SKey5 %in% dupe_sk5$SKey5 ~ "dupe",
+    TRUE ~ as.character(NA))) %>%
+  select(-SKey3, -MethPar.key, -Method.ID, -AWQMS.Key_TRIM, everything()) %>%
+  select(project:PARAM_status, SKey5, dupe_status, everything())
+```
+
+***
+
+### 9.4 Compare Duplicate record-pairs
+
+```{r SKey6_dupe03Compare}
+# keep order of SKey6 for matchup
+dupe_recs <- arrange(dupe_sk5, SKey5) %>% setNames(c("Var1", "Freq"))
+edd_data  <- arrange(EDD2_2, SKey5)
+#
+CharDIFF <- data.frame(); NumDIFF <- data.frame()
+#
+for (j in dupe_recs$Var1) {
+    DUPE.j <- edd_data[edd_data$SKey5 == j,]
+# numeric fields
+    DIFF.rv <- ifelse(
+                var(c(DUPE.j$Result.Value), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.sampnum <- ifelse(
+                var(as.numeric(c(DUPE.j$Sample.Number)), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.samptype <- ifelse(
+                var(c(DUPE.j$Sample.Type), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.testnum <- ifelse(
+                var(c(DUPE.j$Test.Number), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.lrl <- ifelse(
+                var(c(DUPE.j$Lower.Report.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.mdl <- ifelse(
+                var(c(DUPE.j$Method.Detect.Limit), na.rm=TRUE) > 0, "YES", "no")
+    DIFF.df <- ifelse(
+                var(c(DUPE.j$Dilution.Factor), na.rm=TRUE) > 0, "YES", "no")
+    NumDIFF <- rbind(NumDIFF, data.frame(KEY = j, DIFF.rv, DIFF.sampnum, DIFF.samptype, DIFF.testnum, DIFF.lrl, DIFF.mdl, DIFF.df))
+    ## character fields
+    for (k in 1:nrow(DUPE.j)) {
+        DIFF.labfile <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.projnm <- ifelse(
+            as.logical(setequal(DUPE.j$Project.Name[k], DUPE.j$Project.Name)),
+            "no", "YES")
+        DIFF.batchnum <- ifelse(
+            as.logical(setequal(DUPE.j$Batch.Number[k], DUPE.j$Batch.Number)),
+            "no", "YES")
+        DIFF.anldate <- ifelse(
+            as.logical(setequal(DUPE.j$Analysis.Date[k], DUPE.j$Analysis.Date)),
+            "no", "YES")
+        DIFF.FILE <- ifelse(
+            as.logical(setequal(DUPE.j$Lab.filename[k], DUPE.j$Lab.filename)),
+            "no", "YES")
+        DIFF.METHid <- ifelse(
+            as.logical(setequal(DUPE.j$Method.ID[k], DUPE.j$Method.ID)),
+            "no", "YES")
+        DIFF.ParamX <- ifelse(
+            as.logical(setequal(DUPE.j$ParamX[k], DUPE.j$ParamX)),
+            "no", "YES")
+        CharDIFF <- rbind(CharDIFF, data.frame(KEY = j, DIFF.labfile, DIFF.projnm, DIFF.batchnum, DIFF.anldate, DIFF.FILE, DIFF.METHid, DIFF.ParamX)) }  
+    DIFFs <- merge(CharDIFF, NumDIFF)  }
+## bring it all together
+DIFFs %<>% distinct(.)
+CompareDupes_data <- left_join(edd_data, distinct(DIFFs),
+                                by = c("SKey5" = "KEY"))
+```
+
+### 9.5 Generate Pattners of Duplicated Records (which fields vary and why)
+
+```{r dupe04, eval=F}
+# combine all Dupe-responses
+CompareDupes_data$DIFF.all <- paste(
+  paste(CompareDupes_data$DIFF.labfile, CompareDupes_data$DIFF.projnm, 
+        CompareDupes_data$DIFF.batchnum, CompareDupes_data$DIFF.anldate, sep="."),
+  paste(CompareDupes_data$DIFF.rv, CompareDupes_data$DIFF.sampnum,
+        CompareDupes_data$DIFF.samptype, CompareDupes_data$DIFF.testnum,
+        CompareDupes_data$DIFF.lrl, CompareDupes_data$DIFF.mdl,
+        CompareDupes_data$DIFF.df, sep="."),
+  sep="_")
+##
+CompareDupes_data %<>% mutate(
+    DIFF.all = case_when(
+        DIFF.all == "NA.NA.NA.NA_NA.NA.NA.NA.NA.NA.NA" ~ as.character(NA),
+        !is.na(DIFF.all) ~ DIFF.all,
+        is.na(DIFF.all) ~ as.character(NA)
+    ))
+## View trimmed compare_dupes
+# CompareDupes_data %>% 
+#   select(-SKey3, -SKey4, -ACT_00, -ACT_11, -Chain.of.Custody,
+#          -MLID_chek, -Test.Comment, -field_actrunc,
+#          -field_act00, -field_sk1, -field_sk4, -import_STATUS,
+#          -Cost.Code, -Agency.Bill.Code, -Collector, -SKey2, 
+#          -Project.Comment, -CAS.Number, -Param.Description, 
+#          -Sample.Detect.Limit, -Sample.Report.Limit, -file_WYqtr,
+#          -Method.Description, -file_date, -MethPar.key,
+#          -ACT_trunc, -Station.ID, -Result.Code2, -SKey1, -Trip.ID,
+#          -AWQMS.Key_TRIM, -match_STATUS, -Method.Agency,
+#          -MPFx.key, -Matrix.Description) %>%
+#   select(-DIFF.labfile, -DIFF.projnm,
+#          -DIFF.sampnum, -DIFF.samptype, -DIFF.lrl, -DIFF.mdl,
+#          -DIFF.METHid, -DIFF.ParamX) %>% 
+#   filter(PARAM_status=="REVIEW" & !is.na(DIFF.all)) %>%
+#   View(.)
+##
+CompareDupes_data %>% 
+    filter(PARAM_status=="REVIEW") %>%
+    {addmargins(table(.$DIFF.all, .$Proj_GRP, useNA="ifany", deparse.level = 2))} %>%
+    as.data.frame.matrix(.) %>% tibble::rownames_to_column(var="GRP") %>%
+    htmlTable::htmlTable(., align=c("rlccccccc"),
+                         css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+```
+
++ Differences found in:
+  + Batch.Number
+  + Analysis.Date
+  + Result.Value
+  + Test.Number
+  + Dilution.Factor
+
+```{r}
+CompareDupes_data %>%
+  filter(PARAM_status=="REVIEW" & !is.na(DIFF.all)) %>%
+  select(SKey5, contains("DIFF.")) %>% select(-DIFF.all) %>%
+  gather(., "DIFF_var", "Y_n", -SKey5) %>% filter(Y_n=="YES") %>%
+  distinct(.) %>%
+  {addmargins(table(.$SKey5, .$DIFF_var, useNA="ifany"))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+```
+
+
+### Export Dupe-Records for Review
+
+```{r}
+# CompareDupes_data %>%
+#   filter(PARAM_status=="REVIEW" & !is.na(DIFF.all)) %>%
+#   openxlsx::write.xlsx(., file="wy19q1q2_EDD2.2_DupeRecords_190709.xlsx")
+```
+
++ Records reviewed.  Prepare note for UPHL staff review...
+
+### 9.6 Comments / Annotate dup-records
+
+1) "4930900.43390.2157420.4.200.8_Fe_TOT" :: Not inclined to agree w/ the DF=5 result, since no other results from this set are using the higher DF, AND the 5370 mg/L is ~ 5x higher than the max value for nearby waters.  There are no comments or data-flags providing support for the need to dilute sample for the Fe result.
+  + **KEEP:: TestNum = 10346680**
+
+2) "4930930.43552.2176216.4.200.8_Ag_TOT" [set, includes As, Ba, Cd, Cu, Ni, Pb, Se, Zn] :: For these 9 sets of dupes, looks like all results either (i) were non-detect at the lower DF, or (ii) RVs were similar across DFs (good instrumental setup and quantitation), so the lower-TestNum or lower DF result should be used.  For this sample set (SampNum), five additional results were NOT DUPLICATED (AL [df=10], B [df=1], Be [df=1], Cr [df=1], and Fe [df=2]) and two of these results (B and Fe) were analysed using 200.8_M (icp replacement method).  Thus it looks like the duplicated records w/ DF=10 were associated with the AL result (AL may have interfering properties at higher concentrations, so perhaps the other results needed to be reviewed for potential impacts to result-concentrations).  However, in all 9 cases of duplicated records, the result provided at DF=1 is more appropriate than the higher DF, due to: (i) both results are Non-Detect - use the lower DF (cet. par.)[AG, CD, SE]; (ii) lower DF has actual value, while higher DF is Non-Detect - user lower/actual RV[AS, CU]; (iii) lower DF has actual value but higher DF has J-flag - use lower/actual RV[BA]; (iv) lower DF has J-flag but higher DF has Non-Detect, use lower DF result[NI, ZN]; (v) both results are actual, RVs are similar, take the lower DF (cet. par.)[PB].
+  + **KEEP:: TestNum = 10388807 for ParamX = (Ag, As, Ba, Cd, Cu, Ni, Pb, Se, Zn)**  [9 sets]
+
+3) "4931410.43503.2171161.4.LACHAT_TN_DIS" :: Cannot find a rhyme or reason for the re-analysis, or why the values differ -- NEED CLARIFICATION FROM UPHL
+  + **KEEP:: TestNum = 10376700**
+
+4) "4937750.43376.2155141.4.365.1_TP_DIS" :: Same issue as #3 above.
+  + **KEEP:: TestNum = 10344506**
+
+5) "4938140.43375.2155142.4.365.1_TP_DIS" :: SAme as #3
+  + **KEEP:: TestNum = 10344507**
+
+6) "4950770.43396.2159453.4.200.8_Na_DIS" :: Appears that CA result was re-run as DF=4, and the NA result (which does not differ in RV (at all !!)) was inadvertently duplicatted. = use lower DF result
+  + **KEEP:: TestNum = 10350889**
+
+7) "4950770.43481.2169092.4.LACHAT_TN_TOT" :: Unclear why re-analyzed, DF is same and RVs are 0.395 vs 0.39 - very similar.  Unless other information provided, go w/ initial (lower TestNum result)
+  + **KEEP:: TestNum = 10372430**
+
+8) "4950890.43396.2159406.4.365.1_TP_TOT" :: Same RV and same DF, no flags; use lwoer TestNum 
+  + **KEEP:: TestNum = 10356721**
+
+9) "4953980.43395.2159409.4.365.1_TP_TOT" :: 4 records, DFs 1, 10, 100[2], RVs from 8.8 to 14.5 ppm (serial dilution, but last 2 records (same RV, same DF, diff batch) have P-flag (pH outside limits) while the others don't) -- use highest TestNum w/ highest DF and P-flag
+  + **KEEP:: TestNum = 10356830**
+
+10) "4957000.43530.2174076.4.200.8_Fe_TOT" :: Couple sets of dilutions, AL_dis is smoken' (59400 ppb!), Ba is high (566 ppb), but two Fe results are broadly similar (36400 vs 42300); use HIGHER DF value (more precise and presumably more within range.)  Was the FE result at DF=1 out of cal-range ?
+  + **KEEP:: TestNum = 10385415**
+
+11) "5952430.43446.2166799.29.365.1_TP_TOT" :: Both results run on LC-tp (batch-ID "-2"); which value is correct ?  No evidence for either one or the other
+  + **KEEP:: TestNum = 10368923**
+
+12) "5994550.43394.2159413.4.365.1_TP_TOT" :: 3 records, first RV re-run at higher DF (likely outside cal-range ?), looks like verification run (2nd batch.num), but similar result an dP-flag added (pH outside control limits), use highest TestNum ?
+  + **KEEP:: TestNum = 10356829**
+
+***
+
+### 9.7 Apply Dupe-record Corrections
+
++ Build on UPHL's response to inquery, or use rationale above
++ Received email from KyleA 190710 re: looking into data issues
++ KyleA responded to email w/ attached corrections to data-issues.
+  + Revised file is: `"wy19q1q2_EDD2.2_DupeRecords_190709_t1-KDA_KBH _RL_edits.xlsx"`
++ Records to keep are identified in the above _listing_ of SKey5 issues...
+  + Add above-listed corrections to `dupe_sk5`
+
+```{r}
+dupe_sk5 %<>% mutate(
+  TestNum_to_keep = c(10346680, 10388807, 10388807, 10388807, 10388807, 10388807, 10388807,
+                      10388807, 10388807, 10388807, 10376700,10344506,10344507, 10350889,
+                      10372430,10356721,10356830,10385415,10368923,10356829)
+)
+```
+
++ adjust dup_status in `EDD2_2`
+
+```{r}
+#
+EDD2_2 %<>% mutate(
+  dupe_status = case_when(
+    dupe_status == "dupe" &
+      SKey5 %in% dupe_sk5$SKey5 &
+      Test.Number %in% dupe_sk5$TestNum_to_keep ~ as.character(NA),
+    dupe_status == "dupe" &
+      SKey5 %in% dupe_sk5$SKey5 &
+      !Test.Number %in% dupe_sk5$TestNum_to_keep ~ "drop",
+    !is.na(dupe_status) ~ dupe_status,
+    TRUE ~ as.character(NA)))
+
+
+EDD2_2 %>% filter(!is.na(dupe_status)) %>% 
+  {addmargins(table(.$SKey5, .$dupe_status, useNA="ifany", deparse.level = 2))}
+
+```
+
++ Samples to keep: shere dupe_status != "drop"
+
+***
+
+### RECORD selection for dataset
+
+> PARAM_status == "REVIEW"  
+> dupe_status == _NULL_
+
++ Convert dupe_status = "drop" to PARAM_status == "REJECTED"
+
+
+```{r}
+EDD2_2 %>% {addmargins(table(.$PARAM_status, .$RECORD_STATUS,
+                             useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+EDD2_2 %<>% mutate(
+  PARAM_status = case_when(
+    PARAM_status == "REVIEW" &
+      dupe_status == "drop" ~ "REJECTED",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA)))
+```
+
++ Post-fix table
+
+```{r}
+EDD2_2 %>% {addmargins(table(.$PARAM_status, .$RECORD_STATUS,
+                             useNA="ifany", deparse.level = 2))}
+```
+
+
+### Version DF
+
+```{r}
+EDD2_2 -> EDD2_3
+```
+
+***
+***
+
+
+## Parameter Specific Results-review
+
+1) TDS/TSS/TVS sample volume corrections
+  + compiled xls datafile in project folder...
+2) CHLA calcs
+3) PERI calcs
+4) ?
+
+***
+
+## 10.0 Total Solids RL corrections
+
+### 10.1 Import datafiles
+
+**Locate and Select Datafiles to Load/Import**
+
+```{r}
+# file.solids01  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# # openxlsx::getSheetNames(file.solids01)
+# # solids1 <- openxlsx::read.xlsx(file.solids01, sheet=1, startRow = 1,
+#                               # rowNames=FALSE, check.names = T)
+# # 2nd file
+# file.solids02  <- choose.files(caption="Select _working_ DATA file [*.xlsx]", multi = FALSE)
+# # openxlsx::getSheetNames(file.solids02)
+# # solids2 <- openxlsx::read.xlsx(file.solids02, sheet=1, startRow = 1,
+#                               # rowNames=FALSE, check.names = T)
+```
+
+**Solids file #1**  
+
++ File :: [`r basename(file.solids01)`]
++ Worksheets :: [`r openxlsx::getSheetNames(file.solids01)`] 
++ Path :: [`r dirname(file.solids01)`]
++ Last Accessed :: [`r file.mtime(file.solids01)`]
+
+**Solids file #2**  
+
++ File :: [`r basename(file.solids02)`]
++ Worksheets :: [`r openxlsx::getSheetNames(file.solids02)`] 
++ Path :: [`r dirname(file.solids02)`]
++ Last Accessed :: [`r file.mtime(file.solids02)`]
+
+**Now import all sheets into list of DFs from file**
+
+```{r READ_SHEETS_FXN}
+read_all_sheets = function(xlsx_filename, ...) {
+  sht_names = openxlsx::getSheetNames(xlsx_filename)
+  sht_list = as.list(rep(NA, length(sht_names)))
+  names(sht_list) = sht_names
+  for (sname in sht_names) {
+    sht_list[[sname]] = openxlsx::read.xlsx(xlsx_filename, sheet=sname)
+  }
+  return((sht_list))
+}
+
+```
+
+```{r}
+solids01 <- read_all_sheets(file.solids01)
+solids02 <- read_all_sheets(file.solids02)
+
+solids_dat <- plyr::ldply(c(solids01, solids02),
+                          .id="PARAM")
+```
+
+```{r}
+solids_dat %>% {addmargins(table(.$PARAM, .$Analyte, useNA="ifany", deparse.level = 2))}
+# check for duplicate records...
+solids_dat %>% distinct(.) %>% nrow(.)
+```
+
++ Check for duplicate records in combined file :: 
+  + fxn: `r if(solids_dat %>% distinct(.) %>% nrow(.) != nrow(solids_dat)) {"check for duplicates"}else{"No duplicate records found"}`
+
+***
+
+### 10.2 Compare RLs and DFs b/w EDDs and solids_data
+
+```{r}
+EDD2_3 %>% filter(ParamX == "TSS") %>%
+  select(Project.Name, PARAM_status, Sample.Number, MLID,
+         QC_type:Sample.Time, MPFx.key, ParamX, 
+         Problem.Identifier:Proj_GRP, project, SKey5, MLID.type) %>%
+  arrange(Sample.Number)
+```
+
+? any duplicates?  
+
+  + Nope - for either file...
+
+**For solids_dat** records, which results are present in the current 2019wy_q1q2 dataset?
+
+
+```{r}
+TSS_Snums <- EDD2_3 %>% filter(ParamX == "TSS") %>% {unique(.$Sample.Number)}
+TDS_Snums <- EDD2_3 %>% filter(ParamX == "TDS") %>% {unique(.$Sample.Number)}
+TVS_Snums <- EDD2_3 %>% filter(ParamX == "TVS") %>% {unique(.$Sample.Number)}
+
+solids_dat %<>% mutate(
+  edd23_match = case_when(
+    PARAM == "TSS" &
+      Sample_Number %in% TSS_Snums ~ "YES",
+    PARAM == "TDS" &
+      Sample_Number %in% TDS_Snums ~ "YES",
+    PARAM == "TVS" &
+      Sample_Number %in% TVS_Snums ~ "YES",
+    TRUE ~ "no")
+  )
+
+```
+
+```{r}
+solids_dat %>% 
+  {addmargins(table(.$PARAM, .$edd23_match, useNA="ifany", deparse.level = 2))}
+```
+
++ Analysis-review Date-range for TSS-sample.number matches
+  + From [`r solids_dat %>% filter(PARAM=="TSS" & edd23_match=="YES") %>% {min(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`] to [`r solids_dat %>% filter(PARAM=="TSS" & edd23_match=="YES") %>% {max(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`]
+
++ Analysis-review Date-range for TDS-sample.number matches
+  + From [`r solids_dat %>% filter(PARAM=="TDS" & edd23_match=="YES") %>% {min(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`] to [`r solids_dat %>% filter(PARAM=="TDS" & edd23_match=="YES") %>% {max(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`]
+
++ Analysis-review Date-range for TVS-sample.number matches
+  + From [`r solids_dat %>% filter(PARAM=="TVS" & edd23_match=="YES") %>% {min(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`] to [`r solids_dat %>% filter(PARAM=="TVS" & edd23_match=="YES") %>% {max(as.Date(.$Date_Reviewed, origin="1899-12-30"), na.rm=T)}`]
+
+### 10.3 Update and Annotate solids-results in EDD2_3 (to `EDD2_4`)
+
++ For `ParamX` %in% (TSS, TVS, TDS) and `Sample.Number` %in% solids_dat (where `edd23_match` == "YES")
+  + Update `Dilution.Factor` in EDD_file to "Dilution.Factor" provided for the matching record in soildS_dat
+  + Add annotation / comment to `Result.Comment`
+
+```{r}
+# EDD2_3_copy1 <- EDD2_3
+
+EDD2_4 <- EDD2_3 %>% 
+  left_join(.,
+            select(solids_dat, PARAM, Sample_Number, Updated.Result, Dilution.Factor),
+            by = c("ParamX" = "PARAM", "Sample.Number" = "Sample_Number")) %>%
+  select(project:Result.Value, Updated.Result, 
+         Lower.Report.Limit:Units, 
+         Dilution.Factor = Dilution.Factor.x, 
+         DF_updated = Dilution.Factor.y,
+         everything()) %>%
+  mutate(
+    Result.Comment = case_when(
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor &
+        Result.Value == Updated.Result &
+        is.na(Result.Comment) ~ "DF updated by UPHL",
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor &
+        Result.Value == Updated.Result &
+        !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                       "DF updated by UPHL", sep="| "),
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor &
+        Result.Value != Updated.Result &
+        is.na(Result.Comment) ~ "Result & DF updated by UPHL",
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor &
+        Result.Value != Updated.Result &
+        !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                       "Result & DF updated by UPHL", sep=" | "),
+      !is.na(Result.Comment) ~ Result.Comment,
+      is.na(Result.Comment) ~ as.character(NA)),
+    Dilution.Factor = case_when(
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor ~ DF_updated,
+      TRUE ~ Dilution.Factor),
+    Result.Value = case_when(
+      ParamX %in% c("TSS", "TDS", "TVS") &
+        DF_updated != Dilution.Factor &
+        Result.Value != Updated.Result ~ Updated.Result,
+      TRUE ~ Result.Value)
+)
+
+
+EDD2_4 %>% filter(ParamX %in% c("TSS", "TDS", "TVS")) %>% 
+  {addmargins(table(.$Result.Comment, .$ParamX, useNA="ifany"))} %>%
+   htmlTable::htmlTable(., css.cell = rbind(
+                        rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;",
+                            times = ncol(.) + 1),
+                        matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;",
+                               ncol =ncol(.) + 1,nrow = nrow(.))), total = T)
+
+# EDD2_3x$Result.Value[10127] == EDD2_3x$Updated.Result[10127]
+# EDD2_3x$Dilution.Factor.x[10127] != EDD2_3x$Dilution.Factor.y[10127]
+
+```
+
+
+```{r}
+EDD2_4 %>%
+  filter(ParamX %in% c("TSS", "TDS", "TVS")) %>%
+  {addmargins(table(.$ParamX,
+                    !is.na(.$DF_updated), useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+# records where the Result.Value was also updated...
+EDD2_4 %>%
+  filter(ParamX %in% c("TSS", "TDS", "TVS")) %>%
+  {addmargins(table(.$ParamX,
+                    (!is.na(.$DF_updated) & .$Result.Value != .$Updated.Result),
+                    useNA="ifany", deparse.level = 2))}
+```
+
+> **The remainder of the records in `solids_dat` are for results _BEFORE_ and _AFTER_ this dataset-group (WY2019.q01q02)**
+
+***
+***
+
+## 11.0 Chlorophyll-a Calculations
+
+[`190716`]
+
++ Identify records w/ CHL results
++ Identify CHL-results w/ Filtration-Volume record
+  + Any missing ?
+
+### 11.1 ID CHL results
+
+```{r}
+chl_methods <- c("10200H", "10300C", "HPLCmod", "HPLC")
+
+EDD2_4 %>% 
+  filter(Method.ID %in% chl_methods) %>%
+  {addmargins(table(.$ParamX, .$Method.ID, useNA = "ifany", deparse.level = 2))}
+#
+EDD2_4 %>% 
+  filter(PARAM_status == "REVIEW") %>%
+  filter(Method.ID %in% chl_methods) %>%
+  {addmargins(table(.$ParamX, .$Method.ID, useNA = "ifany", deparse.level = 2))}
+
+```
+
+```{r}
+EDD2_4 %>% filter(Method.ID %in% chl_methods) %>%
+  {addmargins(table(paste(.$match_STATUS,
+                          .$RECORD_STATUS, sep="_"),
+                    .$PARAM_status, useNA="ifany", deparse.level = 2, 
+                    dnn=c("match_RECORD.status", "PARAM_status")))}
+```
+
++ Only need records where PARAM_status == "REVIEW", as others for CHL are already imported
+
+
++ Cleanup DF fields
+
+```{r}
+EDD2_4 %<>% 
+  select(-dupe_status, -SKey5, -Updated.Result, -DF_updated,
+         -SKey4, -file_WYqtr, -file_date,
+         -CAS.Number, everything()) %>%
+  select(project:PARAM_status, SKey2, everything())
+```
+
+***
+
+### 11.2 ID records where Filtered Volume is _missing_
+
+```{r}
+EDD2_4 %>% filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%
+  {addmargins(table(.$SKey2,
+                    paste(.$Method.ID,
+                          .$ParamX, sep="_"),
+                    useNA="ifany", deparse.level = 2,
+                    dnn=c("SKey2", "Meth_ParamX")))} %>% 
+   htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.2em; padding-right: 0.2em;font-size: 0.6em;", times=ncol(.)+1), matrix("padding-left: 0.2em; padding-right: 0.2em; font-size: 0.6em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T, align="r|cccccccc|c")
+```
+
++ Number of importable record-sets (as SKey2) with Method.ID %in% chl_methods but no "FiltVOL" parameter...
+  + `r EDD2_4 %>% filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%  mutate(MParkey2 = paste(.$Method.ID, .$ParamX, sep="_")) %>%  distinct(SKey2, Result.Value, MParkey2) %>% spread(MParkey2, Result.Value) %>% select(SKey2, FiltVOL=contains("FiltVOL", ignore.case = T)) %>% filter(is.na(.data$"FiltVOL")) %>% nrow()`
+  + Records: `r EDD2_4 %>% filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%  mutate(MParkey2 = paste(.$Method.ID, .$ParamX, sep="_")) %>%  distinct(SKey2, Result.Value, MParkey2) %>% spread(MParkey2, Result.Value) %>% select(SKey2, FiltVOL=contains("FiltVOL", ignore.case = T)) %>% filter(is.na(.data$"FiltVOL")) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.2em; padding-right: 0.2em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.2em; padding-right: 0.5em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))`
+
+
+```{r}
+# EDD2_4 %>% filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%  mutate(MParkey2 = paste(.$Method.ID, .$ParamX, sep="_")) %>%  distinct(SKey2, Result.Value, MParkey2) %>% spread(MParkey2, Result.Value) %>% select(SKey2, FiltVOL=contains("FiltVOL", ignore.case = T)) %>% filter(is.na(.data$"FiltVOL"))
+
+EDD2_4 %>% 
+  filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>% 
+  mutate(MParkey2 = paste(.$Method.ID, .$ParamX, sep="_")) %>%
+  distinct(SKey2, Result.Value, MParkey2) %>%
+  spread(MParkey2, Result.Value) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.3em; padding-right: 0.3em;font-size: 0.6em;", times=ncol(.)+1), matrix("padding-left: 0.3em; padding-right: 0.3em; font-size: 0.6em;", ncol=ncol(.)+1, nrow=nrow(.))), align="rr|c|c|c|c|c|c|c|c")
+
+```
+
++ Using SKey4 (MLID + SDate + SampType), search for record w/ missing FiltVOL in `field_5` data
+
+```{r}
+sk4_noVols <- EDD2_4 %>% 
+  filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%  
+  mutate(MParkey2 = paste(.$Method.ID, .$ParamX, sep="_")) %>%  
+  distinct(SKey2, Sample.Type, Result.Value, MParkey2) %>% 
+  spread(MParkey2, Result.Value) %>% 
+  select(SKey2, FiltVOL=contains("FiltVOL", ignore.case = T), Sample.Type) %>% 
+  filter(is.na(.data$"FiltVOL")) %>% 
+  select(SKey2, Sample.Type) %>% data.frame(.) %>%
+  tidyr::separate(., SKey2,
+                c("mlid", "sdate", "snum"),
+                sep="[.]", remove=F) %>%
+  select(-snum) %>%
+  unite(., "SKey1", c("mlid", "sdate"), remove = F, sep=".") %>%
+  select(-mlid, -sdate)
+```
+
++ Sample types from samples lacking filtration volume
+
+```{r}
+EDD2_4 %>% filter(SKey2 %in% sk4_noVols$SKey2) %>% distinct(SKey2, Sample.Type)
+```
+
+
+
++ Find elements of SKey2 in field_5 [SKey4] [ignore SampType for now, since field and chem records can and do differ in SampTypes...]
+
+```{r}
+field_5 %>% filter(SKey1 %in% sk4_noVols$SKey1) %>%
+  select(match_STATUS, SKey4, SampType = Ignore.3,
+         CHL_method = Ignore.20, FiltVOL = Ignore.21)
+```
+
++ Looks like all the missing vols are for SampType = 2, where filtered volume = 250 mL (each)
+
++ Add volume note to Result.Comment
+
+```{r}
+EDD2_4 %<>% mutate(
+  Result.Comment = case_when(
+    SKey2 %in% sk4_noVols$SKey2 &
+      is.na(Result.Comment) ~ "FiltVOL= 250 mL",
+    SKey2 %in% sk4_noVols$SKey2 &
+      !is.na(Result.Comment) ~ paste(.$Result.Comment,
+                                     "FiltVOL= 250 mL", sep="; "),
+    !is.na(Result.Comment) ~ Result.Comment,
+    TRUE ~ as.character(NA)))
+```
+
+
+***
+
+### 11.3 Calculate CHL concentrations and CHL-RLs
+
++ Data/record filters:
+  + PARAM_status=="REVIEW"
+  + MPFx.key _{ends with}_ "_X" (or Matrix.Description=="Filter")
+
+#### [1] Extract Filtered Volumes
+
+```{r}
+left_join(
+    EDD2_4 %>% filter(Method.ID %in% chl_methods & PARAM_status == "REVIEW") %>%
+      distinct(SKey2),
+    EDD2_4 %>% filter(Method.ID %in% chl_methods & 
+                        PARAM_status == "REVIEW" & 
+                        ParamX=="FiltVOL") %>%
+      distinct(SKey2, Result.Value),
+    by=c("SKey2"="SKey2")) %>% arrange(SKey2) %>%
+  left_join(.,
+            EDD2_4 %>% filter(Method.ID %in% chl_methods & 
+                                PARAM_status == "REVIEW" &
+                                !is.na(Result.Comment)) %>% 
+              distinct(SKey2, .keep_all=T) %>% select(SKey2, Result.Comment),
+            by = c("SKey2" = "SKey2")) %>%
+  mutate(
+    Result.Value=case_when(
+      is.na(Result.Value) ~  as.numeric(stringr::str_extract(.$Result.Comment,
+                                                  "[:digit:]{2,4}")),
+      !is.na(Result.Value) ~ Result.Value)) %>%
+  {. ->> CHL_vols} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.)))) 
+```
+
+#### VERSION DATAFRAME
+
+```{r}
+# EDD2_4 -> EDD2_5  ## versioning is performed during the Filtered-Volumn Join (see below)
+```
+
+#### [2] Apply Concentration Calculations to dataset, for key CHL-related variables
+
++ Parameters that require a Concentation Calculation ::
+  `r EDD2_4 %>% filter(PARAM_status=="REVIEW" & Method.ID %in% chl_methods) %>% {addmargins(table(.$ParamX, .$Method.ID, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.)))) `
+
+  + "CHLA" :: both methods
+  + "CHLA.tot" :: 10200 only, needs a calc for hplc
+  + "PHEO" :: both methods
+
+```{r}
+chl_params <- c("CHLA", "CHLA.tot", "PHEO")
+```
+
+
++ Calculated concentartions will be placed into a _NEW COLUMN_ `RV_conc` in the dataframe, adjacent to Result.Value (currently)
+ 
++ Units  
+`r EDD2_4 %>% filter(PARAM_status=="REVIEW" & Method.ID %in% chl_methods) %>% {addmargins(table(.$MPFx.key, .$Units, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.)))) `
+  + raw CHL-results are reported in two different units for the two methods
+  + 10200H = MG
+  + HPLCmod = UG
+
+
+```{r}
+EDD2_5 <- left_join(EDD2_4,
+                    CHL_vols %>% select(-Result.Comment, CHL_VOL = Result.Value),
+                    by = c("SKey2" = "SKey2")) %>%
+  select(project:Result.Value, CHL_VOL, everything())
+```
+
+```{r}
+EDD2_5 %<>% mutate(
+  RV_conc = case_when(
+    PARAM_status=="REVIEW" & Method.ID %in% chl_methods &
+      ParamX %in% chl_params & !is.na(Result.Value) & !is.na(CHL_VOL) & 
+      Units=="MG" ~ signif((Result.Value * 1000) / (CHL_VOL / 1000), digits=4),
+    PARAM_status=="REVIEW" & Method.ID %in% chl_methods &
+      ParamX %in% chl_params & !is.na(Result.Value) & !is.na(CHL_VOL) & 
+      Units=="UG" ~ signif((Result.Value) / (CHL_VOL / 1000), digits=4),
+    TRUE ~ as.numeric(NA))) %>% 
+  mutate(
+    RV_c_Units = case_when(
+      !is.na(RV_conc) ~ "ug/L",
+      TRUE ~ as.character(NA))) %>%
+  select(project:Result.Value, RV_conc, RV_c_Units, CHL_VOL, everything()) %>%
+  arrange(SKey5)
+
+```
+
+
+> **Need to work out how & where to apply the calculations to the RLs**
+
+> **Also, I think we need to revisit ALL PERI results (10300C) adn review for accurate calculations**
+
+#### Export working file
+
+```{r}
+# openxlsx::write.xlsx(EDD2_5, file="EDD2_5_xx_190716.xlsx")
+```
+
+***
+### 11.4 Maintain CHL results for CHL-only import
+
+A couple additional tasks required, let's leave CHL / PERI results and import them separately after the larger CHL push is completed this summer.
+
++ Change PARAM_status for CHL-related records from `REVIEW` to `HOLD_chl`
+
+```{r}
+EDD2_5 %<>% mutate(
+  PARAM_status = case_when(
+    PARAM_status=="REVIEW" & 
+      Method.ID %in% chl_methods ~ "HOLD_chl",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA)))
+```
+
+
+
+
+***
+***
+
+## Prepare Data for AWQMS import
+
+## 12.0 DF cleanup for Import-review
+### 12.1 PARAM- and RECORD-status
+
++ Based on the above referenced notebooks (previous and current), parameter status has been reviewed and corrected and/or annotated to comply with expected result formats
+
+```{r}
+EDD2_5 %>% {addmargins(table(.$RECORD_STATUS, .$PARAM_status,
+                             useNA="ifany", deparse.level = 2))}
+```
+
++ Working set:
+  + `PARAM_status` == _REVIEW_
+    + includes some records that lack field matches, but
+    + Excludes GKM
+    + Excludes HAB
+    + Excludes previously imported records
+
+Sample metadata corrections applied to parameter-method result.value, and reporting limit expectations, result-code data-flags and QC-related comments
+
++ _Df cleanup - variable-order_
+
+```{r}
+EDD2_5 %<>% select(-match_STATUS, -Batch.Number, -Test.Number,
+                   -Lab.filename, -Proj_GRP, -Replicate.Number,
+                   everything())
+```
+
+
++ Taking a closer look at PARAM_status == NA
+
+```{r}
+EDD2_5 %>% filter(is.na(PARAM_status)) %>%
+  {addmargins(table(.$Method.ID, 
+                    .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ re-code RECORD_STATUS for 8260 / 8015B / 1664 as `Compliance`
++ also code all "GWater" projects as 'Compliance'
++ then, translate RECORD_STATUS == "Compliance" to PARAM_status == "Ignore"
+
+```{r}
+EDD2_5 %<>% mutate(
+  RECORD_STATUS = case_when(
+    is.na(PARAM_status) & is.na(RECORD_STATUS) &
+      Method.ID %in% c("8015B", "8260", "1664") ~ "Compliance",
+    project=="GWater" ~ "Compliance",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA))) %>%
+  mutate(
+    PARAM_status = case_when(
+    RECORD_STATUS == "Compliance" ~ "IGNORE",
+    !is.na(PARAM_status) ~ PARAM_status,
+    TRUE ~ as.character(NA)))
+```
+
+```{r}
+EDD2_5 %>% {addmargins(table(.$RECORD_STATUS, .$PARAM_status,
+                             useNA="ifany", deparse.level = 2))}
+```
+
++ Looks like all record-types accounted for...
++ **All records w/ PARAM_status == "REVIEW" are suitable for import, but a relatively small subset of these require additional work to ensure that there is a field-match record
+
+### 12.2 Remaining Tasks
+
+1) Figure out what RESULT_STATUS should be for these records, and then assign
+2) Identify key-fields required for AWQMS-import and ensure that records in these fields have appropriate data-types and structure (`data.class`)
+3) Re-arrange fields into an order appropriate for RP to continue import to AWQMS
+
+
+#### Export AWQMS_PREP datafile
+
++ Version DF to `EDD2_6`
++ Export to `*.XLSX` / `*.RDS` for review
+
+```{r}
+EDD2_5 -> EDD2_6
+
+# openxlsx::write.xlsx(EDD2_6, file=paste("wy19q1q2_uphlLIMS_EDD2.6_PREIMPORT_",
+#                                         format(Sys.Date(), "%y%m%d"),
+#                                         ".xlsx", sep=""))
+# saveRDS(EDD2_6, file=paste("wy19q1q2_uphlLIMS_EDD2.6_PREIMPORT_",
+#                                         format(Sys.Date(), "%y%m%d"),
+#                                         ".rds", sep=""))
+```
+
+
+
+***
+***
+
+## 13.0 Complete data formatting for AWQMS-import
+
+### 13.1 Re-integrate field-names to match AWQMS Import.Config
+
++ Import RPs current import-config Field-Names
+
+```{r}
+# file.ic_headers <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+impconfig_hdrs <- openxlsx::read.xlsx(file.ic_headers, sheet=1, startRow = 1, 
+                              rowNames=FALSE, check.names=TRUE)
+```
+
++ Filename ::  [`r basename(file.ic_headers)`]
++ Path :: [`r dirname(file.ic_headers)`]
++ Last Accessed :: [`r file.mtime(file.ic_headers)`]
+
+### 13.2 Build Header-Conversion-Table
+
+```{r}
+ic.hdr <- names(impconfig_hdrs)
+names(impconfig_hdrs)
+```
+
+```{r}
+header_table <- data.frame(imp_config = ic.hdr)
+```
+
++ Pull full field-names from previous import file...
+
+```{r}
+# file.ic_headers_02 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+chem_import_hdrs <- openxlsx::read.xlsx(file.ic_headers_02, sheet=1, startRow = 1, 
+                              rowNames=FALSE, check.names=TRUE) %>% names(.)
+```
+
++ Filename ::  [`r basename(file.ic_headers_02)`]
++ Path :: [`r dirname(file.ic_headers_02)`]
++ Last Accessed :: [`r file.mtime(file.ic_headers_02)`]
+
+```{r}
+hedtab2 <- data.frame(chem_hdr = chem_import_hdrs[2:84])
+header_table %<>% bind_cols(., hedtab2)
+```
+
++ None of this works...get full headers from RyanP...
+
++ Generate Names table from `EDD2_6`
+
+```{r}
+EDD_names <- EDD2_6 %>% names() %>% data.frame(.)
+##
+# list(EDD_names, header_table) %>% openxlsx::write.xlsx(.,file="EDD_heads_190718.xlsx")
+```
+
+***
+
++ Import compiled headers file
+
+```{r}
+# file.chem_headrs03 <- choose.files(caption="Select DATA files [*.xlsx]", multi = TRUE)
+awqms_EDD_Header_table <- openxlsx::read.xlsx(file.chem_headrs03, sheet="DATA_headers", startRow = 1, 
+                              rowNames=FALSE, check.names=TRUE)
+```
+
++ Filename ::  [`r basename(file.chem_headrs03)`]
++ Path :: [`r dirname(file.chem_headrs03)`]
++ Last Accessed :: [`r file.mtime(file.chem_headrs03)`]
+
+***
+
++ Required field-names for RyanPs import.config
+
+```{r}
+awqms_EDD_Header_table %>% filter(!is.na(posn)) %>% select(-posn2, -tdh_fastfile) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.), nrow=nrow(.))), rname=F, header=c("Seq_n", "Posn_n", "Import.Config_names", "edd2019_names", "Comments"), align="rr|lc|l", caption="List of required field-names and positions for current AWQMS import configuration for UPHL lab data")
+```
+
++ _All other fields can be ignored for the import.configuration, per se._
+
++ Based on current status of EDD (`EDD2_6`):
++ **Variables to Add**:
+  + `RESULT_STATUS` [posn 1]
+  + ACT.ID (or ACT_ID) [posn 8], add data-type suffix to `ACT_trunc`
+  + `AWQMS.Key` [posn 223], add sample.fraction ro AWQMS.Key_TRIM
+  + Add COPY of `Units` for all provided Reporting Limits / `Result.Detection.Limits`
+  + `Depth_activity` [posn39]
+  + `Depth_top` [posn 40]
+  + `Depth_bottom` [posn 41]
+  + `Activity.Type` / ACT.type : (see previous import notes, requires multi-variable translation)
+
+***
+
+### 13.3 Activity.Type
+
+_Apparent Rules_
+
+1) QC = Blank :: SampType == 4 (always; even Lakes) & Act.type = "Quality Control Sample-Field Blank" & No Sample.depths assigned
+2) Lakes & QC =  _NULL_ :: SampType == 2 & Act.type = "Sample-Routine"
+    **??**
+3) Lakes & QC = "Replicate" :: SampType == 2 & Act.type = "Quality Control Sample-Field Replicate" & Activity Top / Bottom Depths of 0-2 m
+    **??**
+4) SampType = 4 & MLID.type != "Lake" & QC = _NULL_ :: Act.Type = "Sample-Routine"
+  
+
+**Expected Activity.Types based on AWQMS export**
+
+```{r}
+awqms_ACTID_19q1q2 %>% distinct(ActivityType) %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="l")
+```
+
++ Above table-list should also include "Quality Control Sample-Field Blank", since equipment blanks are no longer explicitly described, except as by QC_type and Sample.Fraction
+
++ Chemistry-related records have the following possible Activity.Types:
+  + Sample-Routine :: SType[4]
+  + Sample-Integrated Vertical Profile :: MLID.type["LAKES"] & SType[2]
+  + Quality Control Sample-Equipment Blank :: QC_type == "Blank"
+  + Quality Control Sample-Field Replicate :: QC_type == "Replicate"
+
+```{r}
+EDD2_6 %>% 
+  {addmargins(table(.$PARAM_status, .$RECORD_STATUS, useNA="ifany", deparse.level = 2))}
+
+EDD2_6 %>% filter(PARAM_status=="REVIEW") %>%
+  {addmargins(table(.$MLID.type, .$QC_type, useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+EDD2_6 %>% filter(PARAM_status=="REVIEW") %>%
+  {addmargins(table(.$MLID.type, .$Sample.Type, useNA="ifany", deparse.level = 2))}
+
+
+```
+
+
+
++ Is "Activity.Type" or "ACT.type" present in the revised EDD file ?
+  + `r if((EDD2_6 %>% select(., contains(paste("Activity.Type","ACT.type","Activity_type","ACT_type", collapse = "|"),ignore.case = T)) %>% ncol(.)) > 0){"Activity.type variable is present in dataset"}else{"No Activity.Type variable found"}`
+
+
+```{r}
+EDD2_6 %<>% mutate(
+  Activity.Type = case_when(
+    PARAM_status == "REVIEW" &
+      QC_type == "Blank" ~ "Quality Control Sample-Field Blank",
+    PARAM_status == "REVIEW" &
+      QC_type == "Replicate" ~ "Quality Control Sample-Field Replicate",
+    PARAM_status == "REVIEW" &
+      Sample.Type == 2 ~ "Sample-Integrated Vertical Profile",
+    PARAM_status == "REVIEW" &
+      is.na(QC_type) &
+      Sample.Type %in% c(4, 23, 27, 29) ~ "Sample-Routine",
+    TRUE ~ as.character(NA))) %>%
+  select(project:QC_type, Activity.Type, everything())
+```
+
+```{r}
+EDD2_6 %>% filter(PARAM_status=="REVIEW") %>% 
+  {addmargins(table(.$MLID.type, 
+                    .$Activity.Type,
+                    useNA="ifany", deparse.level = 2))}
+
+EDD2_6 %>% filter(PARAM_status=="REVIEW") %>% 
+  {addmargins(table(.$Activity.Type,
+                    .$QC_type, 
+                    useNA="ifany", deparse.level = 2))}
+
+EDD2_6 %>% filter(PARAM_status=="REVIEW") %>% 
+  {addmargins(table(.$Activity.Type,
+                    .$Sample.Type, 
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Looks okay...
+
+***
+
+### 13.4 RESULT_STATUS
+
++ RP suggested "_Provisional_" during import, and then convert to Accepted after dB data-validation
+  + for PARAM_status == "REVIEW" only...
+
+```{r}
+EDD2_6 %<>% mutate(
+  RESULT_STATUS = case_when(
+    PARAM_status=="REVIEW" &
+      RECORD_STATUS == "OK" ~ "Provisional",
+    PARAM_status=="REVIEW" &
+      RECORD_STATUS == "no_match" ~ as.character(NA),
+    PARAM_status %in% c("HAB", "HOLD_chl", "IGNORE") | is.na(PARAM_status) ~ "Ignore",
+    TRUE ~ "REJECTED")) %>%
+  select(RESULT_STATUS, everything())
+```
+
+
+### 13.5 Build AWQMS.Key (full key for characteristic translations)
+
+```{r}
+# EDD2_6 %<>% select(RESULT_STATUS:Sample.Received.Date, AWQMS.Key_TRIM, everything())
+#
+Sample.fractions <- c("Water" = "TOT", 
+                   "Water, Non-filtered" = "TOT",
+                   "Water, Filtered" = "DIS",
+                   "Filter" = "X",
+                   "Soil" = "soil")
+#
+EDD2_6 %<>% mutate(
+  AWQMS.Key = case_when(
+    (RESULT_STATUS == "Provisional" | PARAM_status == "REVIEW") ~ paste(.$AWQMS.Key_TRIM,
+                                             recode(.$Matrix.Description,
+                                                    !!!Sample.fractions),
+                                             sep="-"),
+    TRUE ~ as.character(NA))) %>%
+  select(-AWQMS.Key_TRIM, -MPFx.key, everything()) %>%
+  select(RESULT_STATUS:Sample.Received.Date, AWQMS.Key, everything())
+
+
+```
+
+### 13.6 Add "Units" to Reporting Limits sets
+
++ Also, omit Result.Value when Problem.Identifier == "<" (or ">") AND Result.Code == "U" (or "E") (as ResultVal2)
++ Report Units **only when a result-value / limit-value is reported**
+
+```{r}
+
+EDD2_6 %<>% mutate(
+  ResultVal2 = case_when(
+    PARAM_status == "REVIEW" &
+    !is.na(Result.Value) &
+      !Problem.Identifier %in% c("<", ">") &
+      !Result.Code %in% c("U", "E") ~ Result.Value,
+    TRUE ~ as.numeric(NA)),
+  LRL_units = case_when(
+    PARAM_status == "REVIEW" &
+      !is.na(Lower.Report.Limit) ~ Units,
+    TRUE ~ as.character(NA)),
+  MDL_units = case_when(
+    PARAM_status == "REVIEW" &
+      !is.na(Method.Detect.Limit) ~ Units,
+    TRUE ~ as.character(NA)),
+  Units2 = case_when(
+    !is.na(ResultVal2) ~ Units,
+    TRUE ~ as.character(NA))) %>%
+  select(RESULT_STATUS:Result.Value, ResultVal2, Units2,
+         RV_conc:Lower.Report.Limit, LRL_units,
+         Method.Detect.Limit, MDL_units, everything())
+```
+
+
+_A little column cleanup_
+
+```{r}
+EDD2_6 %<>% select(
+  -Project.Name, -SKey2, -Sample.Received.Date, -project,
+  everything())
+```
+
+
+
+### 13.7 Add three Depth-variables
+
+```{r}
+EDD2_6 %<>% mutate(Activity.Depth.Height.Measure = as.numeric(NA),
+                   Activity.Top.Depth.Height.Measure = as.numeric(NA),
+                   Activity.Bottom.Depth.Height.Measure = as.numeric(NA),
+                   Lab.Sample.Preparation.Method.ID = as.character(NA))
+```
+
+
+#### Version Datafile
+
+```{r}
+EDD2_6 -> EDD2_7
+```
+
+
+### 13.8 Review and Compile Sample/Result comments (as necessary)
+
++ Which fields have result or sample-related information as comments?
+
+```{r}
+EDD2_7 %>% filter(PARAM_status=="REVIEW") %>%
+  select(contains("comment", ignore.case = T)) %>%
+  distinct(.) %>%
+  gather(., key="Comment_field", value="Text") %>%
+  group_by(Comment_field) %>%
+  summarise(n_Unique.comments = n_distinct(Text)-1,
+            n_obs = sum(!is.na(Text))) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ Can ignore `Project.Comment` and `Test.Comment` for this dataset
+
+```{r}
+EDD2_7 %>% filter(PARAM_status == "REVIEW") %>% 
+  select(contains("comment", ignore.case = T)) %>%
+  select(-Project.Comment, -Test.Comment) %>%
+  distinct(.) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="l")
+```
+
++ Unfortunately, the comments fields are a mixed bag b/w "Activity.Comments" versus "Result.Comments"
+
++ Levels of Sample.Comment
+
+```{r}
+EDD2_7 %>% filter(PARAM_status == "REVIEW") %>% select(Sample.Comment) %>% 
+  filter(!is.na(.)) %>% distinct(.) %>% arrange(Sample.Comment)
+```
+
+  + These are all okay as `Activity.Comments`
+
++ Levels of Result.Comment
+
+```{r}
+EDD2_7 %>% filter(PARAM_status == "REVIEW") %>% select(Result.Comment) %>% 
+  filter(!is.na(.)) %>% distinct(.) %>% arrange(Result.Comment)
+```
+
+  + These are okay as `Result.Comments`
+
++ Levels of Comment
+
+```{r}
+EDD2_7 %>% filter(PARAM_status == "REVIEW") %>% select(Comment) %>% 
+  filter(!is.na(.)) %>% distinct(.) %>% arrange(Comment)
+```
+
++ These are all `Comments`, but some may be duplicative of `Result.Comment`...
+  + some of the comments suggest that data quality of that result is poor...
+    + "recovery not within control limits"
+    + "failed to meet quality control"
+    + "criteria not within control limits"
+  + Records containing the above phrases in comments should have RESULT_STATUS changed to **REJECTED**
+  + Records containing "Reject result" in Result.Comment should be rejected...
+
+
++ Lets compare just the Result.Comment and Comment groups
+
+```{r}
+EDD2_7 %>% filter(PARAM_status == "REVIEW") %>% 
+  select(contains("comment", ignore.case = T)) %>%
+  select(-Project.Comment, -Test.Comment, -Sample.Comment) %>%
+  distinct(.) %>% arrange(Result.Comment, Comment) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="l")
+```
+
+#### **Comment Summary**
+
+1) **`Sample.Coment`** [in dataset] can be used in place of **`Activity.Comment`** in the Import.config
+  + Also, remove all leading ";" at the beginning of comments
+
+2) When `Result.Comment` contains "Reject result (dataflag)", can IGNORE `Comment` but CHANGE `RESULT_STATUS` to "REJECTED"
+
+3) When `Result.Comment` contains "Examine result (dataflag)", can IGNORE `Comment` and leave `RESULT_STATUS` asis...
+
+4) Remove all leading "NA"s (including spaces) from beginning of commeents (`Result.Comment`)
+
+5) When `Result.Comment` is _NULL_ but `Comment` is NOT, then transfer to `Result.Comment`
+
+**Run this under a new version of dataset**
+
+```{r}
+EDD2_8 <- EDD2_7 %>% 
+  mutate(
+    Sample.Comment = case_when(
+      PARAM_status == "REVIEW" &
+        grepl("^;", .$Sample.Comment) ~ sub("^;", "", .$Sample.Comment),
+      !is.na(Sample.Comment) ~ Sample.Comment,
+      TRUE ~ as.character(NA))) %>% 
+  mutate(
+    Result.Comment = case_when(
+      PARAM_status == "REVIEW" &
+        grepl("^NA", .$Result.Comment) ~ sub("^NA ", "", .$Result.Comment),
+      PARAM_status == "REVIEW" &
+        !is.na(Result.Comment) ~ Result.Comment,
+      PARAM_status == "REVIEW" &
+        is.na(Result.Comment) & !is.na(Comment) ~ Comment,
+      TRUE ~ as.character(NA))) %>% 
+  mutate(
+    RESULT_STATUS = case_when(
+      PARAM_status == "REVIEW" &
+        RESULT_STATUS == "Provisional" &
+        !is.na(Result.Comment) &
+        grepl("Reject result", .$Result.Comment) ~ "REJECTED",
+      !is.na(RESULT_STATUS) ~ RESULT_STATUS,
+      TRUE ~ as.character(NA)))
+# EDD2_8 -> EDD2_8_copy
+```
+
++ Review
+
+```{r}
+EDD2_8 %>% filter(PARAM_status == "REVIEW") %>% 
+  select(Result.Comment) %>%
+  distinct(.) %>% filter(!is.na(Result.Comment)) %>% arrange(Result.Comment) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.75em; padding-right: 0.75em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), align="l")
+```
+
++ EDD-Commments are okay, ignore `Comment` field
+
+***
+***
+
+## 14.0 Align field names w/ RPs import.config
+
+#### Version datafile
+
+```{r}
+EDD2_9 <- EDD2_8 
+# EDD28_names <- EDD2_8 %>% names(.) 
+# EDD29_names <- EDD2_9 %>% names(.) 
+#
+base_names <- awqms_EDD_Header_table %>%
+filter(!is.na(EDD_2019)) %>% filter(!is.na(imp_config)) %>%
+filter(!grepl("Ignor", .$imp_config)) %>%
+select(imp_config, EDD_2019, ID)
+
+```
+
+
+```{r}
+# add missing columns and rename Result.Value to Result.Value_0
+EDD2_9 %<>% mutate(UQL=as.numeric(NA), UQL_units=as.character(NA)) %>%
+  rename("Result.Value_0" = "Result.Value")
+# map var-names to preferred import var-names
+colnames(EDD2_9) <- plyr::mapvalues(names(EDD2_9),
+                                    as.character(base_names$EDD_2019),
+                                    as.character(base_names$imp_config))
+
+
+```
+
++ Now re-arrange vars by order of base_names...
+
+```{r}
+EDD2_9 %<>% select(., !!! base_names$imp_config, everything())
+# base_names$imp_config %in% names(EDD2_9)
+# sum(names(EDD2_9) %in% base_names$imp_config)
+# names(EDD2_9)[duplicated(names(EDD2_9))]
+# EDD2_9 -> EDD2_9_copy
+```
+
+
+### 14.1 Expand ACT.ID to full Activity.ID
+
++ add "-C"
+
+```{r}
+EDD2_9x <- EDD2_9 %>%
+  mutate(Activity.ID = paste(.$Activity.ID,
+                                      "-C", sep=""))
+```
+
+
+
+### 14.2 Export Datafile
+
+```{r}
+# openxlsx::write.xlsx(EDD2_9x, file=paste("wy19q1q2_uphlLIMS_EDD2.9x_Ready_4_IMPORT_",
+#                                         format(Sys.Date(), "%y%m%d"),
+#                                         ".xlsx", sep=""))
+# saveRDS(EDD2_9x, file=paste("wy19q1q2_uphlLIMS_EDD2.9x_Ready_4_IMPORT_",
+#                                         format(Sys.Date(), "%y%m%d"),
+#                                         ".rds", sep=""))
+```
+
+
+
+***
+
+## END
+### Working pieces
+```
+#select(EDD2_2, contains("key", ignore.case=T)) %>% names(.)
+#names(data09_X)[match(rename08[,"old"],names(data09_X))] = rename08[,"new"]
+# ??mycars = setNames(mycars, lookup$newvars[match(names(mycars), lookup$oldvars)])
+# ??rename_(df, .dots = setNames(as.character(variable_match$old), variable_match$new))
+# df %>% set_names( var_match %>% pull(new) %>% magrittr::extract(names(df) %>% match(var_match$old)) )
+```
+
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

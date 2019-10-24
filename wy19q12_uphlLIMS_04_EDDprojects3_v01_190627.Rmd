@@ -1,0 +1,766 @@
+---
+title: "UPHL.LIMS Cleanup [02.03]"
+author: "T.Hooker"
+date: "18 June, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+
+***
+
+**Project Root Path** :: 
+"U:\INFODATA\Sampling\Data_Cleanup_Scripts\190610_UPHL_LIMS_wy19q1q2_CLEANUP"
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidy"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+# graph_package <- c("ggplot2", "scales")
+# if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+**[190610]**  
+
+1) This notebook begins cleanup for UPHL-LIMS data from water-year (WY) 2019, quarters 1 and 2 (October 2018 through March 30, 2019).  
+2) This notebook _may_ also include UPHL-lab records that were not previously imported from the prior water year.
+3) Utah Lake project data were imported through December 2018 (previously)
+
+**[190618]**
+
+4) Notebook continues previous cleanup tasks, starting with project-level (as Project_GRP) review and modify (metadata) elements
+5) Goal here is to ID record that _may match_ to RP's field_data, but have errors in one or more of the Sample-Key-Elements (Trip & MLID & SDate & SampType)
+6) Once this is set (or complete), records can be re-compared against AWQMS data for the time-block and a decision made regard updating the chem-import
+7) Chem - Parameter x Method cleanup can also occur once a reasonable set of projects are sufficiently commplete to allow import to awqms.
+
+_Prior DFs and working sets_
+
++ EDD_0 :: master EDD file :: "EDD_0_190610.rds" :: "U:/INFODATA/Sampling/UPHL_raw_EDDs/uphl_EDD_rawProcessing_r"
++ EDD1_0 :: 2019 wy q1q2 file :: "edd1_wy19q1q2_RAW_190612.RDS" in Project-Folder
++ MonLoc :: Monitoring Locations from AWQMS ::  "MonitoringLocationsIDs_051719.xlsx"
+  + "U:/INFODATA/Sampling/DWQ Monitoring Locations/Monitoring Location IDs"
+  + Last Accessed ::  "2019-06-12 09:01:26 MDT"
++ EDD1_1 :: 2019.q1q2 w/ MLID-info joined :: "edd1_1_wy19q1q2_01_190613.RDS"
++ After awqms_ACTID join :: "edd1_1_wy19q1q2_02_190613.RDS"
++ awqms_ACTID_19q1q2 :: Activity.IDs from AWQMS for 19.q1q2 :: "awqms_ACTID_19q1q2_xx_190618.rds"
++ proj_MLID :: BBs file of MLID & Project sets for this coming year ::
+  + See::  "MonitoringSection2019_MLIDlist.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Data Management/List of MLIDs"
+  + Last Accessed :: "2019-06-14 14:47:43 MDT"
++ field_0 :: RPs _raw field/hydrodata file_ :: "3. 2019_WY_Q1_Q2_ALL_Field_Flow_prep_Combined.xlsx"
+  + "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Hydrodata/2019_wy_4. Data and Information Services/WY_2019 Import prep/Q1 and Q2 (10-1-2018 through 3-31-2019)/Hydrodata"
+  + "2019-06-14 08:35:48 MDT"
+
++ field_1 :: RPs cleaned(tdh) hydrofile ::  "field_1_xx_190618.rds"
++ EDD1_3 :: Working datafile at end of 1st notebook :: "EDD1_3_xx_190618.rds"
++ project_table2 :: sumamry table of `projects` (trimmed TripIDs) and `Project_GRP` for streamlined data-cleanup tasks :: "ProjectTable2_wy19q1q2_190618.rds"
+
+**[190621]**
+
++ Fixing some process errors in EDD data-cleanup and matchups
+
+**[190624]**
+
++ New notebook to continue on w/ Utah Lake (UTLK) and other projects [after CBI was completed]
++ Working dataframes::  `EDD1_5` and `field_2`
+
+**[190627]**
+
++ New notebook, continuing project-level cleanup, w/ TMDL-NonPoint projects
++ Working dataframes:: `EDD1_6` and `field_4`
+
+***
+
+## 7.0 Project-Group Metadata Clean Up
+
++ backup workspace and key DFs
+
+```{r}
+# saveRDS(EDD1_6, file="EDD1_6_working_190627.rds")
+# saveRDS(field_4, file="field_4_working_190627.rds")
+# EDD1_6.copy <- EDD1_6
+# EDD1_6 <- EDD1_6.copy
+## Some cleaning...
+clean_blanks <- c("Sample.Comment", "Sample.Description", "Method.Agency", "Problem.Identifier",
+                  "Result.Code", "Batch.Number", "Test.Comment", "Result.Comment")
+#
+EDD1_6 %<>% mutate_at(vars(clean_blanks),
+                      funs(case_when(
+                          !is.na(.) & . %in% c("", " ") ~ as.character(NA),
+                          !is.na(.) ~ .,
+                          TRUE ~ as.character(NA)
+                      )))
+```
+
+
+### 7.5 TMDL & Non-point Projects
+
++ Project Records
+
+1) Project x Time (YR_mon)
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T))
+```
+
+```{r}
+field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T))
+```
+
++ Summary of Project Records
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>% 
+  {addmargins(table(.$project, 
+         paste(lubridate::year(.$Sample.Date), lubridate::month(.$Sample.Date), sep="_"),
+         useNA="ifany", deparse.level = 2,
+         dnn=c("TMDL_projects", "SDate_YrMon")))}
+#
+field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>% 
+  {addmargins(table(.$project, 
+         paste(lubridate::year(.$Activity.Start.Date), lubridate::month(.$Activity.Start.Date), sep="_"),
+         useNA="ifany", deparse.level = 2,
+         dnn=c("TMDL_projects", "SDate_YrMon")))}
+```
+
+#### 7.51 Data Review
+
+**EDDs**
+
+2) MLID accuracy against MonLoc.file
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {table(.$MLID_chek, useNA="ifany", deparse.level = 2)}
+```
+
++ Some MLID-errors found
+    + MLIDs: `r EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T) & MLID_chek == "error") %>% {unique(.$MLID)}`
+
+    + This site (4905152) is not found in MonLoc.file or in MLID-change-request logs.
+    + Lab sheet for Mar/2019 samples (19-0308.pdf, pg 4) suggest that the site is a "Replicate" of 4905140 [Logan R at 1000 W].  It may be that this project does not sample hydrodata for field-replicates.  Project contact is Gabe Murray (435-557-5129); part of an nonpoint project.
+    + However, review of field data for this project suggests that the MLID should be 4905142 (instead of xxx5152); confirmed from MonLoc.file
+    + MLID confirmed from review of SAP ("W:\COOPERATORS\06_SAPs\305_NonPointSource\Logan River\WY2019") and lab sheets ("W:\COOPERATORS\04_Lab Sheets\305_Non Point Source\Logan River NPS\WY2019")
++ Correct MLID in EDD and Add Sample comment
+    + (_going back to 02.02 and re-running Ignore.QC.Matchup.Notes to regain notes in field_4_) [**done**]
+
+```{r}
+EDD1_6 %<>% mutate(
+    Sample.Comment = case_when(
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+            MLID == "4905152" &
+            MLID_chek == "error" &
+            is.na(Sample.Comment) ~ "MLID corrected to 4905142",
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+            MLID == "4905152" &
+            MLID_chek == "error" &
+            !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                           "MLID corrected to 4905142",
+                                           sep=";"),
+        !is.na(Sample.Comment) ~ Sample.Comment,
+        TRUE ~ as.character(NA)),
+    MLID = case_when(
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+            MLID == "4905152" &
+            MLID_chek == "error" ~ "4905142",
+        !is.na(MLID) ~ MLID,
+        TRUE ~ as.character(NA)))
+# EDD1_6 %>% filter(MLID == "4905152")
+```
+
++ Re-calc Keys and Matchup Checks...
+
+```{r}
+EDD1_6 %<>% mutate(
+    SKey4 = paste(.$MLID,
+                  as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                  .$Sample.Type,
+                  sep="."),
+    ACT_trunc = paste(.$Trip.ID,
+                      .$MLID,
+                      paste(sprintf("%.2d", lubridate::month(.$Sample.Date)),
+                            sprintf("%.2d", lubridate::day(.$Sample.Date)),
+                            sep=""),
+                      .$Sample.Type,
+                      sep="-"),
+    field_sk4 = case_when(
+        SKey4 %in% field_4$SKey4 ~ "y",
+        !is.na(field_sk4) ~ field_sk4,
+        TRUE ~ as.character(NA)),
+    MLID_chek = case_when(
+        !is.na(MLID) & (MLID) %in% MonLoc$MLID ~ "ok",
+        !is.na(MLID) & !MLID %in% MonLoc$MLID.c ~ "error",
+        is.na(MLID) ~ as.character(NA))
+)
+#  MANUALLY Fix MLID.type & QC_type
+EDD1_6$MLID.type[!is.na(EDD1_6$MLID) & EDD1_6$MLID == 4905142] <- MonLoc$MLID.type[MonLoc$MLID == 4905142]
+EDD1_6$QC_type[!is.na(EDD1_6$MLID) & EDD1_6$MLID == 4905142] <- MonLoc$QC_type[MonLoc$MLID == 4905142]
+```
+
+
+***
+
+3) Field-sk4 matchup (record completeness)
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$field_sk4, useNA="ifany", deparse.level = 2))}
+#
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    distinct(.$SKey4, .keep_all = T) %>%
+    {addmargins(table(.$project, .$field_sk4, useNA="ifany", deparse.level = 2))}
+```
+
++ Found some non-matching records / record-sets
+
+4) Water body type
+    + Records
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$MLID.type, useNA="ifany", deparse.level = 2))}
+```
+
++ Mostly streams and canals, some Lakes
+
+5) Sample Types
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$Sample.Type, useNA="ifany", deparse.level = 2))}
+# water body x SampType
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, 
+                      paste(.$Sample.Type,
+                            trimws(.$MLID.type, "both"),
+                            sep="_"),
+                      useNA="ifany", deparse.level = 2))}
+```
+
+
+6) QC_Type
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$QC_type, useNA="ifany", deparse.level = 2))}
+```
+
++ Blanks have no field-data
++ For _some_ projects, Replicates may not have hydrolab data either...
+
+7) Import STATUS
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$import_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
++ No records from this Project_GRP have been imported to AWQMS...
+
+8) Build and review `match_STATUS`
+
+```{r}
+EDD1_6 %<>% mutate(
+   match_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & field_sk4 == "y" ~ "ok",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & is.na(field_sk4) & QC_type == "Blank" ~ "Blank",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & is.na(field_sk4) ~ "REVIEW",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & !is.na(match_STATUS) ~ match_STATUS,
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)
+))
+#
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+#
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T) & match_STATUS == "REVIEW") %>%
+    distinct(SKey4, .keep_all=T) %>%
+    {addmargins(table(.$project, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
++ A few projects have record-sets that need review...
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$project, 
+                      paste(.$match_STATUS,
+                            .$QC_type, sep="_"),
+                    useNA="ifany", deparse.level = 2,
+                    dnn=c("project", "Match_QCtype")))}
+```
+
++ For record-sets that require Review,
+  + LoganRV projects (possibly MLID issue)?
+  + SnakeCk TMDL ?  all (1) to review
+  + UPRSEVIERNPS ?  all for review, w/ 9 review/replicates
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+  filter(match_STATUS == "REVIEW") %>%
+  distinct(project, Project.Name, SKey4, QC_type, Sample.Date) %>% 
+  arrange(project, SKey4) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="Project EDD-records that require closer review for field-match", align="rccclc")
+```
+
++ For LoganRV records; No information in Tripsheets // Is there a reason no field data collected ?
+  + **Annotate**
+    + Add Ellen to Review...
+  + Have field data for Nov / March events, but not Jan.  No record in Trip Sheets
+
+```{r}
+EDD1_6 %<>% mutate(
+  Sample.Comment = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("4905040.43487.4", "4905137.43487.4") &
+      match_STATUS == "REVIEW" &
+      is.na(Sample.Comment) ~ "No field data found",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("4905040.43487.4", "4905137.43487.4") &
+      match_STATUS == "REVIEW" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                     "No field data found", sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment,
+    TRUE ~ as.character(NA)),
+  match_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("4905040.43487.4", "4905137.43487.4") &
+      match_STATUS == "REVIEW" ~ "REVIEW_EllenB",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+
++ For snake creek :: "SNAKECKTMDL	C2018-06517	5913868.43389.4		2018-10-16", may need to look at older field records ?
+
+```{r}
+EDD1_6 %<>% mutate(
+  Sample.Comment = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("5913868.43389.4") &
+      match_STATUS == "REVIEW" &
+      is.na(Sample.Comment) ~ "No field data found",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("5913868.43389.4") &
+      match_STATUS == "REVIEW" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                     "No field data found", sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment,
+    TRUE ~ as.character(NA)),
+  match_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 %in% c("5913868.43389.4") &
+      match_STATUS == "REVIEW" ~ "REVIEW_EllenB",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+
++ UPRSEVIER...
+  + Dec and March...
+  + Sample.Dates :: `r EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T) & project=="UPRSEVIERNPS" & match_STATUS=="REVIEW") %>% {unique(.$Sample.Date)}`
+  + Sites :: `r EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T) & project=="UPRSEVIERNPS" & match_STATUS=="REVIEW") %>% {unique(.$MLID)}` :: (`r EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T) & project=="UPRSEVIERNPS" & match_STATUS=="REVIEW") %>% {length(unique(.$MLID))}`) unique sites
+
+```{r}
+EDD1_6 %<>% mutate(
+  Sample.Comment = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      project=="UPRSEVIERNPS" &
+      match_STATUS == "REVIEW" &
+      is.na(Sample.Comment) ~ "No field data found",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      project=="UPRSEVIERNPS" &
+      match_STATUS == "REVIEW" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                     "No field data found", sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment,
+    TRUE ~ as.character(NA)),
+  match_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      project=="UPRSEVIERNPS" &
+      match_STATUS == "REVIEW" ~ "REVIEW_EllenB",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+
+> **These last three sets of chem records remain incomplete as of 190630**
+
+***
+
+**Field data**  
+
+1) Sample Type ("Ignore.3")
+
+```{r}
+field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$Ignore.3, useNA="ifany", deparse.level = 2,
+                      dnn=c("project", "SampType")))}
+```
+
+2) EDD-sk4 matchup
+
+```{r}
+field_4 %<>% mutate(
+    edd_sk4 = case_when(
+        SKey4 %in% EDD1_6$SKey4 ~ "y",
+        !is.na(edd_sk4) ~ edd_sk4,
+        TRUE ~ as.character(NA)))
+#
+field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$edd_sk4, useNA="ifany", deparse.level = 2))}
+```
+
+
+3) Build / check `match_STATUS`
+
+```{r}
+field_4 %<>% mutate(
+    match_STATUS = case_when(
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) & edd_sk4 == "y" ~ "ok",
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) & is.na(edd_sk4) & Ignore.3 == 11 ~ "NoSamp_11",
+        grepl("TMDL", .$Proj_GRP, ignore.case = T) & is.na(edd_sk4) ~ "REVIEW",
+        !is.na(match_STATUS) ~ match_STATUS,
+        TRUE ~ as.character(NA)))
+##
+field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+    {addmargins(table(.$project, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
++ 1 field record missing an EDD-matchup
+  + `r field_4 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>% filter(match_STATUS =="REVIEW") %>% distinct(SKey4, project, ACT_trunc, Activity.Start.Date)`
+  + Lab sheet for this record (19-0131.pdf, pg 11) says to discard chem samples.
+  + No Chem data available
+
+4) Annotations
+
++ Note that CHem samples discarded for above sample
+
+```{r}
+field_4 %<>% mutate(
+  Activity.Comment = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 == "4997280.43494.4" &
+      match_STATUS == "REVIEW" &
+      !is.na(Activity.Comment) ~ paste(Activity.Comment,
+                                       "Chem-Samples Discarded [sw]", sep=";"),
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      SKey4 == "4997280.43494.4" &
+      match_STATUS == "REVIEW" &
+      is.na(Activity.Comment) ~ "Chem-Samples Discarded [sw]",
+    !is.na(Activity.Comment) ~ Activity.Comment,
+    TRUE ~ as.character(NA)))
+```
+
++ Change match_STATUS to `NoChem`
+
+```{r}
+field_4 %<>% mutate(
+  match_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) &
+      match_STATUS == "REVIEW" &
+      SKey4 == "4997280.43494.4" ~ "NoChem",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
++ Field data for TMDL/NonPoint projects is clear...
+
+#### 7.52 Annotate records for TMDL projects
+
++ Project-GRP summary
+
+```{r}
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$project, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
++ Annotations to `RECORD_STATUS`
+
+```{r}
+EDD1_6 %<>% mutate(
+  RECORD_STATUS = case_when(
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & 
+      match_STATUS %in% c("ok", "Blank") &
+      is.na(import_STATUS) ~ "TMDL_2_import",
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & 
+      match_STATUS %in% c("ok", "Blank") &
+      !is.na(import_STATUS)  ~ as.character(NA),
+    grepl("TMDL", .$Proj_GRP, ignore.case = T) & 
+      !match_STATUS %in% c("ok", "Blank") ~ as.character(NA),
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)))
+#
+EDD1_6 %>% filter(grepl("TMDL", .$Proj_GRP, ignore.case = T)) %>%
+  {addmargins(table(.$match_STATUS, 
+                    .$RECORD_STATUS,
+                    useNA="ifany", deparse.level = 2))}
+```
+
+***
+
+#### Export DFs // backup
+
+```{r}
+openxlsx::write.xlsx(list("EDD1_6" = EDD1_6, "field_4" = field_4),
+                     file="wy19q12_EDD16_field4_xx_190630.xlsx")
+# saveRDS(EDD1_6, file="wy19q1q2_EDD16_xx_190630.rds")
+# saveRDS(field_4, file="wy19q1q2_field4_xx_190630.rds")
+
+```
+
+## Project-Group STATUS Summary
+
+```{r}
+EDD1_6 %>%
+  {addmargins(table(paste(.$Proj_GRP,
+                          .$project, sep="_"),
+                    .$RECORD_STATUS, useNA = "ifany", deparse.level = 2,
+                    dnn=c("Project_GRP", "RECORD_STATUS")))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="RECORD_STATUS by project", align="l|cccccc|c")
+```
+
++ Projects remaining for review ::  
+  + UCASE - No field records ready yet -- usually an annual project
+  + Unknown [7.6]
+
+***
+***
+
+### Version DFs
+
+```{r}
+EDD1_7 <- EDD1_6
+field_5 <- field_4
+```
+
+
+### 7.6 Unknown Projects
+
++ Also, _NULL_ in Proj_GRP
+
++ No field data available for these records
+
++ Project Records
+
+```{r}
+EDD1_7 %>% filter(Proj_GRP == "Unknown" | is.na(Proj_GRP)) %>%
+  {addmargins(table(.$project, 
+                    paste(lubridate::year(.$Sample.Date), lubridate::month(.$Sample.Date), sep="_"),
+                    useNA="ifany", deparse.level = 2,
+         dnn=c("UNKL_projects", "SDate_YrMon")))}
+```
+
++ Known MLIDs ?
+
+```{r}
+EDD1_7 %>% filter(Proj_GRP == "Unknown" | is.na(Proj_GRP)) %>%
+  {addmargins(table(.$project, !is.na(.$MLID),
+                    useNA="ifany", deparse.level = 2,
+         dnn=c("UNKL_projects", "known_MLID_?")))}
+```
+
++ No (zero) known MLIDs for these records
+
++ What _types_ of samples were collected for these "projects" ??
+
++ **HABs**
+
+```{r}
+EDD1_7 %>% filter(project=="HAB") %>%
+  {addmargins(table(.$Method.ID, .$Matrix.Description,
+                    useNA="ifany", deparse.level = 2))}
+```
+
+_ANNOTATE_
+
++ match_STATUS = "REVIEW"
++ RECORD_STATUS = "Ignore_HAB"
+
+```{r}
+EDD1_7 %<>% mutate(
+  match_STATUS = case_when(
+    project=="HAB" &
+      Method.ID %in% c("ANATOXIN", "MICROCYSTINS", "qPCR") &
+      is.na(match_STATUS) ~ "REVIEW",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)),
+  RECORD_STATUS = case_when(
+    project=="HAB" &
+      Method.ID %in% c("ANATOXIN", "MICROCYSTINS", "qPCR") &
+      is.na(MLID) ~ "Ignore_HAB",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+
++ **USGSGKM**
+
+```{r}
+EDD1_7 %>% filter(project=="USGSGKM") %>%
+  {addmargins(table(.$Method.ID, .$Matrix.Description,
+                    useNA="ifany", deparse.level = 2))}
+# sample-sets
+EDD1_7 %>% filter(project=="USGSGKM") %>%
+  distinct(Project.Name, Method.ID, Matrix.Description, .keep_all=T) %>%
+  {addmargins(table(.$Method.ID, .$Matrix.Description,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Mixed samples, mainly metals
+
+_ANNOTATE_
+
++ match_STATUS = "REVIEW"
++ RECORD_STATUS = "Ignore_GKM"
+  + Sample.Comment = "Notify LucyP_CShope"
+
+```{r}
+EDD1_7 %<>% mutate(
+  match_STATUS = case_when(
+    project=="USGSGKM" &
+      is.na(MLID) &
+      is.na(match_STATUS) ~ "REVIEW",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)),
+  RECORD_STATUS = case_when(
+    project=="USGSGKM" &
+      is.na(MLID) ~ "Ignore_GKM",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)),
+  Sample.Comment = case_when(
+    project=="USGSGKM" &
+      is.na(MLID) & 
+      is.na(Sample.Comment) ~ "Notify_LucyP_CShope",
+    project=="USGSGKM" &
+      is.na(MLID) & 
+      !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                     "Notify_LucyP_CShope",
+                                     sep="; "),
+    !is.na(Sample.Comment) ~ Sample.Comment,
+    TRUE ~ as.character(NA))
+  )
+```
+
++ Project ID / Trip.ID is missing (NA)
+
+```{r}
+EDD1_7 %>% filter(is.na(project)) %>%
+  {addmargins(table(.$Method.ID, .$Matrix.Description,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Mixed, some HAB and some _"other stuff"_
+
++ MLIDs ? :: `r EDD1_7 %>% filter(is.na(project) & !is.na(MLID)) %>% nrow(.)`
+
++ Sample.Date range :: from [`r EDD1_7 %>% filter(is.na(project) & is.na(MLID)) %>% {min(.$Sample.Date, na.rm=T)}`] to [`r EDD1_7 %>% filter(is.na(project) & is.na(MLID)) %>% {max(.$Sample.Date, na.rm=T)}`]
+
++ Types of Sample.Descriptions ??
+
+```{r}
+EDD1_7 %>% filter(is.na(project) & is.na(MLID)) %>%
+  {addmargins(table(.$Sample.Description, .$Matrix.Description,
+                    useNA="ifany", deparse.level = 2))}
+```
+
++ Annotate match_STATUS = "no_SiteID"
+
+```{r}
+EDD1_7 %<>% mutate(
+  match_STATUS = case_when(
+    is.na(project) & is.na(MLID) &
+      is.na(match_STATUS) ~ "no_SiteID",
+    !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)))
+```
+
+```{r}
+EDD1_7 %>% filter(is.na(project) & is.na(MLID)) %>% 
+  {addmargins(table(.$Sample.Description, .$Method.ID,
+                    useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ Appears that two sets of samples (SP1 / SP2) are for some compliance / enforcement, while the rest of these samples are be included in the HABs group.
+
++ Annotate project and Proj_GRP for "NULL" records
+
+```{r}
+EDD1_7 %<>% mutate(
+  project = case_when(
+    is.na(project) & is.na(MLID) & 
+      is.na(Proj_GRP) & 
+      match_STATUS == "no_SiteID" &
+      (grepl("SP1", .$Sample.Description) | grepl("SP2", .$Sample.Description)) ~ "HAB",
+    is.na(project) & is.na(MLID) & 
+      is.na(Proj_GRP) & 
+      match_STATUS == "no_SiteID" &
+      (!grepl("SP1", .$Sample.Description) & !grepl("SP2", .$Sample.Description)) ~ "GWater",
+    !is.na(project) ~ project,
+    TRUE ~ as.character(NA)),
+  Proj_GRP = case_when(
+    is.na(MLID) & is.na(Proj_GRP) & match_STATUS == "no_SiteID" ~ "Unknown",
+    !is.na(Proj_GRP) ~ Proj_GRP,
+    TRUE ~ as.character(NA)))
+```
+
+## Project_GRP Summary
+
++ Re-do Project_grp / project summary...
+
+```{r}
+EDD1_7 %>%
+  {addmargins(table(paste(.$Proj_GRP,
+                          .$project, sep="_"),
+                    .$RECORD_STATUS, useNA = "ifany", deparse.level = 2,
+                    dnn=c("Project_GRP", "RECORD_STATUS")))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), caption="RECORD_STATUS by project", align="l|cccccccc|c")
+```
+
+
+
+***
+***
+***
+
+## 8.0 Method/Parameter Cleanup & Matchups
+
++ Next Notebook...
+
+## 9.0 Record status REVIEW
+
+***
+***
+
+## END
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***

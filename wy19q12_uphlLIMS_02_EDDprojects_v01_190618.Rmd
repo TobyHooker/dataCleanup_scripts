@@ -1,0 +1,974 @@
+---
+title: "UPHL.LIMS Cleanup [02]"
+author: "T.Hooker"
+date: "18 June, 2019"
+output: 
+    html_notebook:
+      df_print: paged
+      theme: flatly
+      toc: yes
+      toc_depth: 4
+      toc_float: no
+---
+***
+<center>
+> ![](WaterQuality1_72dpi_2.png)  
+</center>
+
+
+***
+
+**Project Root Path** :: 
+"U:\INFODATA\Sampling\Data_Cleanup_Scripts\190610_UPHL_LIMS_wy19q1q2_CLEANUP"
+
+```{r STARTUP}
+#options(table_counter=FALSE)
+tidy_package <- c("plyr", "dplyr", "tidyr", "magrittr", "htmlTable")
+# suppressPackageStartupMessages(library("tidy"))
+if(!"tidyr" %in% (.packages())) {invisible(lapply(tidy_package, function(x) suppressMessages(library(x, character.only=T, quietly = T, warn.conflicts = F))))}
+##
+# graph_package <- c("ggplot2", "scales")
+# if(!"ggplot2" %in% (.packages())) {invisible(lapply(graph_package, library, character.only=T, quietly = T, warn.conflicts = F))}
+##
+options(scipen = 999, digits = 4, stringsAsFactors = FALSE, keep.source = TRUE)
+##
+#startwork.date <- format(Sys.Date(), "%y%m%d")
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+## 0.0 Notes
+
+**[190610]**  
+
+1) This notebook begins cleanup for UPHL-LIMS data from water-year (WY) 2019, quarters 1 and 2 (October 2018 through March 30, 2019).  
+2) This notebook _may_ also include UPHL-lab records that were not previously imported from the prior water year.
+3) Utah Lake project data were imported through December 2018 (previously)
+
+**[190618]**
+
+4) Notebook continues previous cleanup tasks, starting with project-level (as Project_GRP) review and modify (metadata) elements
+5) Goal here is to ID record that _may match_ to RP's field_data, but have errors in one or more of the Sample-Key-Elements (Trip & MLID & SDate & SampType)
+6) Once this is set (or complete), records can be re-compared against AWQMS data for the time-block and a decision made regard updating the chem-import
+7) Chem - Parameter x Method cleanup can also occur once a reasonable set of projects are sufficiently commplete to allow import to awqms.
+
+_Prior DFs and working sets_
+
+EDD_0 :: master EDD file :: "EDD_0_190610.rds" :: "U:/INFODATA/Sampling/UPHL_raw_EDDs/uphl_EDD_rawProcessing_r"
+
+EDD1_0 :: 2019 wy q1q2 file :: "edd1_wy19q1q2_RAW_190612.RDS" in Project-Folder
+
+MonLoc :: Monitoring Locations from AWQMS ::  "MonitoringLocationsIDs_051719.xlsx"
+    "U:/INFODATA/Sampling/DWQ Monitoring Locations/Monitoring Location IDs"
+    Last Accessed ::  "2019-06-12 09:01:26 MDT"
+
+EDD1_1 :: 2019.q1q2 w/ MLID-info joined :: "edd1_1_wy19q1q2_01_190613.RDS"
+  + After awqms_ACTID join :: "edd1_1_wy19q1q2_02_190613.RDS"
+
+awqms_ACTID_19q1q2 :: Activity.IDs from AWQMS for 19.q1q2 :: "awqms_ACTID_19q1q2_xx_190618.rds"
+
+proj_MLID :: BBs file of MLID & Project sets for this coming year ::
+  See::  "MonitoringSection2019_MLIDlist.xlsx"
+    "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Data Management/List of MLIDs"
+    Last Accessed :: "2019-06-14 14:47:43 MDT"
+
+field_0 :: RPs _raw field/hydrodata file_ :: "3. 2019_WY_Q1_Q2_ALL_Field_Flow_prep_Combined.xlsx"
+    "U:/PERMITS/MONITORS/2019_wy_Data/2019_wy_Hydrodata/2019_wy_4. Data and Information Services/WY_2019 Import prep/Q1 and Q2 (10-1-2018 through 3-31-2019)/Hydrodata"
+    "2019-06-14 08:35:48 MDT"
+
+field_1 :: RPs cleaned(tdh) hydrofile ::  "field_1_xx_190618.rds"
+
+EDD1_3 :: Working datafile at end of 1st notebook :: "EDD1_3_xx_190618.rds"
+
+project_table2 :: sumamry table of `projects` (trimmed TripIDs) and `Project_GRP` for streamlined data-cleanup tasks :: "ProjectTable2_wy19q1q2_190618.rds"
+
+```{r}
+# some workspace cleanup...
+```
+
+**[190621]**
+
++ Fixing some process errors in EDD data-cleanup and matchups
+
+
+***
+
+## 7.0 Project-Group Metadata Clean Up
+
+```{r}
+# project_table2 %<>% arrange(., Project_GRP, project)
+```
+
+Project data-groups to work through and clean up w/r to ::  
+
+1) Field data matchup
+2) Parameter x Method combinations (and results data) review
+3) check against ACTIDs already in AWQMS
+4) prepare for import to awqms (RP)\
+
++ Project Groups Table
+  + [190619]: changed HAB and USGS to "Unknown" project.grp
+
+```{r}
+# project_table2 %<>% mutate_if(is.factor, as.character) %>% mutate(
+#   Project_GRP = case_when(
+#     project == "HAB" ~ "Unknown",
+#     project == "USGSGKM" ~ "Unknown",
+#     !is.na(Project_GRP) ~ Project_GRP,
+#     is.na(Project_GRP) ~ as.character(NA)),
+#   project = case_when(
+#     is.na(project) ~ "missing",
+#     !is.na(project) ~ project)) %>% 
+#   arrange(Project_GRP, project)
+```
+
++ Add col for unique SK4s that match field data...
+
+```{r}
+F_proj <- project_table2$project[project_table2$NA_y > 0 & project_table2$project != "Sum"]
+#
+for (j in F_proj) {
+  project_table2$k_fldSK4[project_table2$project == j] = length(unique(
+    EDD1_3$SKey4[is.na(EDD1_3$field_sk4) & 
+                   !is.na(EDD1_3$project) & EDD1_3$project == j]))
+}
+#
+project_table2 %<>% select(project:Sum, k_fldSK4, everything())
+```
+
+
+```{r}
+project_table2 %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T, align="rl|cc|ccc|c|c|l", caption="Project groups by [Import Stats x SKey4 field-match]")
+```
+
++ Aggregate Project-level completeness by `Project_GRP`
+
+```{r}
+project_table2 %>% slice(., 1:nrow(.)-1) %>% 
+  group_by(Project_GRP) %>% 
+  summarize_at(c("NA_NA","NA_y","yes_0_NA","yes_1_NA","yes_x_NA","Sum","k_fldSK4"),
+               sum, na.rm=T) %>%
+  add_row(.,
+          Project_GRP = "Totals",
+          NA_NA = sum(.$NA_NA, na.rm=T),
+          NA_y = sum(.$NA_y, na.rm=T),
+          yes_0_NA = sum(.$yes_0_NA, na.rm=T),
+          yes_1_NA = sum(.$yes_1_NA, na.rm=T),
+          yes_x_NA = sum(.$yes_x_NA, na.rm=T),
+          Sum = sum(.$Sum, na.rm=T),
+          k_fldSK4 = sum(.$k_fldSK4, na.rm=T)) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T, align="rl|cc|ccc|c|c", caption="Project group matchup Summary")
+  
+```
+
+
+
+***
+
+## EDD Matchup-Review Elements
+\
+
+_EDD_ **Sample.Key** :: `SKey4` :: MLID + SDate + SType **vs** _FIELD_
+
+_Checks_ ::
+
+1) MLID match in MonLoc.master :: _Ensure that Site IDs are **at least** known_  
+2) Track **QC_types** ::
+    + _Blanks_ :: **Have no associated Field Data**  
+    + _Replicates_ :: _May have field data..._
+
+
+***
+
+\
+
+### 7.1 Intensive Monitoring :: CBI
+
++ Largest portion of this EDD-dataset
++ High Matchup rate :: `r format((project_table2$NA_y[project_table2$project == "CBI" & !is.na(project_table2$project)] / project_table2$Sum[project_table2$project == "CBI" & !is.na(project_table2$project)])*100, digits=3)`%
+
++ ACTIDs where SKey4 _does not_ match field data
+  + `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(ACT_trunc) %>% nrow()` sets of records
+  + `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(MLID) %>% nrow()` MLIDs (sites) ::
+`r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(MLID) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=F)`
+  + `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(Sample.Date) %>% nrow()` Sample Dates, from `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% {min(.$Sample.Date)}` to `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% {max(.$Sample.Date)}`  
+\
+
++ No-field-match records that are **not** QC sites :: `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4) & is.na(QC_type)) %>% distinct(ACT_trunc) %>% nrow(.)`
+  + `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4) & is.na(QC_type)) %>% distinct(ACT_trunc) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=F)`
+
+`r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% {addmargins(table(.$MLID, .$QC_type, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=F)`
+
+`r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(ACT_trunc, .keep_all=T) %>% {addmargins(table(.$MLID, .$QC_type, useNA="ifany", deparse.level=2))} %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=F)`
+
+
+```{r}
+# Records
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>%
+  {addmargins(table(.$MLID, .$file_WYqtr, useNA="ifany", deparse.level = 2))}
+## REcords by Month - No Match (or missing) to Field records
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>%
+  {addmargins(table(.$MLID, 
+                    paste("wy", lubridate::year(.$Sample.Date),
+                                   "_m", sprintf("%.2d", lubridate::month(.$Sample.Date))
+                                   , sep=""),
+                    useNA="ifany", deparse.level = 2))}
+# Levels of SKey4 (MLID+SDate+SType)
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% distinct(SKey4, .keep_all = T) %>%
+  {addmargins(table(.$MLID, .$file_WYqtr, useNA="ifany", deparse.level = 2))}
+# Levels of SK4 by Month - No Match (or missing) to Field records
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>%
+   distinct(SKey4, .keep_all = T) %>%
+  {addmargins(table(.$MLID, 
+                    paste("wy", lubridate::year(.$Sample.Date),
+                                   "_m", sprintf("%.2d", lubridate::month(.$Sample.Date))
+                                   , sep=""),
+                    useNA="ifany", deparse.level = 2))}
+```
+\
+
++ Which MLIDs are for QC-Blanks ??
+
+```{r}
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>%
+  {addmargins(table(.$MLID, .$QC_type, useNA="ifany", deparse.level = 2))}
+#
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>%
+  {addmargins(table(.$MLID, .$MLID_chek, useNA="ifany", deparse.level = 2))}
+```
+
+> !!!
+
+```{r}
+EDD1_3 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$MLID, paste(.$field_sk4,
+                                  .$QC_type, sep="_"),
+                    .$MLID_chek, useNA="ifany", deparse.level = 2),c(1,2))} %>%
+  as.data.frame() %>% setNames(c("MLID", "fldmatch_QCtype", "MLID_chek", "Freq")) %>%
+  spread(., fldmatch_QCtype, Freq) %>% htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T, align="rlc|ccccc|c", caption="CBI records by site, mlid_chek, and field.match_QC_type")
+#
+EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4)) %>% {addmargins(table(.$MLID, .$QC_type,
+                                                        .$MLID_chek, useNA="ifany", deparse.level = 2),c(1,2))}
+```
+
+
+**Conclusions**
+
+1) All CBI sites present in MonLoc.file
+2) No QC=Blank sites have a field match (_confirmed_)
+3) A few QC=Replicate sites have field match
+  + But one site (4955302) **ALSO** has a missing Field set
+
+```{r}
+EDD1_3 %>% filter(project=="CBI" & QC_type == "Replicate") %>% {table(.$MLID, .$field_sk4, useNA="ifany", deparse.level=2)}
+```
+
+4) All CBI EDD-records that are missing Field-matchups are either:
+    + Blanks :: therefore no field data present, **or** ::   `r EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4) & !is.na(MLID_chek) & QC_type=="Blank") %>% nrow(.)`
+    + Replicates :: Only 1 set missing, **AND**
+    + [Regular Sites] :: remaining records
+
+```{r}
+## Record sets to review and ID / correct
+EDD1_3 %>% 
+  filter(project=="CBI" & is.na(field_sk4)) %>% 
+  distinct(SKey4, .keep_all = T) %>%
+  {addmargins(table(.$MLID, .$QC_type,
+                    .$MLID_chek, useNA="ifany", deparse.level = 2),c(1,2))}
+##
+EDD1_3 %>% 
+  filter(project=="CBI" & is.na(field_sk4) & (is.na(QC_type) | QC_type != "Blank")) %>%
+  distinct(SKey4, .keep_all=T) %>% 
+  {addmargins(table(.$SKey4, .$QC_type, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+##
+EDD1_3 %>% 
+  filter(project=="CBI" & is.na(field_sk4) & (is.na(QC_type) | QC_type != "Blank")) %>%
+  {addmargins(table(.$SKey4, .$QC_type, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+
+
+\  
+
+#### 7.11 CBI Field Data
+
++ Field data (`field_1`) 
+
+```{r eval=FALSE, include=FALSE}
+# field_1_copy <- field_1
+# field_1 %<>% mutate(edd_sk4 = as.character(NA)) %>% mutate(
+#   Activity.Start.Date = as.Date(.$Activity.Start.Date, origin="1899-12-30"),
+#   edd_sk4 = case_when(
+#     SKey4 %in% EDD1_3$SKey4 ~ "y",
+#     TRUE ~ as.character(NA))) %>%
+#   select(project, edd_sk4, everything())
+```
+
+
+```{r}
+# Only SampType 4 or 11 in Project=CBI
+# Can IGNORE all SampType == 11 (no flow) records
+field_1 %>% filter(project=="CBI") %>%
+  {addmargins(table(.$edd_sk4, .$Ignore.3,
+                    useNA = "ifany", deparse.level = 2))}
+# Missing [SType4] MLIDs by month
+field_1 %>% filter(project=="CBI" & Ignore.3 != "11" & is.na(edd_sk4)) %>%
+  {addmargins(table(.$Monitoring.Location.ID,
+                    lubridate::month(.$Activity.Start.Date),
+                    useNA = "ifany", deparse.level = 2))}
+# Sample Keys that need an EDD match
+field_1 %>% filter(project=="CBI" & Ignore.3 != "11" & is.na(edd_sk4)) %>%
+  {addmargins(table(.$SKey4, .$edd_sk4,
+                    useNA = "ifany", deparse.level = 2))} %>% 
+  as.data.frame() %>%
+  setNames(c("SampKey4", "edd_sk4", "Freq")) %>% 
+  spread(., edd_sk4, Freq) %>% select(-Sum, everything()) %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))), total=T)
+```
+
++ Looks like two sets of records from October and November, 2018
++ ??Activity.Types??  ::
+
+```{r}
+field_1 %>% filter(project=="CBI" & Ignore.3 != "11" & is.na(edd_sk4)) %>% {(table(.$SKey4, .$Activity.Type, deparse.level=2))}
+```
+
++ Activity.Comments
+
+```{r}
+field_1 %>% filter(project=="CBI" & Ignore.3 != "11" & is.na(edd_sk4)) %>% {(table( .$Activity.Comment, .$SKey4, deparse.level=2))}
+
+```
+
+
+#### 7.12 Review EDD & Field  no-match records
+
+```{r}
+cbi_c01 <- EDD1_3 %>% filter(project=="CBI" & is.na(field_sk4) & (is.na(QC_type) | QC_type != "Blank")) %>%
+  select(-field_actrunc, -field_act00, -field_sk1, -file_WYqtr,
+         -ACT_11, -SKey3, everything())
+# View(cbi_c01[is.na(cbi_c01$QC_type) | cbi_c01$QC_type != "Blank"])
+
+
+```
+
+
+**Chem records mssing Field-Match**
+
+```{r}
+EDD1_3 %>% 
+  filter(project=="CBI" & is.na(field_sk4) & (is.na(QC_type) | QC_type != "Blank")) %>%
+  {addmargins(table(.$SKey4, .$QC_type, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
+**field records missing Chem-Match**
+
++ Review of records and comments / Matchup.Notes (RP) reveals that only 1 record-set has a true matchup issue :: MLID 4958031 (10/25/18)
+  + SKey4 :: 4958031.43398.4
++ The other (2) records have a comment that "November samples missing for this MLID", and one of those also has no probe data...
+
+#### 7.13 Update EDD no-match records
+
++ Add `RECORD_STATUS` field
+  + _a little field re-arranging for `EDD1_3` as well_
+
+```{r}
+EDD1_3 %<>% mutate(RECORD_STATUS = as.character(NA),
+                   match_STATUS = as.character(NA)) %>%
+  select(-field_actrunc, -field_act00, -field_sk1, -file_WYqtr, -ACT_00, -ACT_11,
+         -SKey1, -SKey3, -Sample.Description, -Method.Description, -Replicate.Number,
+         everything()) %>%
+  select(project:ACT_trunc, match_STATUS, RECORD_STATUS, everything())
+```
+
++ Code in status for CBI records
+
+```{r}
+EDD1_3 %<>% mutate(
+  match_STATUS = case_when(
+    project == "CBI" & field_sk4 == "y" ~ "ok",
+    project == "CBI" & is.na(field_sk4) & QC_type == "Blank" ~ "ok",
+    project == "CBI" & !is.na(match_STATUS) ~ match_STATUS,
+    project == "CBI" & is.na(field_sk4) ~ "REVIEW",
+    TRUE ~ as.character(NA)
+  )
+)
+```
+
+```{r}
+EDD1_3 %>% filter(project == "CBI") %>%
+  {addmargins(table(.$match_STATUS, .$QC_type, useNA="ifany", deparse.level = 2))}
+```
+
++ Coding is confirmed for `match_STATUS`
+
++ How does SK4 compare against MLID or SDate (alone) for match=REVIEW ??
+
++ **190621** :: in EDDs, found another (at least 1) set of Chemistry Sample-records where one or more key attributes differs among Sample.Numbers for that `Project.Name`.  **_This results in a serious problem for assigning records to field-matches and must be dealt with immediately._  The remainder of planned cleanup steps will commence after this issue is sorted out**
+
+#### 7.14 Update Field no-match records
+
++ Add `RECORD_STATUS` field 
+  + & a little field cleanup 
+
+```{r}
+field_1 %<>% mutate(RECORD_STATUS=as.character(NA),
+                    match_STATUS=as.character(NA)) %>%
+  select(-Activity.ID, -ACT_00, -ACT_11, -SKey1, everything()) %>%
+  select(project:ACT_trunc, match_STATUS, RECORD_STATUS,
+         Monitoring.Location.ID:Activity.Comment, Ignore.QC.Matchup.Notes,
+         everything())
+```
+
++ Code in status for CBI...
+
+```{r}
+field_1 %<>% mutate(
+  match_STATUS = case_when(
+    project=="CBI" & edd_sk4 == "y" ~ "ok",
+    project=="CBI" & is.na(edd_sk4) & Ignore.3 == 11 ~ "ok", #for no access
+    project=="CBI" & is.na(edd_sk4) & 
+      grepl("samples missing", Ignore.QC.Matchup.Notes,ignore.case = T) ~ "IGNORE",
+    project=="CBI" & is.na(edd_sk4) ~ "REVIEW", #specific corrections preceeding
+    project=="CBI" & !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)
+    ))
+# also if no probe data, then drop as well
+field_1 %<>% mutate(
+  RECORD_STATUS = case_when(
+    project=="CBI" & Ignore.3 != 11 &
+      is.na(Characteristic.Name.1) &
+      is.na(Characteristic.Name.2) &
+      is.na(Characteristic.Name.3) &
+      is.na(Characteristic.Name.4) ~ "drop_NoData",
+    TRUE ~ as.character(NA))
+)
+# field_1 %<>% select(-RECORD_status)
+```
+
++ DFs `EDD1_3` and `field_1` are okay for now...
+
++ Back to clean up EDD structure from lab...
+
+***
+***
+
+## **Check Lab-Data Consistency across samples**
+
+### Version Datafile 
+
+```{r}
+EDD1_4 <- EDD1_3
+```
+
+
+### Consistency Check: EDDs
+
++ Check for multiple instances of :: 
+  + MLID
+  + SampDate
+  + SampTime
+  + SampType
+  for any `Project.Name` and/or `SKey4` levels  
+\
++ Also look for any instances of multiple MLID / SampDate per SKey2 (MLID + SDate + SampNum)
+
+```{r}
+# EDD1_4 %>% distinct(SKey2, .keep_all = T) %>%
+#   {table(.$MLID, .$Sample.Date, useNA="ifany", deparse.level = 2)} %>%
+#   as.data.frame() %>% setNames(c("MLID", "SDate", "Freq")) %>%
+#   filter(!is.na(MLID)) %>%
+#   filter(Freq > 6) %>% arrange(MLID, SDate)
+```
+
+
+
+```{r}
+# EDD1_4 %>% 
+#   filter(project != "HAB") %>%
+#   distinct(MLID, Sample.Date, Sample.Number, Sample.Time, Sample.Type, Project.Name, .keep_all=T) %>%
+#   {table(.$Project.Name,
+#          .$Sample.Date, 
+#          useNA="ifany", deparse.level = 2)} %>% 
+#   as.data.frame() %>% setNames(c("Project.Name", "Sample.Date", "Freq")) %>%
+#   filter(Freq > 1) %>%
+#   arrange(Project.Name, Sample.Date, desc(Freq))
+```
+
+
+```{r}
+EDD1_4 %>% filter(QC_type != "Blank") %>%
+  {table(.$Project.Name, .$Sample.Date)} %>%
+  as.data.frame() %>% 
+  filter(Freq > 0) %>% {table(.$Freq)} %>% plot()
+
+EDD1_4 %>% filter(QC_type != "Blank") %>%
+  {table(.$Project.Name, .$Sample.Date)} %>%
+  as.data.frame() %>% 
+  filter(Freq > 0) %>% 
+  {table(.$Var1)} %>% as.data.frame(.) %>% filter(Freq > 1) %>% 
+  arrange(desc(Freq))
+```
+
+#### 7.15 CBI Sample-[meta]-data Corrections
+
+1) As of 190621, found 1 project (see above) where more than 1 sample date per Project.Name
+  + Correcting this from 1/16/19 to 1/15/19 will also add an additional 4 records that now match field-sample data
+  + Sample.Date of 1/15/19 CONFIRMED from trip sheets
+
+```{r}
+EDD1_4 %<>% mutate(
+  Sample.Date = case_when(
+    project=="CBI" &
+      Project.Name=="C2019-00162" ~ as.Date("2019-01-15"),
+    !is.na(Sample.Date) ~ Sample.Date),
+  Sample.Comment = case_when(
+    project=="CBI" &
+      Project.Name=="C2019-00162" ~ "Date corrected to 190115",
+    !is.na(Sample.Comment) ~ Sample.Comment)
+)
+# EDD1_4 %>% filter(
+#   project=="CBI" &
+#       Project.Name=="C2019-00162"
+# ) %>%
+#   distinct(Sample.Date)
+```
+
+2) One mismatch in field data; changing Sample Date for Chem data to match
+  + Site :: 4958031
+  + SDate :: EDD (181024; initial) & Field (181025)
+  + Change EDD-date to 10/25
+
+```{r}
+EDD1_4 %<>% mutate(
+  Sample.Comment = case_when(
+    project=="CBI" &
+      MLID=="4958031" &
+      Sample.Date == "2018-10-24" &
+      (is.na(Sample.Comment) | Sample.Comment != "") ~ "Date corrected to 181025",
+    project=="CBI" &
+      MLID=="4958031" &
+      Sample.Date == "2018-10-24" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment,
+                                    "Date corrected to 181025",
+                                    sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment),
+  Sample.Date = case_when(
+    project=="CBI" &
+      MLID=="4958031" &
+      Sample.Date == "2018-10-24" ~ as.Date("2018-10-25"),
+    !is.na(Sample.Date) ~ Sample.Date)
+)
+```
+
+***
+***
+
+#### **Re-calculate Sample.Keys** [re-start here]
+
+```{r}
+EDD1_4 %<>% mutate(
+  SKey1 = paste(.$MLID,
+                as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                sep="."),
+  SKey2 = paste(.$MLID,
+                as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                .$Sample.Number,
+                sep="."),
+  SKey3 = paste(.$MLID,
+                as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                .$Sample.Number,
+                .$Sample.Type,
+                sep="."),
+  SKey4 = paste(.$MLID,
+                as.numeric(trunc(.$Sample.Date) - as.Date("1899-12-30")),
+                .$Sample.Type,
+                sep="."),
+  ACT_trunc = paste(.$Trip.ID,
+                    .$MLID,
+                    paste(sprintf("%.2d", lubridate::month(.$Sample.Date)),
+                        sprintf("%.2d", lubridate::day(.$Sample.Date)),
+                        sep=""),
+                    .$Sample.Type,
+                    sep="-"),
+  ACT_00 = paste(.$project,
+                 .$MLID,
+                 paste(sprintf("%.2d", lubridate::month(.$Sample.Date)),
+                       sprintf("%.2d", lubridate::day(.$Sample.Date)),
+                       sep=""),
+                 .$Sample.Type,
+                 sep="-"),
+  ACT_11 = paste(.$project,
+                 .$MLID,
+                 paste(sprintf("%.2d", lubridate::month(.$Sample.Date)),
+                       sprintf("%.2d", lubridate::day(.$Sample.Date)),
+                       sep=""),
+                 sep="-")
+)
+```
+
+
++ **Re-Run Field/Lab Matchups**
++ **Keys** ::
+  + SKey4
+  + ACT_trunc (for completeness)
+
+
+```{r}
+fld_sk4 <- field_1 %>% distinct(SKey4)
+fld_actrunc <- field_1 %>% distinct(ACT_trunc)
+#
+EDD1_4 %<>% mutate(
+  field_sk4 = case_when(
+    SKey4 %in% fld_sk4$SKey4 ~ "y",
+    !is.na(field_sk4) ~ field_sk4,
+    TRUE ~ as.character(NA)),
+  field_actrunc = case_when(
+    ACT_trunc %in% fld_actrunc$ACT_trunc ~ "y",
+    !is.na(field_actrunc) ~ field_actrunc,
+    TRUE ~ as.character(NA))
+)
+##
+field_1 %<>% mutate(
+  edd_sk4 = case_when(
+    SKey4 %in% EDD1_4$SKey4 ~ "y",
+    TRUE ~ as.character(NA))
+)
+```
+
++ `match_STATUS` re-calc
+
+```{r}
+EDD1_4 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$field_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+#
+field_1 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$edd_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+EDD1_4 %<>% mutate(
+   match_STATUS = case_when(
+    project == "CBI" & field_sk4 == "y" ~ "ok",
+    project == "CBI" & is.na(field_sk4) & QC_type == "Blank" ~ "Blank",
+    project == "CBI" & !is.na(match_STATUS) ~ match_STATUS,
+    project == "CBI" & is.na(field_sk4) ~ "REVIEW",
+    TRUE ~ as.character(NA)
+))
+##
+field_1 %<>% mutate(
+  match_STATUS = case_when(
+    project=="CBI" & edd_sk4 == "y" ~ "ok",
+    project=="CBI" & is.na(edd_sk4) & Ignore.3 == 11 ~ "ok", #for no access
+    project=="CBI" & is.na(edd_sk4) & 
+      grepl("samples missing", Ignore.QC.Matchup.Notes,ignore.case = T) ~ "IGNORE",
+    project=="CBI" & is.na(edd_sk4) ~ "REVIEW", #specific corrections preceeding
+    project=="CBI" & !is.na(match_STATUS) ~ match_STATUS,
+    TRUE ~ as.character(NA)
+    )
+)
+```
+
+```{r}
+EDD1_4 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$field_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+#
+field_1 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$edd_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))}
+```
+
+**The above two chunks are iterative**
+
++ `field_1` looks okay for CBI
+
++ Projects (in CBI) that still need REVIEW ::
+```{r}
+EDD1_4 %>% filter(match_STATUS == "REVIEW" & project=="CBI") %>% distinct(Project.Name, SKey4, Sample.Date, Sample.Time)
+```
+
++ _When the above DF-table is empty, skip next block and continue..._
+
+[190621] :: in EDD1_4 that need review
+
+1) C2019-00481	4955330.43509.4	2019-02-13		:: chem MLID should be 4955300
+2) C2018-07199	4945120.43447.4	2018-12-13		:: chem MLID should be 4950120
+3) C2018-06467	4959300.43396.4	2018-10-23	  :: partial match, chem SDate should be 10/25/18
+
+**Q**::  Why are there discrepancies b/w Field_data/Trip_sheets/Lab_sheets _vs_ EDD_data ?
+
+**Apply changes to `EDD1_4 from list above`**
+
+```{r}
+# build Sample.Comment first, then data-element
+# C2019-00481	4955330.43509.4	2019-02-13 [MLID]
+EDD1_4 %<>% mutate(
+  Sample.Comment = case_when(
+    project=="CBI" &
+      Project.Name=="C2019-00481" &
+      MLID == "4955330" &
+      (is.na(Sample.Comment) | Sample.Comment == "") ~ "MLID corrected to 4955300",
+    project=="CBI" &
+      Project.Name=="C2019-00481" &
+      MLID == "4955330" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment, "MLID corrected to 4955300",
+                                     sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment),
+  MLID = case_when(
+    project=="CBI" &
+      Project.Name=="C2019-00481" &
+      MLID == "4955330" ~ "4955300",
+    !is.na(MLID) ~ MLID))
+## C2018-07199	4945120.43447.4	2018-12-13 [MLID]
+EDD1_4 %<>% mutate(
+  Sample.Comment = case_when(
+    project=="CBI" &
+      Project.Name=="C2018-07199" &
+      MLID == "4945120" &
+      (is.na(Sample.Comment) | Sample.Comment == "") ~ "MLID corrected to 4950120",
+    project=="CBI" &
+      Project.Name=="C2018-07199" &
+      MLID == "4945120" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment, "MLID corrected to 4950120",
+                                     sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment),
+  MLID = case_when(
+   project=="CBI" &
+      Project.Name=="C2018-07199" &
+      MLID == "4945120" ~ "4950120",
+    !is.na(MLID) ~ MLID))
+##  C2018-06467	4959300.43396.4	2018-10-23 [SDate]
+EDD1_4 %<>% mutate(
+  Sample.Comment = case_when(
+    project=="CBI" &
+      Project.Name=="C2018-06467" &
+      Sample.Date == "2018-10-23" &
+      (is.na(Sample.Comment) | Sample.Comment == "") ~ "SampDate corrected to 181023",
+    project=="CBI" &
+      Project.Name=="C2018-06467" &
+      Sample.Date == "2018-10-23" &
+      !is.na(Sample.Comment) ~ paste(Sample.Comment, "SampDate corrected to 181023",
+                                     sep=";"),
+    !is.na(Sample.Comment) ~ Sample.Comment),
+  Sample.Date = case_when(
+   project=="CBI" &
+      Project.Name=="C2018-06467" &
+      Sample.Date == "2018-10-23" ~ as.Date("2018-10-25"),
+    !is.na(Sample.Date) ~ Sample.Date))
+```
+
+**Go back and re-run SKeys and Matchups**
+
+**[190621]** :: CBI project tables look good.
+
+#### 7.16 Summarize CBI matchups
+
++ Comparing `field_sk4` [in EDD1_4] AND `edd_sk4` [in field_1] **VS**  `match_STATUS`
+
+```{r}
+EDD1_4 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$field_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))} %>% 
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+#
+field_1 %>% filter(project=="CBI") %>% 
+  {addmargins(table(.$edd_sk4, .$match_STATUS, useNA="ifany", deparse.level = 2))} %>%
+  htmlTable::htmlTable(., css.cell = rbind(rep("padding-left: 0.8em; padding-right: 0.8em;font-size: 0.75em;", times=ncol(.)+1), matrix("padding-left: 0.75em; padding-right: 0.75em; font-size: 0.75em;", ncol=ncol(.)+1, nrow=nrow(.))))
+```
+
++ All **CBI** records seem to match.   
+
+#### 7.17 Annotate DF file for **CBI**
+
++ See top table from 7.16 above
++ Translate to `RECORD_status`
+
+```{r}
+EDD1_4 %<>% mutate(
+  RECORD_STATUS = case_when(
+    project=="CBI" & match_STATUS == "ok" ~ "CBI_2_import",
+    project=="CBI" & is.na(field_sk4) & match_STATUS == "Blank" ~ "CBI_2_import",
+    !is.na(RECORD_STATUS) ~ RECORD_STATUS,
+    TRUE ~ as.character(NA)))
+# EDD1_4 %>%
+#   filter(project == "CBI" &
+#            is.na(field_sk4) & match_STATUS == "Blank") %>% nrow()
+```
+
+```{r}
+EDD1_4 %>% {addmargins(table(.$RECORD_STATUS, .$import_STATUS, useNA = "ifany", deparse.level = 2))}
+```
+
+#### 7.18 Export DFs
+
+```{r}
+openxlsx::write.xlsx(list("EDD1_4" = EDD1_4, "field_1" = field_1), file=paste("EDD1_4_xx_",
+                                        format(Sys.Date(), "%y%m%d"),
+                                        ".xlsx", sep=""))
+# save EDD1_4 file as RDS
+saveRDS(EDD1_4, file=paste("EDD1_4_xx_",
+                                        format(Sys.Date(), "%y%m%d"),
+                                        ".rds", sep=""))
+saveRDS(field_1, file=paste("field_1_xx_",
+                                        format(Sys.Date(), "%y%m%d"),
+                                        ".rds", sep=""))
+
+```
+
+
+> Moving on...
+
+***
+
+### Version Datafiles
+
+```{r}
+EDD1_5 <- EDD1_4
+field_2 <- field_1
+```
++ A little DF cleanup
+
+```{r}
+EDD1_5 %<>% select(-SKey2, everything()) %>%
+  select(project:Sample.Received.Date, Sample.Comment, Sample.Description, everything())
+```
+
+
+***
+***
+
+### 7.2 Utah Lake
+
+**Chemistry // EDDs**
+
++ Sample Date range (year and month)
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {addmargins(table(paste(lubridate::year(.$Sample.Date), lubridate::month(.$Sample.Date), sep="_"),
+                    useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {table(.$MLID_chek, useNA="ifany", deparse.level = 2)}
+```
++ **All UTLK MLIDs are okay (in MonLoc.file)**
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {table(.$import_STATUS, useNA="ifany", deparse.level = 2)}
+```
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {addmargins(table(paste(lubridate::year(.$Sample.Date), lubridate::month(.$Sample.Date), sep="_"),
+                    .$import_STATUS,
+                    dnn=c("SDate_YrMon", "import_STATUS"),
+                    useNA="ifany", deparse.level = 2))}
+```
++ A few records from Nov-2018 and all from 2019 have not yet been imported...
+
+
++ **`import_STATUS` is _NULL_ records need further review**
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {table(.$field_sk4, useNA="ifany", deparse.level = 2)}
+```
++ Many records with no field-match
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {addmargins(table(.$field_sk4, .$import_STATUS,
+         useNA="ifany", deparse.level = 2))}
+```
+
++ Record w/ Field-match **are not already in AWQMS** :: `r EDD1_5 %>% filter(project=="UTLK" & field_sk4 == "y" & is.na(import_STATUS)) %>% nrow(.) ` records
++ **Some** records w/ No-Field-match are not in AWQMS and **Need to be Reviewed** :: `r EDD1_5 %>% filter(project=="UTLK" & is.na(field_sk4) & is.na(import_STATUS)) %>% nrow()` records
+
+**ADD `import_STATUS == NA` to project filter**
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK") %>%
+  {addmargins(table(paste( .$import_STATUS,
+                           .$field_sk4, sep="_"),
+                    .$QC_type,
+         useNA="ifany", deparse.level = 2))}
+
+EDD1_5 %>% filter(project=="UTLK" & is.na(import_STATUS)) %>%
+  {addmargins(table(.$field_sk4, .$QC_type,
+         useNA="ifany", deparse.level = 2))}
+```
+
++ No Replicate sites in data that are yet to be imported
++ Recall that Blanks **Do Not require a field-match** (as there are no field data)
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK" & is.na(import_STATUS) ) %>%
+  {addmargins(table(.$field_sk4, .$QC_type,
+         useNA="ifany", deparse.level = 2))}
+```
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK" & is.na(import_STATUS) ) %>%
+  distinct(SKey4, .keep_all = T) %>%
+  {addmargins(table(.$field_sk4, .$QC_type,
+         useNA="ifany", deparse.level = 2))}
+```
+
++ Looks like only 1 project requires field_matchup
+
+```{r}
+EDD1_5 %>% filter(project=="UTLK" & 
+                    is.na(import_STATUS) &
+                    is.na(QC_type) & 
+                    is.na(field_sk4)) %>%
+  distinct(Project.Name, SKey4, Sample.Date)
+```
+
+***
+*** 
+
+**Field Data**
+
++ Sample Date Range :: from `r min(field_2$Activity.Start.Date[field_2$project=="UTLK"])`  to  `r max(field_2$Activity.Start.Date[field_2$project=="UTLK"])`
+  + Appear to be missing late 2018 and march 2019 field data
+
+```{r}
+field_2 %>% filter(project=="UTLK") %>%
+  {addmargins(table(
+    paste(lubridate::year(.$Activity.Start.Date), lubridate::month(.$Activity.Start.Date), sep="_"),
+    dnn=c("SDate_YrMon"),
+    useNA="ifany", deparse.level = 2))}
+```
+
+**?? Where'd all the 2018 field data go???**
+
+***
+
+## Version Notebook
++ Start notebook [03]
+
+
+## 8.0 Method/Parameter Cleanup & Matchups
+
+## 9.0 Record status REVIEW
+
+***
+***
+## END
+
+```{r CLOSEOUT, include=FALSE}
+lastwork.date <- format(Sys.Date(), "%y%m%d")
+```
+
+**Start work date ::**  `r startwork.date`  
+**Last work date ::**  `r lastwork.date`  
+**Current review date ::**  `r format(Sys.Date(), "%y%m%d")`
+
+eof
+
+***
